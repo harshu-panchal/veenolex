@@ -1,0 +1,3 @@
+[build]
+  # Tell Netlify that the frontend project is in the frontend directory
+  base = "frontend"
