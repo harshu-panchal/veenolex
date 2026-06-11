@@ -59,18 +59,20 @@ export const getCategories = async (req, res) => {
       const categories = await getOrSet(
         cacheKey,
         async () => {
-          const selectFields = "name slug image icon iconId type parentId headerColor headerFontColor headerIconColor";
+          const selectFields = "name slug image icon iconId type parentId headerColor headerFontColor headerIconColor order";
           return Category.find({ type: "header" })
             .select(selectFields)
             .populate({
               path: "children",
               select: selectFields,
+              options: { sort: { order: 1, name: 1, _id: 1 } },
               populate: {
                 path: "children",
                 select: selectFields,
+                options: { sort: { order: 1, name: 1, _id: 1 } },
               },
             })
-            .sort({ name: 1, _id: 1 })
+            .sort({ order: 1, name: 1, _id: 1 })
             .lean();
         },
         getTTL("categories"),
@@ -106,7 +108,7 @@ export const getCategories = async (req, res) => {
       }
 
       const [items, total] = await Promise.all([
-        Category.find(query).sort({ name: 1 }).skip(skip).limit(limit).lean(),
+        Category.find(query).sort({ order: 1, name: 1 }).skip(skip).limit(limit).lean(),
         Category.countDocuments(query),
       ]);
       return handleResponse(res, 200, "Categories fetched successfully", {
@@ -125,7 +127,7 @@ export const getCategories = async (req, res) => {
     const cacheKey = categoryCacheKey({ tree: false, type: query.type || "all" });
     const categories = await getOrSet(
       cacheKey,
-      async () => Category.find(query).sort({ name: 1, _id: 1 }).lean(),
+      async () => Category.find(query).sort({ order: 1, name: 1, _id: 1 }).lean(),
       getTTL("categories"),
     );
     return handleResponse(
@@ -145,7 +147,7 @@ export const getCategories = async (req, res) => {
 export const createCategory = async (req, res) => {
   try {
     const categoryData = {};
-    const allowedKeys = ["name", "slug", "description", "type", "parentId", "status", "icon", "iconId", "headerColor", "headerFontColor", "headerIconColor", "adminCommission", "adminCommissionType", "adminCommissionValue", "handlingFees", "handlingFeeType", "handlingFeeValue"];
+    const allowedKeys = ["name", "slug", "description", "type", "parentId", "status", "icon", "iconId", "headerColor", "headerFontColor", "headerIconColor", "adminCommission", "adminCommissionType", "adminCommissionValue", "handlingFees", "handlingFeeType", "handlingFeeValue", "order"];
     
     // Strict Whitelisting and Sanitization
     for (const key of allowedKeys) {
@@ -244,7 +246,7 @@ export const updateCategory = async (req, res) => {
     }
 
     const categoryData = {};
-    const allowedKeys = ["name", "slug", "description", "type", "parentId", "status", "icon", "iconId", "headerColor", "headerFontColor", "headerIconColor", "adminCommission", "adminCommissionType", "adminCommissionValue", "handlingFees", "handlingFeeType", "handlingFeeValue"];
+    const allowedKeys = ["name", "slug", "description", "type", "parentId", "status", "icon", "iconId", "headerColor", "headerFontColor", "headerIconColor", "adminCommission", "adminCommissionType", "adminCommissionValue", "handlingFees", "handlingFeeType", "handlingFeeValue", "order"];
     
     for (const key of allowedKeys) {
       if (Object.prototype.hasOwnProperty.call(req.body, key)) {

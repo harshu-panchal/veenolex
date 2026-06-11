@@ -262,7 +262,7 @@ const ProductCard = React.memo(
                 "bg-brand-50 text-brand-600 font-bold rounded px-1.5 py-0 tracking-wide",
                 compact ? "text-[8px]" : "text-[8px] sm:text-[9px]",
               )}>
-              {product.weight || "1 unit"}
+              {defaultVariant?.name || product.weight || "1 unit"}
             </div>
           </div>
 

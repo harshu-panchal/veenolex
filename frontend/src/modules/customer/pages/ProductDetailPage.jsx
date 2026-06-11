@@ -179,6 +179,16 @@ const ProductDetailPage = () => {
     const quantity = cartItem ? cartItem.quantity : 0;
     const isWishlisted = isInWishlist(product.id);
 
+    const defaultVariant = React.useMemo(() => {
+        if (!product) return null;
+        const variants = Array.isArray(product.variants) ? product.variants : [];
+        if (variants.length === 0) return null;
+
+        const displayed = Number(product.salePrice || product.price || 0);
+        const picked = variants.find(v => Number(v.salePrice || v.price) === displayed) || variants[0];
+        return picked;
+    }, [product]);
+
     return (
         <div className="relative z-10 py-8 w-full max-w-[1920px] mx-auto px-4 md:px-[50px] animate-in fade-in duration-700 mt-24">
             <Link to={-1} className="inline-flex items-center gap-2 text-slate-500 hover:text-primary font-bold mb-6 transition-colors group">
@@ -295,7 +305,7 @@ const ProductDetailPage = () => {
                     <div className="grid grid-cols-3 gap-4">
                         <div className="bg-white p-4 rounded-2xl border border-slate-100 text-center shadow-sm">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Weight</p>
-                            <p className="text-sm font-black text-slate-800">{product.weight || '1 unit'}</p>
+                            <p className="text-sm font-black text-slate-800">{defaultVariant?.name || product.weight || '1 unit'}</p>
                         </div>
                         <div className="bg-white p-4 rounded-2xl border border-slate-100 text-center shadow-sm">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Stock</p>

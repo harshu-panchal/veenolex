@@ -24,14 +24,6 @@ import FavoriteBorderOutlinedIcon from "@mui/icons-material/FavoriteBorderOutlin
 import ShoppingCartOutlinedIcon from "@mui/icons-material/ShoppingCartOutlined";
 import AccountCircleOutlinedIcon from "@mui/icons-material/AccountCircleOutlined";
 
-/** Full-width bottom stroke + tab curve; l/r are 0–100% of column where the inner bump sits. */
-function buildActiveTabPath(l, r) {
-  const y = 20;
-  const mapX = (x) => l + ((x - 1.5) / (98.5 - 1.5)) * (r - l);
-  // Softer shoulders + flatter crown for a cleaner active tab curve.
-  return `M 0 ${y} L ${l} ${y} L ${l} 12 C ${mapX(2.6)} 7 ${mapX(8.2)} 1.55 ${mapX(15)} 1.55 L ${mapX(85)} 1.55 C ${mapX(91.8)} 1.55 ${mapX(97.4)} 7 ${mapX(98.5)} 12 V ${y} L 100 ${y}`;
-}
-
 function CategoryNavColumn({
   cat,
   isActive,
@@ -41,47 +33,16 @@ function CategoryNavColumn({
   headerIconColor,
 }) {
   const iconColor = headerIconColor || "#111111";
-  const colRef = useRef(null);
-  const labelRef = useRef(null);
-  const [lr, setLr] = useState({ l: 22, r: 78 });
-
-  const measure = () => {
-    if (!isActive || !colRef.current || !labelRef.current) return;
-    const col = colRef.current.getBoundingClientRect();
-    const lab = labelRef.current.getBoundingClientRect();
-    if (col.width < 4) return;
-    const pad = 5;
-    const l = Math.max(0, ((lab.left - col.left - pad) / col.width) * 100);
-    const r = Math.min(100, ((lab.right - col.left + pad) / col.width) * 100);
-    if (r - l > 6) setLr({ l, r });
-  };
-
-  useLayoutEffect(() => {
-    measure();
-    const ro = new ResizeObserver(measure);
-    if (colRef.current) ro.observe(colRef.current);
-    window.addEventListener("resize", measure);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [isActive, cat.name]);
-
-  const pathD = isActive ? buildActiveTabPath(lr.l, lr.r) : "";
 
   return (
     <motion.div
-      ref={colRef}
       layout
       whileTap={{ scale: 0.96 }}
       transition={{
         layout: { type: "spring", stiffness: 520, damping: 38, mass: 0.55 },
       }}
       onClick={() => onCategorySelect && onCategorySelect(cat)}
-      style={{
-        borderBottomColor: isActive ? "transparent" : categoryAccent,
-      }}
-      className="relative z-[2] flex min-w-[48px] shrink-0 cursor-pointer flex-col items-center gap-0.5 border-b-2 px-2 pb-0.5 pt-0.5 snap-start md:min-w-[58px]">
+      className="relative z-[2] flex min-w-[48px] shrink-0 cursor-pointer flex-col items-center gap-0.5 px-2 pb-1.5 pt-0.5 snap-start md:min-w-[58px]">
       <div className="relative z-10 flex h-9 w-9 items-center justify-center md:h-11 md:w-11">
         {typeof cat.icon === "function" ||
           (typeof cat.icon === "object" && cat.icon.$$typeof) ? (
@@ -105,41 +66,52 @@ function CategoryNavColumn({
       </div>
       <div className="relative mt-px w-full">
         <span
-          ref={labelRef}
           className={cn(
-            "relative z-10 mx-auto block max-w-[72px] truncate px-1 pb-0.5 text-center text-[8px] uppercase tracking-tight md:max-w-[88px] md:text-[10px]",
+            "relative z-10 mx-auto block max-w-[80px] truncate px-1 pb-0.5 text-center text-[10px] font-['Inter'] tracking-tight md:max-w-[96px] md:text-[12px]",
             isActive ? "font-black" : "font-semibold",
           )}
           style={{
             color: isActive ? iconColor : (headerFontColor || "#111111"),
             opacity: isActive ? 1 : 0.68,
+            fontFamily: "'Inter', sans-serif",
           }}>
           {cat.name}
         </span>
       </div>
       {isActive && (
-        <motion.svg
-          layoutId="active-category-curve"
-          aria-hidden
-          className="pointer-events-none absolute bottom-0 left-0 right-0 z-[6] h-[22px] w-full overflow-visible"
-          viewBox="0 0 100 20"
-          preserveAspectRatio="none"
-          shapeRendering="geometricPrecision"
+        <motion.div
+          layoutId="active-category-line"
+          className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[3px] w-8 rounded-full"
+          style={{ backgroundColor: categoryAccent }}
           transition={{
-            layout: { type: "spring", stiffness: 560, damping: 40, mass: 0.5 },
-          }}>
-          <path
-            d={pathD}
-            fill="none"
-            stroke={categoryAccent}
-            strokeWidth="2"
-            strokeLinecap="butt"
-            strokeLinejoin="round"
-          />
-        </motion.svg>
+            type: "spring",
+            stiffness: 380,
+            damping: 30,
+          }}
+        />
       )}
     </motion.div>
   );
+}
+
+function hexToRgba(hex, alpha = 0.95) {
+  if (!hex || typeof hex !== "string" || !hex.startsWith("#")) {
+    return `rgba(46, 125, 50, ${alpha})`;
+  }
+  const cleanHex = hex.replace("#", "");
+  let r = 0, g = 0, b = 0;
+  if (cleanHex.length === 3) {
+    r = parseInt(cleanHex[0] + cleanHex[0], 16);
+    g = parseInt(cleanHex[1] + cleanHex[1], 16);
+    b = parseInt(cleanHex[2] + cleanHex[2], 16);
+  } else if (cleanHex.length === 6) {
+    r = parseInt(cleanHex.slice(0, 2), 16);
+    g = parseInt(cleanHex.slice(2, 4), 16);
+    b = parseInt(cleanHex.slice(4, 6), 16);
+  } else {
+    return `rgba(46, 125, 50, ${alpha})`;
+  }
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 const MainLocationHeader = ({
@@ -162,7 +134,7 @@ const MainLocationHeader = ({
     useLocation();
   const { isOpen: isProductDetailOpen } = useProductDetail();
   const { settings } = useSettings();
-  const appName = settings?.appName || "Jalpaino";
+  const appName = settings?.appName || "Veenolex";
   const logoUrl = settings?.logoUrl || LogoImage;
   const navigate = useNavigate();
 
@@ -270,7 +242,7 @@ const MainLocationHeader = ({
   const displayNav = "flex";
   const displayCart = "block";
 
-  const baseHeaderColor = activeCategory?.headerColor || "var(--primary)";
+  const baseHeaderColor = activeCategory?.headerColor || "#2E7D32";
   const headerFontColor = activeCategory?.headerFontColor || "#111827";
   const headerIconColor = activeCategory?.headerIconColor || "#111111";
 
@@ -304,7 +276,7 @@ const MainLocationHeader = ({
             borderBottomLeftRadius: "24px",
             borderBottomRightRadius: "24px",
             opacity: bgOpacity,
-            background: "linear-gradient(135deg, rgba(46, 125, 50, 0.95) 0%, rgba(18, 18, 18, 0.95) 100%)",
+            background: `linear-gradient(135deg, ${hexToRgba(baseHeaderColor, 0.95)} 0%, rgba(18, 18, 18, 0.95) 100%)`,
             backdropFilter: "blur(20px) saturate(180%)",
             WebkitBackdropFilter: "blur(20px) saturate(180%)",
             borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
@@ -508,7 +480,6 @@ const MainLocationHeader = ({
           )}
 
           {/* Categories Navigation - Smooth Collapse */}
-          {/* 
           {categories.length > 0 && (
             <motion.div
               layout
@@ -544,7 +515,6 @@ const MainLocationHeader = ({
               })}
             </motion.div>
           )}
-          */}
 
           {/* Background Decorative patterns */}
           <div className="absolute top-0 right-0 w-80 h-80 bg-white/5 rounded-full blur-[100px] -mr-40 -mt-40 pointer-events-none" />

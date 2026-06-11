@@ -359,7 +359,7 @@ const Home = () => {
         const formattedHeaders = dbCats.filter((cat) => cat.type === "header").map((cat) => {
           const catName = cat.name;
           const meta = CATEGORY_METADATA[catName] || CATEGORY_METADATA[catName.toUpperCase()] || { icon: Sparkles, theme: DEFAULT_CATEGORY_THEME, banner: { title: catName.toUpperCase(), subtitle: "TOP PICKS", floatingElements: "sparkles" } };
-          const IconComp = (cat.iconId && ICON_COMPONENTS[cat.iconId]) || meta.icon || Sparkles;
+          const IconComp = (cat.iconId && ICON_COMPONENTS[cat.iconId]) || cat.icon || meta.icon || Sparkles;
           return { ...cat, id: cat._id, icon: IconComp, theme: meta.theme, banner: { ...meta.banner, textColor: "text-white" } };
         });
         nextHomeData.formattedHeaders = formattedHeaders;
@@ -478,7 +478,7 @@ const Home = () => {
   };
 
   return (
-    <div className={`min-h-screen pt-[108px] md:pt-[120px] ${products.length === 0 && !isLoading ? "bg-white" : "bg-[#FAF9F4]"}`}>
+    <div className={`min-h-screen pt-[170px] md:pt-[160px] ${products.length === 0 && !isLoading ? "bg-white" : "bg-[#FAF9F4]"}`}>
       <div className={cn("contents", isProductDetailOpen && "hidden md:contents")}>
         <MainLocationHeader categories={categories} activeCategory={activeCategory} onCategorySelect={setActiveCategory} hideSearchBar={true} />
       </div>

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { categoryIcons } from '../constants/categoryIcons';
-import { Search, X } from 'lucide-react';
+import { Search, X, Upload } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 // MUI icon library (same as customer app categories)
@@ -27,8 +27,17 @@ import ColorLensIcon from '@mui/icons-material/ColorLens';
 import BuildIcon from '@mui/icons-material/Build';
 import LuggageIcon from '@mui/icons-material/Luggage';
 
-const IconSelector = ({ selectedIcon, onSelect, onClose }) => {
+const IconSelector = ({ selectedIcon, customIconUrl, onSelect, onClose }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const fileInputRef = useRef(null);
+
+  const handleCustomIconChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const previewUrl = URL.createObjectURL(file);
+      onSelect('', { file, previewUrl });
+    }
+  };
 
   // Map our internal icon ids to MUI icon components
   const iconComponents = {
@@ -93,6 +102,49 @@ const IconSelector = ({ selectedIcon, onSelect, onClose }) => {
         {/* Icon Grid */}
         <div className="p-6 overflow-y-auto flex-1 min-h-0">
           <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-3">
+            {/* Custom Icon Card */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className={`
+                  w-full h-full min-h-[96px] flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all
+                  hover:border-brand-500 hover:bg-brand-50 group
+                  ${(!selectedIcon && customIconUrl)
+                    ? 'border-brand-600 bg-brand-50'
+                    : 'border-gray-200 border-dashed bg-white'
+                  }
+                `}
+                title="Upload Custom Icon">
+                <div
+                  className={`w-8 h-8 flex items-center justify-center transition-colors ${(!selectedIcon && customIconUrl)
+                    ? 'text-brand-600'
+                    : 'text-gray-400 group-hover:text-brand-600'
+                  }`}
+                >
+                  {customIconUrl ? (
+                    <img
+                      src={customIconUrl}
+                      alt="Custom"
+                      className="w-full h-full object-contain rounded"
+                    />
+                  ) : (
+                    <Upload className="w-5 h-5" />
+                  )}
+                </div>
+                <span className="text-[10px] text-gray-500 mt-2 text-center line-clamp-1">
+                  {customIconUrl ? 'Custom Icon' : 'Upload Custom'}
+                </span>
+              </button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleCustomIconChange}
+                accept="image/*"
+                className="hidden"
+              />
+            </div>
+
             {filteredIcons.map((icon) => (
               <button
                 key={icon.id}

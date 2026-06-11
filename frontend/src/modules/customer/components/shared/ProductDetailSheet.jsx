@@ -444,8 +444,8 @@ const ProductDetailSheet = () => {
                                             <h1 className="text-[19px] lg:text-[22px] font-black text-[#111827] leading-[1.2] tracking-tight mb-1">
                                                 {selectedProduct.name}
                                             </h1>
-                                            {selectedProduct.weight && (
-                                                <span className="text-[13px] text-gray-400 font-bold uppercase tracking-wider">{selectedProduct.weight}</span>
+                                            {(selectedVariant?.name || selectedProduct.weight) && (
+                                                <span className="text-[13px] text-gray-400 font-bold uppercase tracking-wider">{selectedVariant?.name || selectedProduct.weight}</span>
                                             )}
                                         </motion.div>
 

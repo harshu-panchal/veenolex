@@ -80,10 +80,13 @@ const HeaderCategories = () => {
     headerColor: "#FF1E1E",
     headerFontColor: "#111111",
     headerIconColor: "#111111",
+    order: "",
   });
 
   const [imageFile, setImageFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [iconFile, setIconFile] = useState(null);
+  const [iconPreviewUrl, setIconPreviewUrl] = useState(null);
   const fileInputRef = useRef(null);
 
   // Map our icon ids to MUI icon components so admin UI
@@ -185,7 +188,7 @@ const HeaderCategories = () => {
       data.append("type", "header");
       Object.keys(formData).forEach((key) => {
         if (key === "type") return;
-        if (key === "adminCommission" || key === "handlingFees") {
+        if (key === "adminCommission" || key === "handlingFees" || key === "order") {
           data.append(key, formData[key] === "" ? "0" : String(formData[key]));
           return;
         }
@@ -196,6 +199,14 @@ const HeaderCategories = () => {
         data.append("image", imageFile);
       } else if (previewUrl && !previewUrl.startsWith("blob:")) {
         data.append("image", previewUrl);
+      }
+
+      if (iconFile) {
+        data.append("icon", iconFile);
+      } else if (iconPreviewUrl && !iconPreviewUrl.startsWith("blob:")) {
+        data.append("icon", iconPreviewUrl);
+      } else if (formData.iconId) {
+        data.append("icon", "");
       }
 
       if (editingItem) {
@@ -245,9 +256,12 @@ const HeaderCategories = () => {
       headerColor: "#FF1E1E",
       headerFontColor: "#111111",
       headerIconColor: "#111111",
+      order: "0",
     });
     setImageFile(null);
     setPreviewUrl(null);
+    setIconFile(null);
+    setIconPreviewUrl(null);
     setIsAddModalOpen(true);
   };
 
@@ -266,8 +280,11 @@ const HeaderCategories = () => {
       headerColor: item.headerColor || "#FF1E1E",
       headerFontColor: item.headerFontColor || "#FFFFFF",
       headerIconColor: item.headerIconColor || "#111111",
+      order: item.order ?? "0",
     });
     setPreviewUrl(item.image || null);
+    setIconFile(null);
+    setIconPreviewUrl(item.icon || null);
     setIsAddModalOpen(true);
   };
 
@@ -336,6 +353,9 @@ const HeaderCategories = () => {
                   Slug
                 </th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Order
+                </th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   Comm (%)
                 </th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -352,13 +372,13 @@ const HeaderCategories = () => {
             <tbody className="divide-y divide-gray-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan="8" className="text-center py-8 text-gray-500">
+                  <td colSpan="9" className="text-center py-8 text-gray-500">
                     Loading...
                   </td>
                 </tr>
               ) : categories.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="text-center py-8 text-gray-500">
+                  <td colSpan="9" className="text-center py-8 text-gray-500">
                     No header categories found
                   </td>
                 </tr>
@@ -406,6 +426,9 @@ const HeaderCategories = () => {
                       {cat.name}
                     </td>
                     <td className="py-3 px-4 text-gray-500">{cat.slug}</td>
+                    <td className="py-3 px-4 text-gray-500 font-medium">
+                      {cat.order ?? 0}
+                    </td>
                     <td className="py-3 px-4 text-gray-500 font-medium">
                       {cat.adminCommission ?? 0}%
                     </td>
@@ -488,8 +511,14 @@ const HeaderCategories = () => {
                   <div className="flex gap-4">
                     {/* SVG Icon Display */}
                     <div className="flex flex-col items-center gap-2">
-                      <div className="w-24 h-24 rounded-full bg-linear-to-br from-brand-50 to-purple-50 border-2 border-brand-200 flex items-center justify-center">
-                        {formData.iconId && iconComponents[formData.iconId] ? (
+                      <div className="w-24 h-24 rounded-full bg-linear-to-br from-brand-50 to-purple-50 border-2 border-brand-200 flex items-center justify-center overflow-hidden">
+                        {iconPreviewUrl ? (
+                          <img
+                            src={iconPreviewUrl}
+                            alt="Custom Icon"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : formData.iconId && iconComponents[formData.iconId] ? (
                           <div className="w-12 h-12 text-brand-600 flex items-center justify-center">
                             {(() => {
                               const IconComp = iconComponents[formData.iconId];
@@ -511,7 +540,7 @@ const HeaderCategories = () => {
                         type="button"
                         onClick={() => setIsIconSelectorOpen(true)}
                         className="px-3 py-1.5 text-sm bg-black text-primary-foreground rounded-lg hover:bg-brand-700 transition-colors">
-                        {formData.iconId ? 'Change Icon' : 'Select Icon'}
+                        {formData.iconId || iconPreviewUrl ? 'Change Icon' : 'Select Icon'}
                       </button>
                     </div>
 
@@ -704,6 +733,22 @@ const HeaderCategories = () => {
                   </select>
                 </div>
 
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">
+                    Sort Order (Sequence)
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.order}
+                    onChange={(e) =>
+                      setFormData({ ...formData, order: e.target.value })
+                    }
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                    placeholder="e.g., 0 (lower numbers show first)"
+                    min="0"
+                  />
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-gray-700">
@@ -765,8 +810,17 @@ const HeaderCategories = () => {
         {isIconSelectorOpen && (
           <IconSelector
             selectedIcon={formData.iconId}
-            onSelect={(iconId) => {
-              setFormData({ ...formData, iconId });
+            customIconUrl={iconPreviewUrl}
+            onSelect={(iconId, customIcon) => {
+              if (customIcon) {
+                setIconFile(customIcon.file);
+                setIconPreviewUrl(customIcon.previewUrl);
+                setFormData({ ...formData, iconId: "" });
+              } else {
+                setIconFile(null);
+                setIconPreviewUrl(null);
+                setFormData({ ...formData, iconId });
+              }
               setIsIconSelectorOpen(false);
             }}
             onClose={() => setIsIconSelectorOpen(false)}
