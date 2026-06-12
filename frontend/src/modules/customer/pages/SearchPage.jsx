@@ -242,7 +242,7 @@ const SearchPage = () => {
                             value={query}
                             onKeyDown={handleKeyDown}
                             onChange={(e) => setQuery(e.target.value)}
-                            className="w-full h-12 bg-white rounded-2xl pl-11 pr-14 shadow-xl shadow-black/10 border-none outline-none text-slate-800 font-bold placeholder:text-slate-400 placeholder:font-medium focus:ring-4 focus:ring-white/20 transition-all"
+                            className="w-full h-12 bg-white rounded-2xl pl-11 pr-14 shadow-xl shadow-black/10 border-none outline-none text-slate-800 font-bold placeholder:text-black placeholder:font-medium focus:ring-4 focus:ring-white/20 transition-all"
                         />
 
                         {/* Integrated Actions inside Search Input */}

@@ -17,12 +17,54 @@ import {
 const TEST_PUSH_STATUS_POLL_INTERVAL_MS = 1500;
 const TEST_PUSH_STATUS_MAX_ATTEMPTS = 20;
 
+function hexToRgba(hex, alpha = 0.95) {
+  if (!hex || typeof hex !== "string" || !hex.startsWith("#")) {
+    return `rgba(46, 125, 50, ${alpha})`;
+  }
+  const cleanHex = hex.replace("#", "");
+  let r = 0, g = 0, b = 0;
+  if (cleanHex.length === 3) {
+    r = parseInt(cleanHex[0] + cleanHex[0], 16);
+    g = parseInt(cleanHex[1] + cleanHex[1], 16);
+    b = parseInt(cleanHex[2] + cleanHex[2], 16);
+  } else if (cleanHex.length === 6) {
+    r = parseInt(cleanHex.slice(0, 2), 16);
+    g = parseInt(cleanHex.slice(2, 4), 16);
+    b = parseInt(cleanHex.slice(4, 6), 16);
+  } else {
+    return `rgba(46, 125, 50, ${alpha})`;
+  }
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 const ProfilePage = () => {
     const navigate = useNavigate();
     const { user, role, logout } = useAuth();
     const { settings } = useSettings();
     const appName = settings?.appName || 'App';
     const [isTestingPush, setIsTestingPush] = React.useState(false);
+    const [headerColor, setHeaderColor] = React.useState("#2E7D32");
+
+    React.useEffect(() => {
+        const fetchHeaderColor = async () => {
+            try {
+                const res = await customerApi.getCategories();
+                if (res.data.success) {
+                    const dbCats = res.data.results || res.data.result || [];
+                    const allHeader = dbCats.find((h) => 
+                        h.type === "header" && 
+                        ((h.slug?.toLowerCase() === "all") || (h.name?.toLowerCase() === "all"))
+                    );
+                    if (allHeader?.headerColor) {
+                        setHeaderColor(allHeader.headerColor);
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to fetch header color:", e);
+            }
+        };
+        fetchHeaderColor();
+    }, []);
 
     const formatIndiaPhone = (value) => {
         const raw = String(value || '').trim();
@@ -101,14 +143,14 @@ const ProfilePage = () => {
         <div className="min-h-screen bg-[#FAF9F4] pb-24 md:pb-8 font-sans">
             <div 
                 style={{
-                    background: "linear-gradient(135deg, rgba(46, 125, 50, 0.95) 0%, rgba(18, 18, 18, 0.95) 100%)",
+                    background: `linear-gradient(135deg, ${hexToRgba(headerColor, 0.95)} 0%, rgba(255, 255, 255, 0.95) 100%)`,
                     backdropFilter: "blur(20px) saturate(180%)",
                     WebkitBackdropFilter: "blur(20px) saturate(180%)",
-                    borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                    borderBottom: "1px solid rgba(0, 0, 0, 0.08)",
                     borderBottomLeftRadius: "20px",
                     borderBottomRightRadius: "20px",
                 }}
-                className="sticky top-0 z-30 px-4 py-3 flex items-center gap-2 mb-4 shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+                className="sticky top-0 z-30 px-4 py-3 flex items-center gap-2 mb-4 shadow-[0_8px_32px_rgba(0,0,0,0.08)]"
             >
                 <button
                     onClick={() => navigate(-1)}
@@ -123,9 +165,9 @@ const ProfilePage = () => {
                         onClick={handleTestPush}
                         disabled={isTestingPush}
                         title="Test push notification"
-                        className="w-10 h-10 flex items-center justify-center rounded-full transition-colors border border-white/10 bg-white/10 hover:bg-white/20 disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="w-10 h-10 flex items-center justify-center rounded-full transition-colors border border-slate-200 bg-slate-100/80 hover:bg-slate-200/80 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                        <Bell size={18} className={isTestingPush ? "text-white/40" : "text-white"} />
+                        <Bell size={18} className={isTestingPush ? "text-slate-400" : "text-slate-700"} />
                     </button>
                 </div>
             </div>

@@ -7,6 +7,11 @@ import { applyCloudinaryTransform } from '@/core/utils/imageUtils';
 const CategoriesPage = () => {
     const [categories, setCategories] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [activeCategory, setActiveCategory] = useState({
+        headerColor: "#1F2937",
+        headerFontColor: "#ffffff",
+        headerIconColor: "#ffffff",
+    });
 
     const fetchCategories = async () => {
         setIsLoading(true);
@@ -14,6 +19,21 @@ const CategoriesPage = () => {
             const res = await customerApi.getCategories({ tree: true });
             if (res.data.success) {
                 const tree = res.data.results || res.data.result || [];
+                
+                // Find "All" category header to get admin-defined colors
+                const allHeaderFromAdmin = tree.find((h) => 
+                    (h.slug?.toLowerCase() === 'all') || 
+                    (h.name?.toLowerCase() === 'all')
+                );
+                
+                if (allHeaderFromAdmin) {
+                    setActiveCategory({
+                        headerColor: allHeaderFromAdmin.headerColor || "#1F2937",
+                        headerFontColor: allHeaderFromAdmin.headerFontColor || "#ffffff",
+                        headerIconColor: allHeaderFromAdmin.headerIconColor || "#ffffff",
+                    });
+                }
+
                 const flatCats = [];
                 const seenIds = new Set();
 
@@ -46,11 +66,11 @@ const CategoriesPage = () => {
 
     return (
         <div className="min-h-screen bg-[#FAF9F4]">
-            <MainLocationHeader hideSearchBar={true} />
-            <div className="max-w-3xl mx-auto px-6 pt-[140px] md:pt-[160px] pb-24">
+            <MainLocationHeader activeCategory={activeCategory} hideSearchBar={true} />
+            <div className="max-w-3xl mx-auto px-6 pt-[210px] md:pt-[190px] pb-24">
                 {isLoading ? (
                     <div className="flex justify-center py-20">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2E7D32]" />
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
                     </div>
                 ) : (
                     <div className="grid grid-cols-4 gap-x-6 sm:gap-x-8 md:gap-x-10 gap-y-10 md:gap-y-14">
@@ -72,7 +92,7 @@ const CategoriesPage = () => {
                                             className="w-full h-full object-contain mix-blend-multiply transition-transform duration-300 group-hover:scale-105"
                                         />
                                     </div>
-                                    <span className="text-[11px] sm:text-xs md:text-sm lg:text-base font-bold text-[#2D3F51] tracking-tight leading-snug line-clamp-2 group-hover:text-[#2E7D32] transition-colors font-['Inter']">
+                                    <span className="text-[11px] sm:text-xs md:text-sm lg:text-base font-bold text-[#2D3F51] tracking-tight leading-snug line-clamp-2 group-hover:text-primary transition-colors font-['Inter']">
                                         {category.name}
                                     </span>
                                 </Link>

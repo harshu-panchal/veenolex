@@ -87,7 +87,7 @@ const ExperienceBannerCarousel = ({ section, items, fullWidth = false, slideGap 
             className={cn(
               "relative shrink-0 flex items-center justify-center box-border",
               fullWidth
-                ? "aspect-[1448/650] w-full rounded-none px-0 overflow-hidden"
+                ? "aspect-[1448/650] md:aspect-[1448/350] w-full rounded-none px-0 overflow-hidden"
                 : "w-full px-4 md:px-8 overflow-visible pb-6"
             )}
             style={{ width: `${100 / totalItems}%` }}
@@ -134,8 +134,8 @@ const ExperienceBannerCarousel = ({ section, items, fullWidth = false, slideGap 
                   fetchPriority={idx === 0 ? "high" : "low"}
                   decoding="async"
                 />
-                {/* Subtle green border overlay */}
-                <div className="absolute inset-0 border border-[#2E7D32]/15 rounded-3xl pointer-events-none" />
+                {/* Subtle brand border overlay */}
+                <div className="absolute inset-0 border border-primary/15 rounded-3xl pointer-events-none" />
               </div>
             )}
           </div>

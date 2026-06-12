@@ -135,6 +135,26 @@ const matchesOrderIdentifier = (payloadOrderId, identifiers = []) => {
     .includes(normalizedPayloadId);
 };
 
+function hexToRgba(hex, alpha = 0.95) {
+  if (!hex || typeof hex !== "string" || !hex.startsWith("#")) {
+    return `rgba(46, 125, 50, ${alpha})`;
+  }
+  const cleanHex = hex.replace("#", "");
+  let r = 0, g = 0, b = 0;
+  if (cleanHex.length === 3) {
+    r = parseInt(cleanHex[0] + cleanHex[0], 16);
+    g = parseInt(cleanHex[1] + cleanHex[1], 16);
+    b = parseInt(cleanHex[2] + cleanHex[2], 16);
+  } else if (cleanHex.length === 6) {
+    r = parseInt(cleanHex.slice(0, 2), 16);
+    g = parseInt(cleanHex.slice(2, 4), 16);
+    b = parseInt(cleanHex.slice(4, 6), 16);
+  } else {
+    return `rgba(46, 125, 50, ${alpha})`;
+  }
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 const OrderDetailPage = () => {
   const { orderId } = useParams();
   const [showInvoice, setShowInvoice] = useState(false);
@@ -156,6 +176,29 @@ const OrderDetailPage = () => {
   const [routePolyline, setRoutePolyline] = useState(null);
   const [handoffOtp, setHandoffOtp] = useState(null);
   const [clockTick, setClockTick] = useState(Date.now());
+  const [headerColor, setHeaderColor] = useState("#2E7D32");
+
+  useEffect(() => {
+    const fetchHeaderColor = async () => {
+      try {
+        const res = await customerApi.getCategories();
+        if (res.data.success) {
+          const dbCats = res.data.results || res.data.result || [];
+          const allHeader = dbCats.find((h) => 
+            h.type === "header" && 
+            ((h.slug?.toLowerCase() === "all") || (h.name?.toLowerCase() === "all"))
+          );
+          if (allHeader?.headerColor) {
+            setHeaderColor(allHeader.headerColor);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to fetch header color:", e);
+      }
+    };
+    fetchHeaderColor();
+  }, []);
+
   const parsedReturnWindowMinutes = parseInt(
     import.meta.env.VITE_RETURN_WINDOW_MINUTES || "2",
     10,
@@ -765,14 +808,14 @@ const OrderDetailPage = () => {
       {/* Minimal Header */}
       <div 
         style={{
-          background: "linear-gradient(135deg, rgba(46, 125, 50, 0.95) 0%, rgba(18, 18, 18, 0.95) 100%)",
+          background: `linear-gradient(135deg, ${hexToRgba(headerColor, 0.95)} 0%, rgba(255, 255, 255, 0.95) 100%)`,
           backdropFilter: "blur(20px) saturate(180%)",
           WebkitBackdropFilter: "blur(20px) saturate(180%)",
-          borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+          borderBottom: "1px solid rgba(0, 0, 0, 0.08)",
           borderBottomLeftRadius: "20px",
           borderBottomRightRadius: "20px",
         }}
-        className="sticky top-0 z-30 px-4 py-3 flex items-center justify-between shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+        className="sticky top-0 z-30 px-4 py-3 flex items-center justify-between shadow-[0_8px_32px_rgba(0,0,0,0.08)]"
       >
         <button
           type="button"

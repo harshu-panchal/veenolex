@@ -478,7 +478,7 @@ const Home = () => {
   };
 
   return (
-    <div className={`min-h-screen pt-[170px] md:pt-[160px] ${products.length === 0 && !isLoading ? "bg-white" : "bg-[#FAF9F4]"}`}>
+    <div className={`min-h-screen pt-[210px] md:pt-[190px] ${products.length === 0 && !isLoading ? "bg-white" : "bg-[#FAF9F4]"}`}>
       <div className={cn("contents", isProductDetailOpen && "hidden md:contents")}>
         <MainLocationHeader categories={categories} activeCategory={activeCategory} onCategorySelect={setActiveCategory} hideSearchBar={true} />
       </div>
@@ -492,29 +492,16 @@ const Home = () => {
         </div>
       ) : (
         <>
-          {/* Search Bar on Page (above banners) */}
-          <div className="w-full max-w-2xl mx-auto px-4 pt-8 md:pt-12 pb-8 md:pb-12">
-            <motion.div
-              onClick={() => navigate("/search")}
-              whileHover={{ scale: 1.005 }}
-              whileTap={{ scale: 0.995 }}
-              style={{ backgroundColor: "#FFFFFF" }}
-              className="w-full rounded-[12px] md:rounded-full px-4 h-12 shadow-sm border border-slate-200 flex items-center cursor-pointer transition-all hover:shadow-md"
-            >
-              <Search className="text-slate-400 w-5 h-5 mr-3 shrink-0" />
-              <input
-                type="text"
-                placeholder={searchPlaceholder || "Search Products..."}
-                readOnly
-                className="flex-1 bg-transparent border-none outline-none text-slate-800 font-medium placeholder:text-slate-400 text-sm md:text-base cursor-pointer"
-              />
-            </motion.div>
-          </div>
 
           {heroConfig.banners?.items?.length > 0 && (
-            <motion.div ref={heroRef} className="block md:hidden will-change-transform" style={isMobile ? { opacity: 1 } : { opacity, y, scale, pointerEvents }}>
+            <motion.div ref={heroRef} className="block mt-5 md:mt-8 will-change-transform" style={isMobile ? { opacity: 1 } : { opacity, y, scale, pointerEvents }}>
               <div className="relative w-full overflow-hidden">
-                <ExperienceBannerCarousel section={{ title: "" }} items={heroConfig.banners.items} fullWidth edgeToEdge />
+                <ExperienceBannerCarousel
+                  section={{ title: "" }}
+                  items={heroConfig.banners.items}
+                  fullWidth={true}
+                  edgeToEdge={true}
+                />
               </div>
             </motion.div>
           )}

@@ -110,7 +110,7 @@ const SectionRenderer = ({ sections = [], productsById = {}, categoriesById = {}
             >
               {heading && (
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-base font-black text-[#2E7D32] font-['Inter']">
+                  <h3 className="text-base font-bold text-black font-['Inter']">
                     {heading}
                   </h3>
                   <span className="text-[11px] font-semibold text-slate-400">
@@ -179,7 +179,7 @@ const SectionRenderer = ({ sections = [], productsById = {}, categoriesById = {}
             >
               {heading && (
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-base font-black text-[#2E7D32] font-['Inter']">
+                  <h3 className="text-base font-bold text-black font-['Inter']">
                     {heading}
                   </h3>
                   <span className="text-[11px] font-semibold text-slate-400">
@@ -287,7 +287,7 @@ const SectionRenderer = ({ sections = [], productsById = {}, categoriesById = {}
             >
                 <div className="flex items-center justify-between mb-3 px-1">
                   {heading && (
-                    <h3 className="text-base font-black text-[#2E7D32] font-['Inter']">
+                    <h3 className="text-base font-bold text-black font-['Inter']">
                       {heading}
                     </h3>
                   )}
@@ -342,7 +342,7 @@ const SectionRenderer = ({ sections = [], productsById = {}, categoriesById = {}
             >
               <div className="flex items-center justify-between mb-3 px-1">
                 {heading && (
-                  <h3 className="text-base font-black text-[#2E7D32] font-['Inter']">
+                  <h3 className="text-base font-bold text-black font-['Inter']">
                     {heading}
                   </h3>
                 )}

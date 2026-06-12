@@ -12,14 +12,14 @@ const LowestPriceSection = ({ products, onSeeAll }) => {
         <div className="container mx-auto px-4 md:px-8 lg:px-[50px] relative z-10">
           <div className="flex justify-between items-center mb-6 md:mb-8 px-1">
             <div className="flex flex-col">
-              <h3 className="text-lg md:text-[22px] font-black tracking-tight text-[#2E7D32] leading-none font-['Inter']">
+              <h3 className="text-lg md:text-[22px] font-bold tracking-tight text-black leading-none font-['Inter']">
                 Today's Best Prices
               </h3>
 
             </div>
             <button
               onClick={onSeeAll}
-              className="flex items-center gap-0.5 text-xs font-bold text-[#2E7D32] hover:opacity-80 transition-opacity cursor-pointer leading-none">
+              className="flex items-center gap-0.5 text-xs font-bold text-brand-600 hover:opacity-80 transition-opacity cursor-pointer leading-none">
               View All
               <ChevronRight size={12} strokeWidth={3} className="ml-0.5" />
             </button>

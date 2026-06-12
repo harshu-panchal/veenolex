@@ -301,10 +301,7 @@ const ProductCard = React.memo(
             {quantity > 0 ? (
               <div
                 style={{
-                  background: "linear-gradient(135deg, rgba(46, 125, 50, 0.9) 0%, rgba(18, 18, 18, 0.95) 100%)",
-                  border: "1px solid rgba(255, 255, 255, 0.12)",
-                  backdropFilter: "blur(8px)",
-                  WebkitBackdropFilter: "blur(8px)",
+                  backgroundColor: "#0f9ed5",
                 }}
                 className={cn(
                   "flex items-center rounded-lg p-0.5 justify-between w-full text-white shadow-md",
@@ -329,13 +326,10 @@ const ProductCard = React.memo(
               <button
                 onClick={handleAddToCart}
                 style={{
-                  background: "linear-gradient(135deg, rgba(46, 125, 50, 0.9) 0%, rgba(18, 18, 18, 0.95) 100%)",
-                  border: "1px solid rgba(255, 255, 255, 0.12)",
-                  backdropFilter: "blur(8px)",
-                  WebkitBackdropFilter: "blur(8px)",
+                  backgroundColor: "#0f9ed5",
                 }}
                 className={cn(
-                  "w-full text-white rounded-lg font-bold shadow-md hover:shadow-lg hover:brightness-110 flex items-center justify-center transition-all uppercase tracking-wide active:scale-95",
+                  "w-full text-white rounded-lg font-black shadow-md hover:shadow-lg hover:brightness-105 flex items-center justify-center transition-all uppercase tracking-wide active:scale-95",
                   compact ? "h-7 sm:h-8 text-[10px] sm:text-xs" : "h-8 sm:h-9 text-xs sm:text-sm"
                 )}>
                 ADD

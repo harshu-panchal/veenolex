@@ -229,7 +229,7 @@ const MainLocationHeader = ({
   const headerBottomPadding = 12;
   const bgOpacity = 0.98;
 
-  const contentHeight = "80px";
+  const contentHeight = "48px";
   const contentOpacity = 1;
   const navHeight = "60px";
   const navOpacity = 1;
@@ -243,8 +243,25 @@ const MainLocationHeader = ({
   const displayCart = "block";
 
   const baseHeaderColor = activeCategory?.headerColor || "#2E7D32";
-  const headerFontColor = activeCategory?.headerFontColor || "#111827";
-  const headerIconColor = activeCategory?.headerIconColor || "#111111";
+  const rawFontColor = activeCategory?.headerFontColor || "#111827";
+  const rawIconColor = activeCategory?.headerIconColor || "#111111";
+
+  const isColorLightOrWhite = (hex) => {
+    if (!hex || typeof hex !== "string") return false;
+    const cleanHex = hex.replace("#", "").toLowerCase();
+    if (cleanHex === "fff" || cleanHex === "ffffff" || cleanHex === "white") return true;
+    if (cleanHex.length === 6) {
+      const r = parseInt(cleanHex.slice(0, 2), 16);
+      const g = parseInt(cleanHex.slice(2, 4), 16);
+      const b = parseInt(cleanHex.slice(4, 6), 16);
+      const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+      return brightness > 200;
+    }
+    return false;
+  };
+
+  const headerFontColor = isColorLightOrWhite(rawFontColor) ? "#1f2937" : rawFontColor;
+  const headerIconColor = isColorLightOrWhite(rawIconColor) ? "#111111" : rawIconColor;
 
   const headerGradient = buildHeaderGradient(baseHeaderColor);
   const searchBarBg = buildSearchBarBackgroundColor(baseHeaderColor);
@@ -276,12 +293,12 @@ const MainLocationHeader = ({
             borderBottomLeftRadius: "24px",
             borderBottomRightRadius: "24px",
             opacity: bgOpacity,
-            background: `linear-gradient(135deg, ${hexToRgba(baseHeaderColor, 0.95)} 0%, rgba(18, 18, 18, 0.95) 100%)`,
+            background: `linear-gradient(135deg, ${hexToRgba(baseHeaderColor, 0.95)} 0%, rgba(255, 255, 255, 0.95) 100%)`,
             backdropFilter: "blur(20px) saturate(180%)",
             WebkitBackdropFilter: "blur(20px) saturate(180%)",
-            borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+            borderBottom: "1px solid rgba(0, 0, 0, 0.08)",
           }}
-          className="px-4 shadow-[0_8px_32px_rgba(0,0,0,0.25)] overflow-hidden transform-gpu will-change-transform">
+          className="px-4 shadow-[0_8px_32px_rgba(0,0,0,0.08)] overflow-hidden transform-gpu will-change-transform">
           {/* Subtle Glow Overlay */}
           <div className="absolute inset-0 bg-white/8 pointer-events-none" />
 
@@ -312,8 +329,8 @@ const MainLocationHeader = ({
 
           {/* Desktop/Tablet Header Layout (md and above) */}
           <div className="hidden md:flex items-center justify-between relative z-20 px-2 lg:px-6 mb-4 mt-1">
-            {/* Left Section: Logo + Location row */}
-            <div className="flex items-center gap-4 lg:gap-8">
+            {/* Left Section: Logo + Search Bar row */}
+            <div className="flex items-center gap-4 lg:gap-8 flex-1 max-w-[450px] lg:max-w-2xl">
               <div
                 onClick={() => navigate("/")}
                 className="flex items-center gap-3 cursor-pointer group shrink-0">
@@ -327,82 +344,23 @@ const MainLocationHeader = ({
                 </div>
               </div>
 
-              {/* Location Block (Desktop inline row) */}
-              <div className="flex flex-col border-l border-white/10 pl-4 lg:pl-8 h-10 justify-center">
-                <button
-                  type="button"
-                  data-lenis-prevent
-                  data-lenis-prevent-touch
-                  onClick={() => {
-                    setIsLocationOpen(true);
-                  }}
-                  className="flex items-center gap-1 text-white hover:text-gray-200 cursor-pointer group active:scale-95 transition-all border-0 bg-transparent p-0 text-left">
-                  <LocationOnIcon sx={{ fontSize: 14, color: "#FFFFFF" }} />
-                  <div
-                    className="text-[13px] font-bold leading-tight max-w-[250px] lg:max-w-[320px] truncate text-white"
-                  >
-                    {isFetchingLocation
-                      ? "Detecting location..."
-                      : currentLocation.name}
-                  </div>
-                  <ChevronDownIcon
-                    sx={{ fontSize: 12, opacity: 0.8, color: "#FFFFFF" }}
-                  />
-                </button>
-              </div>
-            </div>
-
-            {/* Center Section: Search Bar */}
-            {!hideSearchBar && (
-              <div className="flex-1 max-w-[450px] lg:max-w-2xl px-6">
+              {/* Search Bar (Desktop inline row - replacing address selector) */}
+              <div className="flex-1">
                 <motion.div
                   onClick={handleSearchClick}
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.99 }}
-                  style={{ backgroundColor: "rgba(17, 24, 39, 0.45)" }}
-                  className="rounded-full px-4 h-11 shadow-sm flex items-center border border-white/10 transition-all duration-200 focus-within:ring-2 focus-within:ring-[#2E7D32]/50 cursor-pointer">
-                  <SearchIcon sx={{ color: "#E5E7EB", fontSize: 20 }} />
+                  style={{ backgroundColor: "#FFFFFF" }}
+                  className="rounded-full px-4 h-11 shadow-sm flex items-center border border-slate-200 transition-all duration-200 focus-within:ring-2 focus-within:ring-primary/50 cursor-pointer">
+                  <SearchIcon sx={{ color: "#000000", fontSize: 20 }} />
                   <input
                     type="text"
                     placeholder={searchPlaceholder || "Search Products..."}
                     readOnly
-                    className="flex-1 bg-transparent border-none outline-none pl-2 text-white font-medium placeholder:text-gray-400 text-[15px] cursor-pointer"
+                    className="flex-1 bg-transparent border-none outline-none pl-2 text-black font-medium placeholder:text-black text-[15px] cursor-pointer"
                   />
                 </motion.div>
               </div>
-            )}
-
-            {/* Right Section: Action Icons */}
-            <div className="flex items-center gap-5 lg:gap-8 shrink-0">
-              <motion.button
-                whileHover={{ scale: 1.15, rotate: 5 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => navigate("/wishlist")}
-                className="transition-all text-white hover:text-[#2E7D32]"
-              >
-                <FavoriteBorderOutlinedIcon sx={{ fontSize: 24 }} />
-              </motion.button>
-
-              <motion.button
-                whileHover={{ scale: 1.15, rotate: -5 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => navigate("/checkout")}
-                className="transition-all text-white hover:text-[#2E7D32] relative group"
-              >
-                <ShoppingCartOutlinedIcon sx={{ fontSize: 24 }} />
-                <span className="absolute -top-1.5 -right-1.5 bg-[#2E7D32] text-white text-[9px] font-black w-4.5 h-4.5 rounded-full flex items-center justify-center border-2 border-[#1F2937] shadow-sm transition-transform group-hover:-translate-y-0.5">
-                  0
-                </span>
-              </motion.button>
-
-              <motion.button
-                whileHover={{ scale: 1.15 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => navigate("/profile")}
-                className="lg:bg-white/10 p-1.5 lg:rounded-full hover:bg-white/20 transition-all text-white"
-              >
-                <AccountCircleOutlinedIcon sx={{ fontSize: 28 }} />
-              </motion.button>
             </div>
           </div>
 
@@ -428,56 +386,30 @@ const MainLocationHeader = ({
                   className="h-9 w-auto object-contain"
                 />
                 <span
-                  className="text-sm font-black uppercase tracking-wider text-white"
+                  style={{ color: headerFontColor }}
+                  className="text-sm font-black uppercase tracking-wider"
                 >
                   {appName}
                 </span>
               </div>
-              <div className="flex justify-between items-start">
-                <div className="flex flex-col">
-                  <button
-                    type="button"
-                    data-lenis-prevent
-                    data-lenis-prevent-touch
-                    onClick={() => {
-                      setIsLocationOpen(true);
-                    }}
-                    className="flex items-center gap-1 text-white hover:text-gray-200 cursor-pointer group active:scale-95 transition-transform border-0 bg-transparent p-0 text-left">
-                    <LocationOnIcon sx={{ fontSize: 14, color: "#FFFFFF" }} />
-                    <div
-                      className="text-[10px] font-medium leading-tight max-w-[280px] truncate text-gray-200"
-                    >
-                      {isFetchingLocation
-                        ? "Detecting location..."
-                        : currentLocation.name}
-                    </div>
-                    <ChevronDownIcon
-                      sx={{ fontSize: 12, opacity: 0.8, color: "#FFFFFF" }}
-                    />
-                  </button>
-                </div>
-              </div>
             </motion.div>
           </div>
 
-          {/* Search Bar (MOBILE ONLY) */}
-          {!hideSearchBar && (
-            <div className="relative z-10 mt-[1.5px] flex items-center gap-2 md:hidden">
-              <motion.div
-                onClick={handleSearchClick}
-                whileTap={{ scale: 0.98 }}
-                style={{ backgroundColor: "rgba(17, 24, 39, 0.45)" }}
-                className="flex-1 rounded-[10px] px-3 h-10 shadow-sm flex items-center border border-white/10 transition-all duration-200 focus-within:ring-2 focus-within:ring-[#2E7D32]/50 cursor-pointer">
-                <SearchIcon sx={{ color: "#E5E7EB", fontSize: 18 }} />
-                <input
-                  type="text"
-                  placeholder={searchPlaceholder || "Search Products..."}
-                  readOnly
-                  className="flex-1 bg-transparent border-none outline-none pl-2 text-white font-medium placeholder:text-gray-400 text-[14px] cursor-pointer"
-                />
-              </motion.div>
-            </div>
-          )}
+          <div className="relative z-10 mt-[1.5px] flex items-center gap-2 md:hidden">
+            <motion.div
+              onClick={handleSearchClick}
+              whileTap={{ scale: 0.98 }}
+              style={{ backgroundColor: "#FFFFFF" }}
+              className="flex-1 rounded-[10px] px-3 h-10 shadow-sm flex items-center border border-slate-200 transition-all duration-200 focus-within:ring-2 focus-within:ring-primary/50 cursor-pointer">
+              <SearchIcon sx={{ color: "#000000", fontSize: 18 }} />
+              <input
+                type="text"
+                placeholder={searchPlaceholder || "Search Products..."}
+                readOnly
+                className="flex-1 bg-transparent border-none outline-none pl-2 text-black font-medium placeholder:text-black text-[14px] cursor-pointer"
+              />
+            </motion.div>
+          </div>
 
           {/* Categories Navigation - Smooth Collapse */}
           {categories.length > 0 && (
