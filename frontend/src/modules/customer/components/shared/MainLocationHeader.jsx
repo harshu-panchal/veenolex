@@ -339,7 +339,7 @@ const MainLocationHeader = ({
                     src={logoUrl}
                     alt={`${appName} Logo`}
                     loading="lazy"
-                    className="h-10 w-auto object-contain"
+                    className="h-14 w-auto object-contain"
                   />
                 </div>
               </div>
@@ -383,7 +383,7 @@ const MainLocationHeader = ({
                   src={logoUrl}
                   alt={`${appName} Logo`}
                   loading="lazy"
-                  className="h-9 w-auto object-contain"
+                  className="h-12 w-auto object-contain"
                 />
                 <span
                   style={{ color: headerFontColor }}
@@ -430,7 +430,7 @@ const MainLocationHeader = ({
                 display: displayNav,
                 overflowY: "hidden",
               }}
-              className="relative flex items-end md:justify-center gap-0 overflow-x-auto no-scrollbar -mx-2 px-2 md:mx-0 md:px-0 z-10 snap-x pt-1 min-h-[68px] md:min-h-[76px] pb-0.5">
+              className="relative flex items-end md:justify-start gap-0 overflow-x-auto no-scrollbar -mx-2 px-2 md:mx-0 md:px-2 lg:px-6 z-10 snap-x pt-1 min-h-[68px] md:min-h-[76px] pb-0.5">
               {categories.slice(0, 10).map((cat) => {
                 const isActive = activeCategory?.id === cat.id;
                 return (

@@ -461,7 +461,6 @@ const Home = () => {
   const sectionsForRenderer = headerSections.length ? headerSections : experienceSections;
   const isMobile = useMemo(() => isMobileOrWebView(), []);
   const opacity = useTransform(scrollY, (heroVisible && !isMobile) ? [0, 300] : [0, 0], [1, 0.6]);
-  const y = useTransform(scrollY, (heroVisible && !isMobile) ? [0, 300] : [0, 0], [0, 80]);
   const scale = useTransform(scrollY, (heroVisible && !isMobile) ? [0, 300] : [0, 0], [1, 0.95]);
   const pointerEvents = useTransform(scrollY, (heroVisible && !isMobile) ? [0, 100] : [0, 0], ["auto", "none"]);
 
@@ -494,7 +493,7 @@ const Home = () => {
         <>
 
           {heroConfig.banners?.items?.length > 0 && (
-            <motion.div ref={heroRef} className="block mt-5 md:mt-8 will-change-transform" style={isMobile ? { opacity: 1 } : { opacity, y, scale, pointerEvents }}>
+            <motion.div ref={heroRef} className="block mt-5 md:mt-8 will-change-transform" style={isMobile ? { opacity: 1 } : { opacity, scale, pointerEvents }}>
               <div className="relative w-full overflow-hidden">
                 <ExperienceBannerCarousel
                   section={{ title: "" }}

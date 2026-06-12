@@ -53,7 +53,7 @@ const OfferSections = ({ sections, noServiceData }) => {
                   <p className="text-[10px] md:text-[11px] font-bold uppercase tracking-wider text-black/60 mb-1">
                     Trending right now
                   </p>
-                  <h3 className="text-xl md:text-2xl font-bold tracking-tight leading-tight drop-shadow-sm">
+                  <h3 className="text-lg md:text-[22px] font-bold tracking-tight leading-tight drop-shadow-sm font-['Inter']">
                     {section.title}
                   </h3>
                   {((section.categoryIds || [])
@@ -116,7 +116,7 @@ const OfferSections = ({ sections, noServiceData }) => {
                     </div>
                   ) : (
                     sectionProducts.map((product) => (
-                      <div key={product.id} className="w-[126px] sm:w-[136px] md:w-[148px] flex-shrink-0 snap-start">
+                      <div key={product.id} className="w-[126px] sm:w-[136px] md:w-[220px] flex-shrink-0 snap-start">
                         <ProductCard
                           product={product}
                           className="bg-white border border-slate-100 shadow-[0_10px_24px_rgba(15,23,42,0.08)]"

@@ -2,16 +2,34 @@ import React from 'react';
 import { Facebook, Twitter, Instagram, Youtube, Mail, MapPin, Phone } from 'lucide-react';
 import Logo from '@/assets/Logo.png';
 import { useSettings } from '@core/context/SettingsContext';
+import { Link } from 'react-router-dom';
+import { customerApi } from '../../services/customerApi';
 
 const Footer = () => {
     const { settings } = useSettings();
     const logoUrl = settings?.logoUrl || Logo;
     const primaryColor = settings?.primaryColor || 'var(--primary)';
 
+    const [categories, setCategories] = React.useState([]);
+
+    React.useEffect(() => {
+        let isMounted = true;
+        customerApi.getCategories()
+            .then((res) => {
+                if (isMounted && res?.data?.success) {
+                    const dbCats = res.data.results || res.data.result || [];
+                    const mainCategories = dbCats.filter((cat) => cat.type === 'category');
+                    setCategories(mainCategories.slice(0, 5));
+                }
+            })
+            .catch(() => {});
+        return () => { isMounted = false; };
+    }, []);
+
     return (
-        <footer className="relative bg-[#051108] pt-20 pb-10 mt-20 text-slate-300 md:bg-gradient-to-br md:from-brand-700 md:via-brand-800 md:to-brand-900 md:pt-32 md:pb-16 md:mt-32 overflow-hidden">
+        <footer className="relative bg-[#f2f2f2] pt-20 pb-10 mt-20 text-slate-800 md:bg-gradient-to-br md:from-[#fbfbfb] md:via-[#f2f2f2] md:to-[#e6e6e6] md:pt-32 md:pb-16 md:mt-32 overflow-hidden">
             {/* Subtle Texture/Glow Overlay */}
-            <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
+            <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-10">
                 <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full opacity-30 blur-[150px]" style={{ backgroundColor: primaryColor }} />
                 <div className="absolute -bottom-24 -left-24 w-96 h-96 rounded-full opacity-20 blur-[150px]" style={{ backgroundColor: primaryColor }} />
             </div>
@@ -31,75 +49,88 @@ const Footer = () => {
                         <div className="flex items-center">
                             <img src={logoUrl} alt={`${settings?.appName || 'App'} Logo`} loading="lazy" className="h-12 md:h-16 w-auto object-contain" />
                         </div>
-                        <p className="text-sm leading-relaxed md:text-base md:leading-loose text-white/90 md:max-w-xs transition-opacity hover:opacity-100 font-medium">
+                        <p className="text-sm leading-relaxed md:text-base md:leading-loose text-gray-800 md:max-w-xs transition-opacity hover:opacity-100 font-medium">
                             Your daily dose of fresh, organic, and healthy products delivered straight to your door. Freshness guaranteed.
                         </p>
                         <div className="flex gap-4">
-                            {settings?.facebook && <a href={settings.facebook} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/10 text-white rounded-full transition-all group active:scale-95 hover:opacity-90"><Facebook size={18} /></a>}
-                            {settings?.twitter && <a href={settings.twitter} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/10 text-white rounded-full transition-all group active:scale-95 hover:opacity-90"><Twitter size={18} /></a>}
-                            {settings?.instagram && <a href={settings.instagram} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/10 text-white rounded-full transition-all group active:scale-95 hover:opacity-90"><Instagram size={18} /></a>}
-                            {settings?.youtube && <a href={settings.youtube} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/10 text-white rounded-full transition-all group active:scale-95 hover:opacity-90"><Youtube size={18} /></a>}
+                            {settings?.facebook && <a href={settings.facebook} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-200/60 text-gray-800 rounded-full transition-all hover:bg-slate-300 hover:text-black group active:scale-95"><Facebook size={18} /></a>}
+                            {settings?.twitter && <a href={settings.twitter} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-200/60 text-gray-800 rounded-full transition-all hover:bg-slate-300 hover:text-black group active:scale-95"><Twitter size={18} /></a>}
+                            {settings?.instagram && <a href={settings.instagram} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-200/60 text-gray-800 rounded-full transition-all hover:bg-slate-300 hover:text-black group active:scale-95"><Instagram size={18} /></a>}
+                            {settings?.youtube && <a href={settings.youtube} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-200/60 text-gray-800 rounded-full transition-all hover:bg-slate-300 hover:text-black group active:scale-95"><Youtube size={18} /></a>}
                         </div>
                     </div>
 
                     {/* Quick Links */}
                     <div className="md:pt-4">
-                        <h3 className="text-white font-bold text-lg mb-4 md:text-xl md:font-black md:uppercase md:tracking-widest md:mb-8 flex items-center gap-2">
+                        <h3 className="text-slate-900 font-bold text-lg mb-4 md:text-xl md:font-black md:uppercase md:tracking-widest md:mb-8 flex items-center gap-2">
                             <span className="h-1 w-4 hidden md:block" style={{ backgroundColor: primaryColor }}></span> Quick Links
                         </h3>
                         <ul className="space-y-2 md:space-y-4">
-                            <li><a href="#" className="hover:text-brand-300 transition-colors md:text-base md:font-semibold flex items-center group text-white"><span className="hidden md:block w-0 h-px bg-white group-hover:w-4 group-hover:mr-2 transition-all"></span>Home</a></li>
-                            <li><a href="#" className="hover:text-brand-300 transition-colors md:text-base md:font-semibold flex items-center group text-white"><span className="hidden md:block w-0 h-px bg-white group-hover:w-4 group-hover:mr-2 transition-all"></span>About Us</a></li>
-                            <li><a href="#" className="hover:text-brand-300 transition-colors md:text-base md:font-semibold flex items-center group text-white"><span className="hidden md:block w-0 h-px bg-white group-hover:w-4 group-hover:mr-2 transition-all"></span>Shop</a></li>
-                            <li><a href="#" className="hover:text-brand-300 transition-colors md:text-base md:font-semibold flex items-center group text-white"><span className="hidden md:block w-0 h-px bg-white group-hover:w-4 group-hover:mr-2 transition-all"></span>Blogs</a></li>
-                            <li><a href="#" className="hover:text-brand-300 transition-colors md:text-base md:font-semibold flex items-center group text-white"><span className="hidden md:block w-0 h-px bg-white group-hover:w-4 group-hover:mr-2 transition-all"></span>Contact</a></li>
+                            <li><Link to="/" className="hover:text-[#0f9ed5] transition-colors md:text-base md:font-semibold flex items-center group text-slate-800"><span className="hidden md:block w-0 h-px bg-[#0f9ed5] group-hover:w-4 group-hover:mr-2 transition-all"></span>Home</Link></li>
+                            <li><Link to="/about" className="hover:text-[#0f9ed5] transition-colors md:text-base md:font-semibold flex items-center group text-slate-800"><span className="hidden md:block w-0 h-px bg-[#0f9ed5] group-hover:w-4 group-hover:mr-2 transition-all"></span>About Us</Link></li>
+                            <li><Link to="/categories" className="hover:text-[#0f9ed5] transition-colors md:text-base md:font-semibold flex items-center group text-slate-800"><span className="hidden md:block w-0 h-px bg-[#0f9ed5] group-hover:w-4 group-hover:mr-2 transition-all"></span>Shop</Link></li>
+                            <li><Link to="/" className="hover:text-[#0f9ed5] transition-colors md:text-base md:font-semibold flex items-center group text-slate-800"><span className="hidden md:block w-0 h-px bg-[#0f9ed5] group-hover:w-4 group-hover:mr-2 transition-all"></span>Blogs</Link></li>
+                            <li><Link to="/support" className="hover:text-[#0f9ed5] transition-colors md:text-base md:font-semibold flex items-center group text-slate-800"><span className="hidden md:block w-0 h-px bg-[#0f9ed5] group-hover:w-4 group-hover:mr-2 transition-all"></span>Contact</Link></li>
                         </ul>
                     </div>
 
                     {/* Categories */}
                     <div className="md:pt-4">
-                        <h3 className="text-white font-bold text-lg mb-4 md:text-xl md:font-black md:uppercase md:tracking-widest md:mb-8 flex items-center gap-2">
+                        <h3 className="text-slate-900 font-bold text-lg mb-4 md:text-xl md:font-black md:uppercase md:tracking-widest md:mb-8 flex items-center gap-2">
                             <span className="h-1 w-4 hidden md:block" style={{ backgroundColor: primaryColor }}></span> Categories
                         </h3>
                         <ul className="space-y-2 md:space-y-4">
-                            <li><a href="#" className="hover:text-brand-300 transition-colors md:text-base md:font-semibold flex items-center group text-white"><span className="hidden md:block w-0 h-px bg-white group-hover:w-4 group-hover:mr-2 transition-all"></span>Fruits & Vegetables</a></li>
-                            <li><a href="#" className="hover:text-brand-300 transition-colors md:text-base md:font-semibold flex items-center group text-white"><span className="hidden md:block w-0 h-px bg-white group-hover:w-4 group-hover:mr-2 transition-all"></span>Dairy Products</a></li>
-                            <li><a href="#" className="hover:text-brand-300 transition-colors md:text-base md:font-semibold flex items-center group text-white"><span className="hidden md:block w-0 h-px bg-white group-hover:w-4 group-hover:mr-2 transition-all"></span>Meat & Fish</a></li>
-                            <li><a href="#" className="hover:text-brand-300 transition-colors md:text-base md:font-semibold flex items-center group text-white"><span className="hidden md:block w-0 h-px bg-white group-hover:w-4 group-hover:mr-2 transition-all"></span>Bakery & Snacks</a></li>
-                            <li><a href="#" className="hover:text-brand-300 transition-colors md:text-base md:font-semibold flex items-center group text-white"><span className="hidden md:block w-0 h-px bg-white group-hover:w-4 group-hover:mr-2 transition-all"></span>Beverages</a></li>
+                            {categories.length > 0 ? (
+                                categories.map((cat) => (
+                                    <li key={cat._id}>
+                                        <Link to={`/category/${cat._id}`} className="hover:text-[#0f9ed5] transition-colors md:text-base md:font-semibold flex items-center group text-slate-800">
+                                            <span className="hidden md:block w-0 h-px bg-[#0f9ed5] group-hover:w-4 group-hover:mr-2 transition-all"></span>
+                                            {cat.name}
+                                        </Link>
+                                    </li>
+                                ))
+                            ) : (
+                                <>
+                                    <li><Link to="/categories" className="hover:text-[#0f9ed5] transition-colors md:text-base md:font-semibold flex items-center group text-slate-800"><span className="hidden md:block w-0 h-px bg-[#0f9ed5] group-hover:w-4 group-hover:mr-2 transition-all"></span>Fruits & Vegetables</Link></li>
+                                    <li><Link to="/categories" className="hover:text-[#0f9ed5] transition-colors md:text-base md:font-semibold flex items-center group text-slate-800"><span className="hidden md:block w-0 h-px bg-[#0f9ed5] group-hover:w-4 group-hover:mr-2 transition-all"></span>Dairy Products</Link></li>
+                                    <li><Link to="/categories" className="hover:text-[#0f9ed5] transition-colors md:text-base md:font-semibold flex items-center group text-slate-800"><span className="hidden md:block w-0 h-px bg-[#0f9ed5] group-hover:w-4 group-hover:mr-2 transition-all"></span>Meat & Fish</Link></li>
+                                    <li><Link to="/categories" className="hover:text-[#0f9ed5] transition-colors md:text-base md:font-semibold flex items-center group text-slate-800"><span className="hidden md:block w-0 h-px bg-[#0f9ed5] group-hover:w-4 group-hover:mr-2 transition-all"></span>Bakery & Snacks</Link></li>
+                                    <li><Link to="/categories" className="hover:text-[#0f9ed5] transition-colors md:text-base md:font-semibold flex items-center group text-slate-800"><span className="hidden md:block w-0 h-px bg-[#0f9ed5] group-hover:w-4 group-hover:mr-2 transition-all"></span>Beverages</Link></li>
+                                </>
+                            )}
                         </ul>
                     </div>
 
                     {/* Contact Info */}
                     <div className="md:pt-4">
-                        <h3 className="text-white font-bold text-lg mb-4 md:text-xl md:font-black md:uppercase md:tracking-widest md:mb-8 flex items-center gap-2">
+                        <h3 className="text-slate-900 font-bold text-lg mb-4 md:text-xl md:font-black md:uppercase md:tracking-widest md:mb-8 flex items-center gap-2">
                             <span className="h-1 w-4 hidden md:block" style={{ backgroundColor: primaryColor }}></span> Contact Us
                         </h3>
                         <ul className="space-y-4 md:space-y-6">
                             <li className="flex items-start gap-3 md:gap-5 group">
-                                <div className="hidden md:flex h-12 w-12 rounded-xl bg-white/10 items-center justify-center text-white transition-all shrink-0 group-hover:opacity-90"><MapPin size={22} /></div>
+                                <div className="hidden md:flex h-12 w-12 rounded-xl bg-slate-200/60 items-center justify-center text-slate-800 transition-all shrink-0"><MapPin size={22} /></div>
                                 <MapPin className="mt-1 shrink-0 md:hidden" size={18} style={{ color: primaryColor }} />
-                                <span className="md:text-base text-white md:pt-1 font-medium">{settings?.address || '—'}</span>
+                                <span className="md:text-base text-slate-800 md:pt-1 font-medium">{settings?.address || '—'}</span>
                             </li>
                             <li className="flex items-center gap-3 md:gap-5 group">
-                                <div className="hidden md:flex h-12 w-12 rounded-xl bg-white/10 items-center justify-center text-white transition-all shrink-0 group-hover:opacity-90"><Phone size={22} /></div>
+                                <div className="hidden md:flex h-12 w-12 rounded-xl bg-slate-200/60 items-center justify-center text-slate-800 transition-all shrink-0"><Phone size={22} /></div>
                                 <Phone className="shrink-0 md:hidden" size={18} style={{ color: primaryColor }} />
-                                <span className="md:text-base text-white font-medium">{settings?.supportPhone || '—'}</span>
+                                <span className="md:text-base text-slate-800 font-medium">{settings?.supportPhone || '—'}</span>
                             </li>
                             <li className="flex items-center gap-3 md:gap-5 group">
-                                <div className="hidden md:flex h-12 w-12 rounded-xl bg-white/10 items-center justify-center text-white transition-all shrink-0 group-hover:opacity-90"><Mail size={22} /></div>
+                                <div className="hidden md:flex h-12 w-12 rounded-xl bg-slate-200/60 items-center justify-center text-slate-800 transition-all shrink-0"><Mail size={22} /></div>
                                 <Mail className="shrink-0 md:hidden" size={18} style={{ color: primaryColor }} />
-                                <span className="md:text-base text-white font-medium">{settings?.supportEmail || '—'}</span>
+                                <span className="md:text-base text-slate-800 font-medium">{settings?.supportEmail || '—'}</span>
                             </li>
                         </ul>
                     </div>
                 </div>
 
-                <div className="border-t border-white/10 mt-12 pt-8 text-center text-sm md:flex md:justify-between md:text-left md:mt-24 md:pt-12">
-                    <p className="md:text-base text-white/60">&copy; {new Date().getFullYear()} {settings?.appName || 'App'}. All rights reserved.</p>
+                <div className="border-t border-black/10 mt-12 pt-8 text-center text-sm md:flex md:justify-between md:text-left md:mt-24 md:pt-12">
+                    <p className="md:text-base text-slate-600">&copy; {new Date().getFullYear()} {settings?.appName || 'App'}. All rights reserved.</p>
                     <div className="flex gap-6 justify-center md:justify-end mt-4 md:mt-0 md:gap-12">
-                        <a href="#" className="hover:text-brand-300 md:text-base text-white/60 transition-all">Privacy Policy</a>
-                        <a href="#" className="hover:text-brand-300 md:text-base text-white/60 transition-all">Terms of Service</a>
+                        <Link to="/privacy" className="hover:text-[#0f9ed5] md:text-base text-slate-600 transition-all">Privacy Policy</Link>
+                        <Link to="/terms" className="hover:text-[#0f9ed5] md:text-base text-slate-600 transition-all">Terms of Service</Link>
                     </div>
                 </div>
             </div>
