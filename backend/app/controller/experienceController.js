@@ -82,6 +82,7 @@ const validateAndNormalizeConfig = async (displayType, config = {}) => {
         .filter((b) => b && b.imageUrl)
         .map((b) => ({
           imageUrl: b.imageUrl,
+          desktopImageUrl: b.desktopImageUrl || "",
           title: b.title,
           subtitle: b.subtitle,
           linkType: b.linkType || "none",
@@ -513,6 +514,7 @@ export const upsertHeroConfig = async (req, res) => {
         .filter((b) => b && b.imageUrl)
         .map((b) => ({
           imageUrl: b.imageUrl,
+          desktopImageUrl: b.desktopImageUrl || "",
           title: b.title || "",
           subtitle: b.subtitle || "",
           linkType: b.linkType || "none",

@@ -13,11 +13,13 @@ import { cn } from "@/lib/utils";
 
 const emptyBannerItem = () => ({
   imageUrl: "",
+  desktopImageUrl: "",
   title: "",
   subtitle: "",
   linkType: "none",
   linkValue: "",
   isUploading: false,
+  isDesktopUploading: false,
 });
 
 export default function HeroCategoriesPerPage() {
@@ -112,7 +114,7 @@ export default function HeroCategoriesPerPage() {
       const catIds = result.categoryIds || [];
       setFormBanners(
         items.length
-          ? items.map((b) => ({ ...b, isUploading: false }))
+          ? items.map((b) => ({ ...b, isUploading: false, isDesktopUploading: false }))
           : [emptyBannerItem()]
       );
       setFormCategoryIds(Array.isArray(catIds) ? catIds : []);
@@ -156,6 +158,24 @@ export default function HeroCategoriesPerPage() {
     }
   };
 
+  const handleDesktopBannerFileChange = async (idx, file) => {
+    if (!file) return;
+    updateBannerItem(idx, { isDesktopUploading: true });
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await adminApi.uploadExperienceBanner(fd);
+      const url = res.data?.result?.url || res.data?.url;
+      if (!url) throw new Error("Upload failed");
+      updateBannerItem(idx, { desktopImageUrl: url, isDesktopUploading: false });
+      showToast("Desktop banner image uploaded", "success");
+    } catch (e) {
+      console.error(e);
+      updateBannerItem(idx, { isDesktopUploading: false });
+      showToast("Failed to upload desktop banner image", "error");
+    }
+  };
+
   const toggleCategory = (catId) => {
     setFormCategoryIds((prev) =>
       prev.includes(catId) ? prev.filter((id) => id !== catId) : [...prev, catId]
@@ -163,8 +183,13 @@ export default function HeroCategoriesPerPage() {
   };
 
   const handleSave = async () => {
+    if (formBanners.some((b) => b.isUploading || b.isDesktopUploading)) {
+      showToast("Please wait for all uploads to complete", "warning");
+      return;
+    }
     const items = formBanners.filter((b) => b.imageUrl).map((b) => ({
       imageUrl: b.imageUrl,
+      desktopImageUrl: b.desktopImageUrl || "",
       title: b.title || "",
       subtitle: b.subtitle || "",
       linkType: b.linkType || "none",
@@ -339,32 +364,72 @@ export default function HeroCategoriesPerPage() {
                   <Card key={idx} className="p-3 bg-white border-slate-100">
                     <div className="flex items-start gap-3">
                       <div className="flex-1 space-y-2">
-                        <div className="flex items-center gap-3">
-                          <div className="w-16 h-16 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
-                            {item.imageUrl ? (
-                              <img
-                                src={item.imageUrl}
-                                alt={item.title || `Banner ${idx + 1}`}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <HiOutlinePhoto className="h-6 w-6 text-slate-300" />
-                            )}
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-4">
+                            {/* Mobile image uploader */}
+                            <div className="flex items-center gap-3">
+                              <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
+                                {item.imageUrl ? (
+                                  <img
+                                    src={item.imageUrl}
+                                    alt={`Mobile ${idx + 1}`}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <HiOutlinePhoto className="h-5 w-5 text-slate-300" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <span className="block text-[8px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Mobile (1448x650)</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  id={`hero-banner-file-${idx}`}
+                                  onChange={(e) => handleBannerFileChange(idx, e.target.files?.[0])}
+                                />
+                                <label
+                                  htmlFor={`hero-banner-file-${idx}`}
+                                  className="inline-block px-2 py-0.5 rounded-lg bg-slate-100 text-[9px] font-bold text-slate-600 cursor-pointer hover:bg-slate-200"
+                                >
+                                  {item.isUploading ? "Uploading…" : item.imageUrl ? "Change" : "Upload"}
+                                </label>
+                              </div>
+                            </div>
+
+                            {/* Desktop image uploader */}
+                            <div className="flex items-center gap-3">
+                              <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
+                                {item.desktopImageUrl ? (
+                                  <img
+                                    src={item.desktopImageUrl}
+                                    alt={`Desktop ${idx + 1}`}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <HiOutlinePhoto className="h-5 w-5 text-slate-300" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <span className="block text-[8px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Desktop (1448x350)</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  id={`hero-desktop-banner-file-${idx}`}
+                                  onChange={(e) => handleDesktopBannerFileChange(idx, e.target.files?.[0])}
+                                />
+                                <label
+                                  htmlFor={`hero-desktop-banner-file-${idx}`}
+                                  className="inline-block px-2 py-0.5 rounded-lg bg-slate-100 text-[9px] font-bold text-slate-600 cursor-pointer hover:bg-slate-200"
+                                >
+                                  {item.isDesktopUploading ? "Uploading…" : item.desktopImageUrl ? "Change" : "Upload"}
+                                </label>
+                              </div>
+                            </div>
                           </div>
+
                           <div className="flex-1 min-w-0 space-y-1">
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              id={`hero-banner-file-${idx}`}
-                              onChange={(e) => handleBannerFileChange(idx, e.target.files?.[0])}
-                            />
-                            <label
-                              htmlFor={`hero-banner-file-${idx}`}
-                              className="inline-block px-2 py-1 rounded-lg bg-slate-100 text-[10px] font-bold text-slate-600 cursor-pointer hover:bg-slate-200"
-                            >
-                              {item.isUploading ? "Uploading…" : item.imageUrl ? "Change" : "Upload"}
-                            </label>
                             <input
                               value={item.title || ""}
                               onChange={(e) => updateBannerItem(idx, { title: e.target.value })}

@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Clock } from "lucide-react";
 
 import { useProductDetail } from "../../context/ProductDetailContext";
+import { customerApi } from "../../services/customerApi";
 
 const ProductCard = React.memo(
   ({ product, badge, className, compact = false, neutralBg = false }) => {
@@ -24,6 +25,7 @@ const ProductCard = React.memo(
 
     const { openProduct } = useProductDetail();
     const [showHeartPopup, setShowHeartPopup] = React.useState(false);
+    const [reviews, setReviews] = React.useState([]);
 
     const imageRef = React.useRef(null);
 
@@ -72,6 +74,69 @@ const ProductCard = React.memo(
     );
     const quantity = cartItem ? cartItem.quantity : 0;
     const isWishlisted = isInWishlist(product.id || product._id);
+
+    React.useEffect(() => {
+      let isMounted = true;
+      if (!productId) return;
+      customerApi.getProductReviews(productId)
+        .then((res) => {
+          if (isMounted && res?.data?.success) {
+            setReviews(res.data.results || res.data.result || []);
+          }
+        })
+        .catch(() => {});
+      return () => { isMounted = false; };
+    }, [productId]);
+
+    const { rating, reviewsCount } = React.useMemo(() => {
+      if (!reviews || reviews.length === 0) {
+        return {
+          rating: "0.0",
+          reviewsCount: 0,
+        };
+      }
+      const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
+      const avg = sum / reviews.length;
+      return {
+        rating: avg.toFixed(1),
+        reviewsCount: reviews.length,
+      };
+    }, [reviews]);
+
+    const variantLabel = React.useMemo(() => {
+      const name = defaultVariant?.name;
+      if (name && name.toLowerCase() !== "default") return name;
+      return product.weight || "1 unit";
+    }, [defaultVariant, product.weight]);
+
+    const benefitText = React.useMemo(() => {
+      if (product.description) {
+        let clean = product.description;
+        if (clean.startsWith("{\\rtf")) {
+          // Strip RTF metadata groups
+          clean = clean.replace(/\{\\fonttbl[^}]*\}/g, "");
+          clean = clean.replace(/\{\\colortbl[^}]*\}/g, "");
+          clean = clean.replace(/\{\\stylesheet[^}]*\}/g, "");
+          clean = clean.replace(/\{\\info[^}]*\}/g, "");
+          clean = clean.replace(/\{\\\*\\generator[^}]*\}/g, "");
+          // Strip control words
+          clean = clean.replace(/\\[a-z0-9\-]+/gi, " ");
+          // Strip braces
+          clean = clean.replace(/[{}]/g, "");
+        } else {
+          // Strip HTML tags
+          clean = clean.replace(/<[^>]*>/g, "");
+        }
+        clean = clean.replace(/\s+/g, " ").trim();
+
+        if (clean.length > 0) {
+          const firstSentence = clean.split(/[.!?]/)[0];
+          if (firstSentence.length > 5 && firstSentence.length < 60) return firstSentence;
+          return clean.slice(0, 45) + (clean.length > 45 ? "..." : "");
+        }
+      }
+      return "100% Pure & Natural | Quality Guarantees";
+    }, [product]);
 
     const handleProductClick = React.useCallback(
       (e) => {
@@ -237,12 +302,13 @@ const ProductCard = React.memo(
         </div>
 
         {/* Info Section */}
+        {/* Mobile Info Section (hidden on desktop) */}
         <div
           className={cn(
-            "flex flex-col flex-1",
+            "md:hidden flex flex-col flex-1 gap-0.5",
             compact
-              ? "p-3 pt-2.5 sm:p-3.5 sm:pt-3.5 gap-0.5"
-              : "bg-white/40 p-3.5 pt-4 sm:p-5 sm:pt-5 gap-1",
+              ? "p-3 pt-2.5 sm:p-3.5 sm:pt-3.5"
+              : "bg-white/40 p-3.5 pt-4 sm:p-5 sm:pt-5",
           )}>
           <div className="flex items-center gap-1 mb-0.5 sm:gap-1.5 sm:mb-1">
             <div
@@ -259,10 +325,9 @@ const ProductCard = React.memo(
             </div>
             <div
               className={cn(
-                "bg-brand-50 text-brand-600 font-bold rounded px-1.5 py-0 tracking-wide",
-                compact ? "text-[8px]" : "text-[8px] sm:text-[9px]",
+                "bg-brand-50 text-brand-600 font-bold rounded px-1.5 py-0 tracking-wide text-[8px] sm:text-[9px]",
               )}>
-              {defaultVariant?.name || product.weight || "1 unit"}
+              {variantLabel}
             </div>
           </div>
 
@@ -313,7 +378,7 @@ const ProductCard = React.memo(
                   <Minus size={compact ? 10 : 12} strokeWidth={3.5} />
                 </button>
                 <span
-                  className="font-black text-white text-[11px] sm:text-xs md:text-sm">
+                  className="font-black text-white text-[11px] sm:text-xs">
                   {quantity}
                 </span>
                 <button
@@ -333,6 +398,98 @@ const ProductCard = React.memo(
                   compact ? "h-7 sm:h-8 text-[10px] sm:text-xs" : "h-8 sm:h-9 text-xs sm:text-sm"
                 )}>
                 ADD
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Desktop Info Section (hidden on mobile) */}
+        <div className="hidden md:flex flex-col flex-1 p-5 gap-2.5 items-center text-center bg-white">
+          {/* Title */}
+          <div className="h-12 flex items-center justify-center">
+            <h4 className="font-semibold text-slate-800 text-[15px] leading-tight line-clamp-2">
+              {product.name}
+            </h4>
+          </div>
+
+          {/* Tagline/Benefit */}
+          <p className="text-[12px] font-medium text-green-600 leading-tight">
+            {benefitText}
+          </p>
+
+          {/* Weight */}
+          <p className="text-[12px] font-semibold text-slate-500">
+            {variantLabel}
+          </p>
+
+          {/* Ratings & Reviews */}
+          <div className="flex items-center gap-1.5 justify-center text-[11px] font-semibold text-slate-500 min-h-[16px]">
+            {reviewsCount > 0 ? (
+              <>
+                <span className="flex items-center gap-0.5 text-amber-500">
+                  <Star size={12} className="fill-current" />
+                  {rating}
+                </span>
+                <span className="h-2.5 w-[1px] bg-slate-200" />
+                <span className="flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5 text-blue-500 fill-current" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  {reviewsCount} {reviewsCount === 1 ? "Review" : "Reviews"}
+                </span>
+              </>
+            ) : (
+              <span className="text-slate-400 italic">No reviews yet</span>
+            )}
+          </div>
+
+          {/* Price Section */}
+          <div className="mt-auto flex items-center gap-2 justify-center">
+            <span className="font-extrabold text-slate-800 text-base">
+              ₹{product.price}
+            </span>
+            {product.originalPrice > product.price && (
+              <>
+                <span className="font-medium text-slate-400 line-through text-[12px]">
+                  ₹{product.originalPrice}
+                </span>
+                <span className="bg-brand-50 text-brand-700 text-[10px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">
+                  {Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)}% OFF
+                </span>
+              </>
+            )}
+          </div>
+
+          {/* ADD TO CART Button / Quantity Selector */}
+          <div className="mt-3 w-full flex">
+            {quantity > 0 ? (
+              <div
+                style={{
+                  backgroundColor: "#0f9ed5",
+                }}
+                className="flex items-center rounded-lg p-0.5 justify-between w-full h-10 text-white shadow-md">
+                <button
+                  onClick={handleDecrement}
+                  className="p-1 px-3 text-white active:scale-90 transition-transform">
+                  <Minus size={12} strokeWidth={3.5} />
+                </button>
+                <span className="font-black text-white text-[13px]">
+                  {quantity} in Cart
+                </span>
+                <button
+                  onClick={handleIncrement}
+                  className="p-1 px-3 text-white active:scale-90 transition-transform">
+                  <Plus size={12} strokeWidth={3.5} />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleAddToCart}
+                style={{
+                  backgroundColor: "#0f9ed5",
+                }}
+                className="w-full h-10 text-white rounded-lg font-black shadow-md hover:shadow-lg hover:brightness-105 flex items-center justify-center transition-all uppercase tracking-wider text-[12px] active:scale-95">
+                ADD TO CART
               </button>
             )}
           </div>

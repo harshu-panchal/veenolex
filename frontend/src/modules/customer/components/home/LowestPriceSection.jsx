@@ -27,7 +27,7 @@ const LowestPriceSection = ({ products, onSeeAll }) => {
 
           <div className="relative z-10 flex overflow-x-auto gap-3 md:gap-6 pb-2 md:pb-3 no-scrollbar snap-x snap-mandatory scroll-smooth">
             {products.slice(0, 12).map((product) => (
-              <div key={product.id} className="w-[148px] sm:w-[164px] md:w-[180px] shrink-0 snap-start smooth-transform">
+              <div key={product.id} className="w-[148px] sm:w-[164px] md:w-[260px] shrink-0 snap-start smooth-transform">
                 <ProductCard
                   product={product}
                   className="bg-white shadow-[0_8px_20px_-8px_rgba(0,0,0,0.1)] md:shadow-[0_15px_30px_rgba(0,0,0,0.05)] border-brand-50/50 md:border-slate-100 transition-all"

@@ -15,6 +15,17 @@ const ExperienceBannerCarousel = ({ section, items, fullWidth = false, slideGap 
   if (!items.length) return null;
 
   const [activeIndex, setActiveIndex] = React.useState(0);
+  const [isMobile, setIsMobile] = React.useState(true);
+
+  React.useEffect(() => {
+    const checkDevice = () => {
+      setIsMobile(isMobileOrWebView());
+    };
+    checkDevice();
+    window.addEventListener("resize", checkDevice);
+    return () => window.removeEventListener("resize", checkDevice);
+  }, []);
+
   const [visibleCount, setVisibleCount] = React.useState(() =>
     Math.min(items.length, BANNER_CHUNK_SIZE)
   );
@@ -62,10 +73,11 @@ const ExperienceBannerCarousel = ({ section, items, fullWidth = false, slideGap 
     }
   };
 
-  const getBannerOptimizedSrc = React.useCallback((url) => {
+  const getBannerOptimizedSrc = React.useCallback((url, isDesktop = false) => {
     if (!url) return url;
     if (!isCloudinaryUrl(url)) return url;
-    return applyCloudinaryTransform(url, "f_auto,q_auto,c_fill,g_north,w_1448,h_650");
+    const height = isDesktop ? 350 : 650;
+    return applyCloudinaryTransform(url, `f_auto,q_auto,c_fill,g_north,w_1448,h_${height}`);
   }, []);
 
   return (
@@ -81,65 +93,90 @@ const ExperienceBannerCarousel = ({ section, items, fullWidth = false, slideGap 
         className="flex"
         style={{ width: `${totalItems * 100}%` }}
       >
-        {visibleItems.map((banner, idx) => (
-          <div
-            key={idx}
-            className={cn(
-              "relative shrink-0 flex items-center justify-center box-border",
-              fullWidth
-                ? "aspect-[1448/650] md:aspect-[1448/350] w-full rounded-none px-0 overflow-hidden"
-                : "w-full px-4 md:px-8 overflow-visible pb-6"
-            )}
-            style={{ width: `${100 / totalItems}%` }}
-          >
-            {fullWidth ? (
-              <img
-                src={getBannerOptimizedSrc(banner.imageUrl)}
-                srcSet={
-                  isCloudinaryUrl(banner.imageUrl)
-                    ? buildCloudinarySrcSet(banner.imageUrl, [
-                        { w: 412, h: 185 },
-                        { w: 824, h: 370 },
-                        { w: 1248, h: 560 },
-                      ], "f_auto,q_auto,c_fill,g_north")
-                    : undefined
-                }
-                sizes="100vw"
-                alt={banner.title || section?.title || "Banner"}
-                className="w-full h-full object-cover object-top pointer-events-none"
-                width={1448}
-                height={650}
-                loading={idx === 0 ? "eager" : "lazy"}
-                fetchPriority={idx === 0 ? "high" : "low"}
-                decoding="async"
-              />
-            ) : (
-              <div className="w-full aspect-[1448/650] rounded-3xl shadow-[0_8px_24px_rgba(0,0,0,0.05),_0_2px_8px_rgba(0,0,0,0.03)] bg-white relative">
+        {visibleItems.map((banner, idx) => {
+          const useDesktopRatio = !isMobile;
+          const activeImageUrl = (useDesktopRatio && banner.desktopImageUrl) ? banner.desktopImageUrl : banner.imageUrl;
+          const aspectClass = useDesktopRatio ? "aspect-[1448/350]" : "aspect-[1448/650]";
+
+          return (
+            <div
+              key={idx}
+              className={cn(
+                "relative shrink-0 flex items-center justify-center box-border",
+                fullWidth
+                  ? `${aspectClass} w-full rounded-none px-0 overflow-hidden`
+                  : "w-full px-4 md:px-8 overflow-visible pb-6"
+              )}
+              style={{ width: `${100 / totalItems}%` }}
+            >
+              {fullWidth ? (
                 <img
-                  src={getBannerOptimizedSrc(banner.imageUrl)}
+                  src={getBannerOptimizedSrc(activeImageUrl, useDesktopRatio)}
                   srcSet={
-                    isCloudinaryUrl(banner.imageUrl)
-                      ? buildCloudinarySrcSet(banner.imageUrl, [
-                          { w: 560, h: 251 },
-                          { w: 1120, h: 503 },
-                        ], "f_auto,q_auto,c_fill,g_north")
+                    isCloudinaryUrl(activeImageUrl)
+                      ? buildCloudinarySrcSet(
+                          activeImageUrl,
+                          useDesktopRatio
+                            ? [
+                                { w: 724, h: 175 },
+                                { w: 1448, h: 350 },
+                                { w: 2172, h: 525 },
+                              ]
+                            : [
+                                { w: 412, h: 185 },
+                                { w: 824, h: 370 },
+                                { w: 1248, h: 560 },
+                              ],
+                          "f_auto,q_auto,c_fill,g_north"
+                        )
                       : undefined
                   }
-                  sizes="(max-width: 768px) 100vw, 1448px"
+                  sizes="100vw"
                   alt={banner.title || section?.title || "Banner"}
-                  className="w-full h-full object-cover object-top pointer-events-none rounded-3xl"
+                  className="w-full h-full object-cover object-top pointer-events-none"
                   width={1448}
-                  height={650}
+                  height={useDesktopRatio ? 350 : 650}
                   loading={idx === 0 ? "eager" : "lazy"}
                   fetchPriority={idx === 0 ? "high" : "low"}
                   decoding="async"
                 />
-                {/* Subtle brand border overlay */}
-                <div className="absolute inset-0 border border-primary/15 rounded-3xl pointer-events-none" />
-              </div>
-            )}
-          </div>
-        ))}
+              ) : (
+                <div className={cn("w-full rounded-3xl shadow-[0_8px_24px_rgba(0,0,0,0.05),_0_2px_8px_rgba(0,0,0,0.03)] bg-white relative", aspectClass)}>
+                  <img
+                    src={getBannerOptimizedSrc(activeImageUrl, useDesktopRatio)}
+                    srcSet={
+                      isCloudinaryUrl(activeImageUrl)
+                        ? buildCloudinarySrcSet(
+                            activeImageUrl,
+                            useDesktopRatio
+                              ? [
+                                  { w: 724, h: 175 },
+                                  { w: 1448, h: 350 },
+                                ]
+                              : [
+                                  { w: 560, h: 251 },
+                                  { w: 1120, h: 503 },
+                                ],
+                            "f_auto,q_auto,c_fill,g_north"
+                          )
+                        : undefined
+                    }
+                    sizes="(max-width: 768px) 100vw, 1448px"
+                    alt={banner.title || section?.title || "Banner"}
+                    className="w-full h-full object-cover object-top pointer-events-none rounded-3xl"
+                    width={1448}
+                    height={useDesktopRatio ? 350 : 650}
+                    loading={idx === 0 ? "eager" : "lazy"}
+                    fetchPriority={idx === 0 ? "high" : "low"}
+                    decoding="async"
+                  />
+                  {/* Subtle brand border overlay */}
+                  <div className="absolute inset-0 border border-primary/15 rounded-3xl pointer-events-none" />
+                </div>
+              )}
+            </div>
+          );
+        })}
       </motion.div>
     </div>
   );

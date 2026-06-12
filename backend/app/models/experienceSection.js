@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 const bannerItemSchema = new mongoose.Schema(
   {
     imageUrl: { type: String, required: true },
+    desktopImageUrl: { type: String, trim: true, default: "" },
     title: { type: String, trim: true },
     subtitle: { type: String, trim: true },
     linkType: {

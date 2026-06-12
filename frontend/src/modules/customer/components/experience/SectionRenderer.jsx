@@ -80,7 +80,7 @@ const SectionRenderer = ({ sections = [], productsById = {}, categoriesById = {}
           const items = section.config?.banners?.items || [];
           if (!items.length) return null;
           return (
-            <div key={section._id || sectionKey} className="-mt-2 md:-mt-3">
+            <div key={section._id || sectionKey} className="-mt-2 md:-mt-3 md:hidden">
               <ExperienceBannerCarousel section={section} items={items} slideGap={12} />
             </div>
           );
@@ -110,7 +110,7 @@ const SectionRenderer = ({ sections = [], productsById = {}, categoriesById = {}
             >
               {heading && (
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-base font-bold text-black font-['Inter']">
+                  <h3 className="text-lg md:text-[22px] font-bold text-black font-['Inter']">
                     {heading}
                   </h3>
                   <span className="text-[11px] font-semibold text-slate-400">
@@ -179,7 +179,7 @@ const SectionRenderer = ({ sections = [], productsById = {}, categoriesById = {}
             >
               {heading && (
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-base font-bold text-black font-['Inter']">
+                  <h3 className="text-lg md:text-[22px] font-bold text-black font-['Inter']">
                     {heading}
                   </h3>
                   <span className="text-[11px] font-semibold text-slate-400">
@@ -287,7 +287,7 @@ const SectionRenderer = ({ sections = [], productsById = {}, categoriesById = {}
             >
                 <div className="flex items-center justify-between mb-3 px-1">
                   {heading && (
-                    <h3 className="text-base font-bold text-black font-['Inter']">
+                    <h3 className="text-lg md:text-[22px] font-bold text-black font-['Inter']">
                       {heading}
                     </h3>
                   )}
@@ -310,7 +310,7 @@ const SectionRenderer = ({ sections = [], productsById = {}, categoriesById = {}
                   {items.map((product) => (
                     <div
                       key={product._id || product.id}
-                      className="w-[148px] sm:w-[164px] md:w-[180px] shrink-0 snap-start smooth-transform"
+                      className="w-[148px] sm:w-[164px] md:w-[260px] shrink-0 snap-start smooth-transform"
                     >
                       <ProductCard product={product} compact={true} neutralBg={true} />
                     </div>
@@ -342,7 +342,7 @@ const SectionRenderer = ({ sections = [], productsById = {}, categoriesById = {}
             >
               <div className="flex items-center justify-between mb-3 px-1">
                 {heading && (
-                  <h3 className="text-base font-bold text-black font-['Inter']">
+                  <h3 className="text-lg md:text-[22px] font-bold text-black font-['Inter']">
                     {heading}
                   </h3>
                 )}
@@ -356,10 +356,10 @@ const SectionRenderer = ({ sections = [], productsById = {}, categoriesById = {}
                   columns === 1
                     ? "grid-cols-1"
                     : columns === 2
-                    ? "grid-cols-2"
+                    ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
                     : columns === 3
-                    ? "grid-cols-3"
-                    : "grid-cols-2"
+                    ? "grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6"
+                    : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
                 )}
               >
                 {items.map((product) => (

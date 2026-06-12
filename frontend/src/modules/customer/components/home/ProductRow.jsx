@@ -14,9 +14,9 @@ const ProductRow = ({ title, subtitle, products, badge }) => {
                                 {badge}
                             </span>
                         )}
-                        <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight flex items-center gap-2">
+                        <h2 className="text-lg md:text-[22px] font-bold text-black tracking-tight flex items-center gap-2 font-['Inter']">
                             {title}
-                            <ChevronRight size={24} className="text-primary group-hover:translate-x-1 transition-transform" />
+                            <ChevronRight size={18} className="text-primary group-hover:translate-x-1 transition-transform" />
                         </h2>
                         {subtitle && <p className="text-slate-500 font-medium text-sm md:text-base">{subtitle}</p>}
                     </div>
@@ -27,7 +27,7 @@ const ProductRow = ({ title, subtitle, products, badge }) => {
 
                 <div className="flex gap-2 md:gap-6 overflow-x-auto pb-1.5 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 scroll-smooth snap-x">
                     {products.map((product) => (
-                        <div key={product.id} className="min-w-[126px] sm:min-w-[136px] md:min-w-[220px] snap-start">
+                        <div key={product.id} className="min-w-[126px] sm:min-w-[136px] md:min-w-[260px] snap-start">
                             <ProductCard product={product} compact={true} />
                         </div>
                     ))}

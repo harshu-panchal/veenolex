@@ -17,7 +17,7 @@ const QuickCategorySlider = ({ categories, onCategoryClick }) => {
   if (!categories || categories.length === 0) return null;
 
   return (
-    <div className="w-full mb-0 mt-8 md:mt-12 overflow-hidden relative group z-20 font-['Inter'] bg-[#FAF9F4] pt-0 pb-5 md:pb-6">
+    <div className="md:hidden w-full mb-0 mt-8 overflow-hidden relative group z-20 font-['Inter'] bg-[#FAF9F4] pt-0 pb-5">
       <div className="container mx-auto px-4 md:px-8 lg:px-[50px] relative">
         
         <div className="flex justify-between items-center mb-6 md:mb-8 px-1">
