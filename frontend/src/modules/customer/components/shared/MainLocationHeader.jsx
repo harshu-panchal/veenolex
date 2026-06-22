@@ -341,7 +341,11 @@ const MainLocationHeader = ({
                     src={logoUrl}
                     alt={`${appName} Logo`}
                     loading="lazy"
+<<<<<<< HEAD
                     className="h-16 md:h-20 w-auto object-contain"
+=======
+                    className="h-14 w-auto object-contain"
+>>>>>>> 0e485cb7597692a8fc90b0a98c67f1fa68ecab0b
                   />
                 </div>
               </div>
@@ -380,10 +384,22 @@ const MainLocationHeader = ({
               <div
                 className="mb-4 flex items-center justify-between w-full relative z-10"
               >
+<<<<<<< HEAD
                 {/* Left: Logo */}
                 <div
                   onClick={() => navigate("/")}
                   className="cursor-pointer select-none shrink-0"
+=======
+                <img
+                  src={logoUrl}
+                  alt={`${appName} Logo`}
+                  loading="lazy"
+                  className="h-12 w-auto object-contain"
+                />
+                <span
+                  style={{ color: headerFontColor }}
+                  className="text-sm font-black uppercase tracking-wider"
+>>>>>>> 0e485cb7597692a8fc90b0a98c67f1fa68ecab0b
                 >
                   <img
                     src={logoUrl}

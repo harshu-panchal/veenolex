@@ -11,6 +11,11 @@ import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
 
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock } from "lucide-react";
+<<<<<<< HEAD
+=======
+
+import { useProductDetail } from "../../context/ProductDetailContext";
+>>>>>>> 0e485cb7597692a8fc90b0a98c67f1fa68ecab0b
 import { customerApi } from "../../services/customerApi";
 
 const ProductCard = React.memo(
@@ -23,6 +28,7 @@ const ProductCard = React.memo(
     const navigate = useNavigate();
     const [showHeartPopup, setShowHeartPopup] = React.useState(false);
     const [reviews, setReviews] = React.useState([]);
+<<<<<<< HEAD
     const [isHovered, setIsHovered] = React.useState(false);
     const [activeImageIdx, setActiveImageIdx] = React.useState(0);
 
@@ -44,6 +50,8 @@ const ProductCard = React.memo(
       }, 1500);
       return () => clearInterval(interval);
     }, [isHovered, images]);
+=======
+>>>>>>> 0e485cb7597692a8fc90b0a98c67f1fa68ecab0b
 
     const imageRef = React.useRef(null);
 
