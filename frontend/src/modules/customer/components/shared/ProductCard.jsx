@@ -110,18 +110,21 @@ const ProductCard = React.memo(
     const quantity = cartItem ? cartItem.quantity : 0;
     const isWishlisted = isInWishlist(product.id || product._id);
 
+    const [hasFetchedReviews, setHasFetchedReviews] = React.useState(false);
+
     React.useEffect(() => {
+      if (!isHovered || hasFetchedReviews || !productId) return;
       let isMounted = true;
-      if (!productId) return;
       customerApi.getProductReviews(productId)
         .then((res) => {
           if (isMounted && res?.data?.success) {
             setReviews(res.data.results || res.data.result || []);
+            setHasFetchedReviews(true);
           }
         })
         .catch(() => { });
       return () => { isMounted = false; };
-    }, [productId]);
+    }, [productId, isHovered, hasFetchedReviews]);
 
     const { rating, reviewsCount } = React.useMemo(() => {
       if (!reviews || reviews.length === 0) {
