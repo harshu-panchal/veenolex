@@ -11,11 +11,6 @@ import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
 
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock } from "lucide-react";
-<<<<<<< HEAD
-=======
-
-import { useProductDetail } from "../../context/ProductDetailContext";
->>>>>>> 0e485cb7597692a8fc90b0a98c67f1fa68ecab0b
 import { customerApi } from "../../services/customerApi";
 
 const ProductCard = React.memo(
@@ -28,7 +23,6 @@ const ProductCard = React.memo(
     const navigate = useNavigate();
     const [showHeartPopup, setShowHeartPopup] = React.useState(false);
     const [reviews, setReviews] = React.useState([]);
-<<<<<<< HEAD
     const [isHovered, setIsHovered] = React.useState(false);
     const [activeImageIdx, setActiveImageIdx] = React.useState(0);
 
@@ -50,8 +44,6 @@ const ProductCard = React.memo(
       }, 1500);
       return () => clearInterval(interval);
     }, [isHovered, images]);
-=======
->>>>>>> 0e485cb7597692a8fc90b0a98c67f1fa68ecab0b
 
     const imageRef = React.useRef(null);
 
@@ -127,7 +119,7 @@ const ProductCard = React.memo(
             setReviews(res.data.results || res.data.result || []);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
       return () => { isMounted = false; };
     }, [productId]);
 
@@ -279,16 +271,16 @@ const ProductCard = React.memo(
         <div className="relative">
           {/* Badge (Custom or Discount) */}
           {displayBadgeText && (
-              <div
-                className={cn(
-                  "absolute z-10 bg-[#ff2c38] text-white font-[900] rounded-md shadow-sm uppercase tracking-wider flex items-center justify-center",
-                  compact
-                    ? "top-2 left-2 px-1.5 py-0.5 text-[7px]"
-                    : "top-2 left-2 px-1.5 py-0.5 text-[7px] sm:top-3 sm:left-3 sm:px-2 sm:py-1 sm:text-[9px]",
-                )}>
-                {displayBadgeText}
-              </div>
-            )}
+            <div
+              className={cn(
+                "absolute z-10 bg-[#ff2c38] text-white font-[900] rounded-md shadow-sm uppercase tracking-wider flex items-center justify-center",
+                compact
+                  ? "top-2 left-2 px-1.5 py-0.5 text-[7px]"
+                  : "top-2 left-2 px-1.5 py-0.5 text-[7px] sm:top-3 sm:left-3 sm:px-2 sm:py-1 sm:text-[9px]",
+              )}>
+              {displayBadgeText}
+            </div>
+          )}
 
           <button
             onClick={toggleWishlist}

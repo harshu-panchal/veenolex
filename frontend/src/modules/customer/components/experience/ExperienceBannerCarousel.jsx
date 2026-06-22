@@ -104,17 +104,12 @@ const ExperienceBannerCarousel = ({ section, items, fullWidth = false, slideGap 
               className={cn(
                 "relative shrink-0 flex items-center justify-center box-border",
                 fullWidth
-<<<<<<< HEAD
                   ? `${aspectClass} w-full overflow-hidden`
-=======
-                  ? `${aspectClass} w-full rounded-none px-0 overflow-hidden`
->>>>>>> 0e485cb7597692a8fc90b0a98c67f1fa68ecab0b
                   : "w-full px-4 md:px-8 overflow-visible pb-6"
               )}
               style={{ width: `${100 / totalItems}%` }}
             >
               {fullWidth ? (
-<<<<<<< HEAD
                 <div className="w-full h-full px-4 md:px-[50px] py-1 box-border">
                   <div className="w-full h-full rounded-[1.5rem] md:rounded-[2rem] overflow-hidden shadow-lg border border-slate-100">
                     <img
@@ -122,20 +117,20 @@ const ExperienceBannerCarousel = ({ section, items, fullWidth = false, slideGap 
                       srcSet={
                         isCloudinaryUrl(activeImageUrl)
                           ? buildCloudinarySrcSet(
-                              activeImageUrl,
-                              useDesktopRatio
-                                ? [
-                                    { w: 724, h: 175 },
-                                    { w: 1448, h: 350 },
-                                    { w: 2172, h: 525 },
-                                  ]
-                                : [
-                                    { w: 412, h: 185 },
-                                    { w: 824, h: 370 },
-                                    { w: 1248, h: 560 },
-                                  ],
-                              "f_auto,q_auto,c_fill,g_north"
-                            )
+                            activeImageUrl,
+                            useDesktopRatio
+                              ? [
+                                { w: 724, h: 175 },
+                                { w: 1448, h: 350 },
+                                { w: 2172, h: 525 },
+                              ]
+                              : [
+                                { w: 412, h: 185 },
+                                { w: 824, h: 370 },
+                                { w: 1248, h: 560 },
+                              ],
+                            "f_auto,q_auto,c_fill,g_north"
+                          )
                           : undefined
                       }
                       sizes="100vw"
@@ -149,38 +144,6 @@ const ExperienceBannerCarousel = ({ section, items, fullWidth = false, slideGap 
                     />
                   </div>
                 </div>
-=======
-                <img
-                  src={getBannerOptimizedSrc(activeImageUrl, useDesktopRatio)}
-                  srcSet={
-                    isCloudinaryUrl(activeImageUrl)
-                      ? buildCloudinarySrcSet(
-                          activeImageUrl,
-                          useDesktopRatio
-                            ? [
-                                { w: 724, h: 175 },
-                                { w: 1448, h: 350 },
-                                { w: 2172, h: 525 },
-                              ]
-                            : [
-                                { w: 412, h: 185 },
-                                { w: 824, h: 370 },
-                                { w: 1248, h: 560 },
-                              ],
-                          "f_auto,q_auto,c_fill,g_north"
-                        )
-                      : undefined
-                  }
-                  sizes="100vw"
-                  alt={banner.title || section?.title || "Banner"}
-                  className="w-full h-full object-cover object-top pointer-events-none"
-                  width={1448}
-                  height={useDesktopRatio ? 350 : 650}
-                  loading={idx === 0 ? "eager" : "lazy"}
-                  fetchPriority={idx === 0 ? "high" : "low"}
-                  decoding="async"
-                />
->>>>>>> 0e485cb7597692a8fc90b0a98c67f1fa68ecab0b
               ) : (
                 <div className={cn("w-full rounded-3xl shadow-[0_8px_24px_rgba(0,0,0,0.05),_0_2px_8px_rgba(0,0,0,0.03)] bg-white relative", aspectClass)}>
                   <img
@@ -188,18 +151,18 @@ const ExperienceBannerCarousel = ({ section, items, fullWidth = false, slideGap 
                     srcSet={
                       isCloudinaryUrl(activeImageUrl)
                         ? buildCloudinarySrcSet(
-                            activeImageUrl,
-                            useDesktopRatio
-                              ? [
-                                  { w: 724, h: 175 },
-                                  { w: 1448, h: 350 },
-                                ]
-                              : [
-                                  { w: 560, h: 251 },
-                                  { w: 1120, h: 503 },
-                                ],
-                            "f_auto,q_auto,c_fill,g_north"
-                          )
+                          activeImageUrl,
+                          useDesktopRatio
+                            ? [
+                              { w: 724, h: 175 },
+                              { w: 1448, h: 350 },
+                            ]
+                            : [
+                              { w: 560, h: 251 },
+                              { w: 1120, h: 503 },
+                            ],
+                          "f_auto,q_auto,c_fill,g_north"
+                        )
                         : undefined
                     }
                     sizes="(max-width: 768px) 100vw, 1448px"
