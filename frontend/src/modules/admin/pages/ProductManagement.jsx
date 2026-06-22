@@ -76,8 +76,17 @@ const ProductManagement = () => {
         tags: '',
         weight: '',
         brand: '',
+        offerText: '',
+        marketedBy: '',
+        manufacturedBy: '',
+        bestBefore: '',
+        licenseNo: '',
+        ingredients: '',
         mainImage: null,
         galleryImages: [],
+        resultImages: [],
+        resultFiles: [],
+        tabbedSections: [],
         variants: [
             { id: Date.now(), name: 'Default', price: '', salePrice: '', stock: '', sku: '' }
         ]
@@ -167,14 +176,40 @@ const ProductManagement = () => {
             data.append('isFeatured', formData.isFeatured);
             data.append('brand', formData.brand);
             data.append('weight', formData.weight);
+            data.append('offerText', formData.offerText);
+            data.append('marketedBy', formData.marketedBy);
+            data.append('manufacturedBy', formData.manufacturedBy);
+            data.append('bestBefore', formData.bestBefore);
+            data.append('licenseNo', formData.licenseNo);
+            data.append('ingredients', formData.ingredients);
             data.append('tags', formData.tags);
             data.append('variants', JSON.stringify(formData.variants));
 
             if (formData.mainImageFile) {
                 data.append('mainImage', formData.mainImageFile);
             }
+            if (formData.galleryImages && formData.galleryImages.length > 0) {
+                formData.galleryImages.forEach((url) => {
+                    if (typeof url === 'string' && url.startsWith('http')) {
+                        data.append('galleryImages', url);
+                    }
+                });
+            }
             if (formData.galleryFiles && formData.galleryFiles.length > 0) {
                 formData.galleryFiles.forEach((file) => data.append('galleryImages', file));
+            }
+            if (formData.resultImages && formData.resultImages.length > 0) {
+                formData.resultImages.forEach((url) => {
+                    if (typeof url === 'string' && url.startsWith('http')) {
+                        data.append('resultImages', url);
+                    }
+                });
+            }
+            if (formData.resultFiles && formData.resultFiles.length > 0) {
+                formData.resultFiles.forEach((file) => data.append('resultImages', file));
+            }
+            if (formData.tabbedSections && formData.tabbedSections.length > 0) {
+                data.append('tabbedSections', JSON.stringify(formData.tabbedSections));
             }
 
             await adminApi.updateProduct(editingItem._id, data);
@@ -262,26 +297,53 @@ const ProductManagement = () => {
             return;
         }
 
-        const remainingSlots = Math.max(0, 5 - (formData.galleryImages?.length || 0));
-        const galleryFiles = files.slice(0, remainingSlots);
-        if (galleryFiles.length === 0) {
-            toast.error('Max 5 gallery images allowed');
+        if (type === 'gallery') {
+            const remainingSlots = Math.max(0, 5 - (formData.galleryImages?.length || 0));
+            const galleryFiles = files.slice(0, remainingSlots);
+            if (galleryFiles.length === 0) {
+                toast.error('Max 5 gallery images allowed');
+                return;
+            }
+
+            Promise.all(
+                galleryFiles.map((file) => new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve({ file, url: reader.result });
+                    reader.readAsDataURL(file);
+                }))
+            ).then((results) => {
+                setFormData({
+                    ...formData,
+                    galleryImages: [...(formData.galleryImages || []), ...results.map((item) => item.url)],
+                    galleryFiles: [...(formData.galleryFiles || []), ...results.map((item) => item.file)]
+                });
+            });
             return;
         }
 
-        Promise.all(
-            galleryFiles.map((file) => new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve({ file, url: reader.result });
-                reader.readAsDataURL(file);
-            }))
-        ).then((results) => {
-            setFormData({
-                ...formData,
-                galleryImages: [...(formData.galleryImages || []), ...results.map((item) => item.url)],
-                galleryFiles: [...(formData.galleryFiles || []), ...results.map((item) => item.file)]
+        if (type === 'results') {
+            const remainingSlots = Math.max(0, 4 - (formData.resultImages?.length || 0));
+            const resultFiles = files.slice(0, remainingSlots);
+            if (resultFiles.length === 0) {
+                toast.error('Max 4 results images allowed');
+                return;
+            }
+
+            Promise.all(
+                resultFiles.map((file) => new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve({ file, url: reader.result });
+                    reader.readAsDataURL(file);
+                }))
+            ).then((results) => {
+                setFormData({
+                    ...formData,
+                    resultImages: [...(formData.resultImages || []), ...results.map((item) => item.url)],
+                    resultFiles: [...(formData.resultFiles || []), ...results.map((item) => item.file)]
+                });
             });
-        });
+            return;
+        }
     };
 
     const openModal = (item = null) => {
@@ -304,8 +366,16 @@ const ProductManagement = () => {
                 tags: Array.isArray(item.tags) ? item.tags.join(', ') : item.tags || '',
                 weight: item.weight || '',
                 brand: item.brand || '',
+                offerText: item.offerText || '',
+                marketedBy: item.marketedBy || '',
+                manufacturedBy: item.manufacturedBy || '',
+                bestBefore: item.bestBefore || '',
+                licenseNo: item.licenseNo || '',
+                ingredients: item.ingredients || '',
                 mainImage: item.mainImage || null,
                 galleryImages: item.galleryImages || item.images || [],
+                resultImages: item.resultImages || [],
+                tabbedSections: item.tabbedSections || [],
                 variants: (item.variants && item.variants.length > 0) ? item.variants.map(v => ({ ...v, id: v._id || Date.now() })) : [
                     {
                         id: Date.now(),
@@ -324,7 +394,9 @@ const ProductManagement = () => {
                 salePrice: '', stock: '', lowStockAlert: 5, unit: 'packet',
                 header: '', categoryId: '', subcategoryId: '', status: 'active',
                 isFeatured: false, tags: '', weight: '', brand: '',
-                mainImage: null, galleryImages: [],
+                offerText: '', marketedBy: '', manufacturedBy: '', bestBefore: '', licenseNo: '', ingredients: '',
+                mainImage: null, galleryImages: [], resultImages: [],
+                tabbedSections: [],
                 variants: [
                     { id: Date.now(), name: 'Default', price: '', salePrice: '', stock: '', sku: '' }
                 ]
@@ -714,7 +786,9 @@ const ProductManagement = () => {
                                         { id: 'general', label: 'General Info', icon: HiOutlineTag },
                                         { id: 'variants', label: 'Item Variants', icon: HiOutlineSwatch },
                                         { id: 'category', label: 'Groups', icon: HiOutlineFolderOpen },
-                                        { id: 'media', label: 'Photos', icon: HiOutlinePhoto }
+                                        { id: 'media', label: 'Photos', icon: HiOutlinePhoto },
+                                        { id: 'results', label: 'Results', icon: HiOutlineCheckCircle },
+                                        { id: 'customTabs', label: 'Tab Sections', icon: HiOutlineSquaresPlus }
                                     ].map((tab) => (
                                         <button
                                             key={tab.id}
@@ -812,6 +886,64 @@ const ProductManagement = () => {
                                                         placeholder="AUTO-GENERATED"
                                                     />
                                                 </div>
+                                            </div>
+                                            <div className="space-y-1.5 flex flex-col">
+                                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Offer Text</label>
+                                                <input
+                                                    value={formData.offerText}
+                                                    onChange={(e) => setFormData({ ...formData, offerText: e.target.value })}
+                                                    className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none ring-primary/5 focus:ring-2"
+                                                    placeholder="e.g. Buy 1 Get 1 Free, 10% Off"
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <div className="space-y-1.5 flex flex-col">
+                                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Marketed By</label>
+                                                    <input
+                                                        value={formData.marketedBy}
+                                                        onChange={(e) => setFormData({ ...formData, marketedBy: e.target.value })}
+                                                        className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none ring-primary/5 focus:ring-2"
+                                                        placeholder="e.g. Veenolex Consumer Private Limited..."
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5 flex flex-col">
+                                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Manufactured By</label>
+                                                    <input
+                                                        value={formData.manufacturedBy}
+                                                        onChange={(e) => setFormData({ ...formData, manufacturedBy: e.target.value })}
+                                                        className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none ring-primary/5 focus:ring-2"
+                                                        placeholder="e.g. Indo Herbal Products..."
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <div className="space-y-1.5 flex flex-col">
+                                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Best Before</label>
+                                                    <input
+                                                        value={formData.bestBefore}
+                                                        onChange={(e) => setFormData({ ...formData, bestBefore: e.target.value })}
+                                                        className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none ring-primary/5 focus:ring-2"
+                                                        placeholder="e.g. 18 Months, 2 Years"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5 flex flex-col">
+                                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">License No</label>
+                                                    <input
+                                                        value={formData.licenseNo}
+                                                        onChange={(e) => setFormData({ ...formData, licenseNo: e.target.value })}
+                                                        className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none ring-primary/5 focus:ring-2"
+                                                        placeholder="e.g. HIM/COS/20/305"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1.5 flex flex-col">
+                                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Key Ingredients</label>
+                                                <input
+                                                    value={formData.ingredients}
+                                                    onChange={(e) => setFormData({ ...formData, ingredients: e.target.value })}
+                                                    className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none ring-primary/5 focus:ring-2"
+                                                    placeholder="e.g. Shea Butter, Cocoa Butter, Glycerin (comma separated)"
+                                                />
                                             </div>
                                         </div>
                                     )}
@@ -1030,6 +1162,163 @@ const ProductManagement = () => {
                                             <p className="text-[10px] text-slate-400 font-medium italic text-center pt-4 border-t border-slate-50 outline-none">
                                                 Quick Tip: Multiple photos help users trust your products more!
                                             </p>
+                                        </div>
+                                    )}
+
+                                    {modalTab === 'results' && (
+                                        <div className="ds-section-spacing animate-in fade-in slide-in-from-right-2 duration-300">
+                                            <div className="space-y-3">
+                                                <div className="flex items-center justify-between gap-4">
+                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Results Section Photos</label>
+                                                    <label className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900 text-white text-[10px] font-bold uppercase tracking-widest cursor-pointer hover:-translate-y-0.5 transition-all">
+                                                        <HiOutlinePhoto className="h-4 w-4" />
+                                                        <span>Add Photos</span>
+                                                        <input
+                                                            type="file"
+                                                            multiple
+                                                            accept="image/*"
+                                                            className="hidden"
+                                                            onChange={(e) => handleImageUpload(e, 'results')}
+                                                        />
+                                                    </label>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                                                    {(formData.resultImages || []).length > 0 ? (
+                                                        formData.resultImages.map((image, index) => (
+                                                            <div key={`${image}-${index}`} className="group relative aspect-square rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
+                                                                <img src={image} alt={`Result ${index + 1}`} className="h-full w-full object-cover" />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setFormData({
+                                                                        ...formData,
+                                                                        resultImages: formData.resultImages.filter((_, i) => i !== index)
+                                                                    })}
+                                                                    className="absolute top-2 right-2 p-2 rounded-full bg-white/90 text-rose-500 shadow-md opacity-0 group-hover:opacity-100 transition-all"
+                                                                >
+                                                                    <HiOutlineTrash className="h-4 w-4" />
+                                                                </button>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <div className="col-span-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center">
+                                                            <p className="text-xs font-medium text-slate-400">No results photos added yet.</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <p className="text-[10px] text-slate-400 font-medium italic text-center pt-4 border-t border-slate-50 outline-none">
+                                                Tip: Uploading results images will display them dynamically in the product benefits section.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {modalTab === 'customTabs' && (
+                                        <div className="ds-section-spacing animate-in fade-in slide-in-from-right-2 duration-300">
+                                            <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                                                <div>
+                                                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Tab Sections</h3>
+                                                    <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wider">
+                                                        Add custom tabs and content that will be displayed in the product details page (e.g., Key Ingredients, How to use).
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setFormData({
+                                                            ...formData,
+                                                            tabbedSections: [
+                                                                ...(formData.tabbedSections || []),
+                                                                { title: '', content: '' }
+                                                            ]
+                                                        });
+                                                    }}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 text-white text-[10px] font-bold uppercase tracking-widest cursor-pointer hover:-translate-y-0.5 transition-all h-9"
+                                                >
+                                                    <HiOutlinePlus className="h-4 w-4" /> Add Section
+                                                </button>
+                                            </div>
+
+                                            {(formData.tabbedSections || []).length === 0 ? (
+                                                <div className="text-center py-12 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                                                    <HiOutlineFolderOpen className="h-10 w-10 text-slate-300 mx-auto mb-3" />
+                                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">No custom tab sections yet</p>
+                                                    <p className="text-[10px] text-slate-400 mt-1 mb-4">Click "Add Section" to create custom tabs for this product.</p>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setFormData({
+                                                                ...formData,
+                                                                tabbedSections: [{ title: '', content: '' }]
+                                                            });
+                                                        }}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-[10px] font-bold uppercase tracking-widest h-9"
+                                                    >
+                                                        Create First Section
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-6">
+                                                    {(formData.tabbedSections || []).map((section, idx) => (
+                                                        <div key={idx} className="p-5 border border-slate-200 rounded-2xl bg-slate-50/30 relative group space-y-4 shadow-sm">
+                                                            <div className="absolute top-4 right-4 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setFormData({
+                                                                            ...formData,
+                                                                            tabbedSections: formData.tabbedSections.filter((_, i) => i !== idx)
+                                                                        });
+                                                                    }}
+                                                                    className="p-1 h-auto text-rose-500 hover:bg-rose-50 rounded-lg"
+                                                                >
+                                                                    <HiOutlineTrash className="h-4 w-4" />
+                                                                </button>
+                                                            </div>
+
+                                                            <div className="grid grid-cols-1 gap-4 text-left">
+                                                                <div className="space-y-1.5">
+                                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                                        Tab Heading / Title
+                                                                    </label>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={section.title}
+                                                                        onChange={(e) => {
+                                                                            const newSections = [...formData.tabbedSections];
+                                                                            newSections[idx] = { ...newSections[idx], title: e.target.value };
+                                                                            setFormData({ ...formData, tabbedSections: newSections });
+                                                                        }}
+                                                                        placeholder="e.g. Key Ingredients, How to use, Suitability"
+                                                                        className="w-full px-3 py-2 border border-slate-200 rounded-md text-xs font-semibold focus:outline-none focus:border-primary/50 bg-white"
+                                                                    />
+                                                                </div>
+
+                                                                <div className="space-y-1.5">
+                                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                                                                        <span>Tab Content</span>
+                                                                        <span className="text-[9px] text-slate-400 lowercase font-medium normal-case font-normal italic">
+                                                                            Tip: Type 'Header: Description' on a new line to bold the header in green.
+                                                                        </span>
+                                                                    </label>
+                                                                    <textarea
+                                                                        value={section.content}
+                                                                        onChange={(e) => {
+                                                                            const newSections = [...formData.tabbedSections];
+                                                                            newSections[idx] = { ...newSections[idx], content: e.target.value };
+                                                                            setFormData({ ...formData, tabbedSections: newSections });
+                                                                        }}
+                                                                        placeholder="e.g.&#10;Natural Extracts: Packed with active plant nutrients...&#10;Vitamin E & C: Powerful antioxidants..."
+                                                                        rows={4}
+                                                                        className="w-full px-3 py-2 border border-slate-200 rounded-md text-xs font-semibold focus:outline-none focus:border-primary/50 bg-white"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>

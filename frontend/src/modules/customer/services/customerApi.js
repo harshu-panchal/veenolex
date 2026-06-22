@@ -145,4 +145,7 @@ export const customerApi = {
   testPushNotification: () => axiosInstance.post("/push/test"),
   getTestPushNotificationStatus: (orderId) =>
     axiosInstance.get(`/push/test-status/${encodeURIComponent(String(orderId || "").trim())}`),
+
+  // Active seasonal popup
+  getActivePopup: () => axiosInstance.get("/popups/active"),
 };

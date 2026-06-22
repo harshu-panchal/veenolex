@@ -1,5 +1,5 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Heart, Plus, Minus, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -11,8 +11,6 @@ import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
 
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock } from "lucide-react";
-
-import { useProductDetail } from "../../context/ProductDetailContext";
 import { customerApi } from "../../services/customerApi";
 
 const ProductCard = React.memo(
@@ -22,10 +20,30 @@ const ProductCard = React.memo(
     const { cart, addToCart, updateQuantity, removeFromCart } = useCart();
     const { showToast } = useToast();
     const { animateAddToCart, animateRemoveFromCart } = useCartAnimation();
-
-    const { openProduct } = useProductDetail();
+    const navigate = useNavigate();
     const [showHeartPopup, setShowHeartPopup] = React.useState(false);
     const [reviews, setReviews] = React.useState([]);
+    const [isHovered, setIsHovered] = React.useState(false);
+    const [activeImageIdx, setActiveImageIdx] = React.useState(0);
+
+    const images = React.useMemo(() => {
+      return [
+        product.image || product.mainImage,
+        ...(Array.isArray(product.galleryImages) ? product.galleryImages : []),
+        ...(Array.isArray(product.images) ? product.images : [])
+      ].filter(Boolean);
+    }, [product]);
+
+    React.useEffect(() => {
+      if (!isHovered || images.length <= 1) {
+        setActiveImageIdx(0);
+        return;
+      }
+      const interval = setInterval(() => {
+        setActiveImageIdx((prev) => (prev + 1) % images.length);
+      }, 1500);
+      return () => clearInterval(interval);
+    }, [isHovered, images]);
 
     const imageRef = React.useRef(null);
 
@@ -58,6 +76,23 @@ const ProductCard = React.memo(
         name: String(picked?.name || "").trim(),
       };
     }, [product]);
+
+    const discountPercent = React.useMemo(() => {
+      const original = Number(product?.originalPrice || 0);
+      const current = Number(product?.price || 0);
+      return original > current && current > 0
+        ? Math.round(((original - current) / original) * 100)
+        : 0;
+    }, [product]);
+
+    const displayBadgeText = React.useMemo(() => {
+      if (badge) return badge;
+      if (discountPercent > 0) {
+        return `${discountPercent}% OFF`;
+      }
+      if (product?.discount) return product.discount;
+      return null;
+    }, [badge, product?.discount, discountPercent]);
 
     const productId = product.id || product._id;
     const variantKey = String(defaultVariant?.key || "").trim();
@@ -140,12 +175,10 @@ const ProductCard = React.memo(
 
     const handleProductClick = React.useCallback(
       (e) => {
-        if (openProduct) {
-          e.preventDefault();
-          openProduct(product);
-        }
+        e.preventDefault();
+        navigate(`/product/${productId}`);
       },
-      [openProduct, product],
+      [navigate, productId],
     );
 
     const toggleWishlist = React.useCallback(
@@ -222,8 +255,10 @@ const ProductCard = React.memo(
 
     return (
       <div
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
         className={cn(
-          "flex-shrink-0 w-full rounded-xl sm:rounded-2xl overflow-hidden flex flex-col h-full shadow-sm cursor-pointer transition-all duration-300 hover:scale-[1.02] font-['Inter']",
+          "group flex-shrink-0 w-full rounded-xl sm:rounded-2xl overflow-hidden flex flex-col h-full shadow-sm cursor-pointer transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1.5 hover:shadow-lg hover:shadow-black/5 font-['Inter']",
           compact
             ? "bg-white border-[1.5px] border-brand-50 shadow-[0_8px_20px_-8px_rgba(0,0,0,0.08)]"
             : neutralBg
@@ -235,19 +270,15 @@ const ProductCard = React.memo(
         {/* Top Image Section */}
         <div className="relative">
           {/* Badge (Custom or Discount) */}
-          {(badge ||
-            product.discount ||
-            product.originalPrice > product.price) && (
+          {displayBadgeText && (
               <div
                 className={cn(
-                  "absolute z-10 bg-primary text-primary-foreground font-[900] rounded-md shadow-sm uppercase tracking-wider flex items-center justify-center",
+                  "absolute z-10 bg-[#ff2c38] text-white font-[900] rounded-md shadow-sm uppercase tracking-wider flex items-center justify-center",
                   compact
                     ? "top-2 left-2 px-1.5 py-0.5 text-[7px]"
-                    : "top-2 left-2 px-1 py-0.5 text-[7px] sm:top-3 sm:left-3 sm:px-2 sm:py-1 sm:text-[9px]",
+                    : "top-2 left-2 px-1.5 py-0.5 text-[7px] sm:top-3 sm:left-3 sm:px-2 sm:py-1 sm:text-[9px]",
                 )}>
-                {badge ||
-                  product.discount ||
-                  `${Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)}% OFF`}
+                {displayBadgeText}
               </div>
             )}
 
@@ -288,16 +319,38 @@ const ProductCard = React.memo(
 
           <div
             className={cn(
-              "block w-full overflow-hidden flex items-center justify-center transition-transform duration-500 group-hover:scale-105 aspect-square",
+              "block w-full overflow-hidden flex items-center justify-center transition-transform duration-500 group-hover:scale-105 aspect-square relative",
               compact || neutralBg ? "bg-white/70" : "bg-white/50"
             )}>
-            <img
-              ref={imageRef}
-              src={applyCloudinaryTransform(product.image)}
-              alt={product.name}
-              loading="lazy"
-              className="w-full h-full object-cover mix-blend-multiply"
-            />
+            <AnimatePresence initial={false} mode="wait">
+              <motion.img
+                key={activeImageIdx}
+                ref={activeImageIdx === 0 ? imageRef : null}
+                src={applyCloudinaryTransform(images[activeImageIdx])}
+                alt={product.name}
+                initial={{ x: 30, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: -30, opacity: 0 }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
+                loading="lazy"
+                className="w-full h-full object-cover mix-blend-multiply absolute inset-0"
+              />
+            </AnimatePresence>
+
+            {/* Sliding dot indicators to show multiple images are sliding */}
+            {images.length > 1 && isHovered && (
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-10 bg-black/20 px-2 py-0.5 rounded-full backdrop-blur-sm transition-all duration-300">
+                {images.map((_, idx) => (
+                  <div
+                    key={idx}
+                    className={cn(
+                      "w-1 h-1 rounded-full transition-all duration-300",
+                      idx === activeImageIdx ? "bg-white scale-125" : "bg-white/50"
+                    )}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

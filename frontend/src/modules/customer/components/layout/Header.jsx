@@ -7,14 +7,17 @@ import { useCart } from '../../context/CartContext';
 import { useLocation as useAppLocation } from "../../context/LocationContext";
 import { useSettings } from '@core/context/SettingsContext';
 import LocationDrawer from '../shared/LocationDrawer';
+import LogoImage from '@/assets/Logo.png';
 
 const Header = () => {
     const { settings } = useSettings();
+    const logoUrl = settings?.logoUrl || LogoImage;
     const { count: wishlistCount } = useWishlist();
     const { cartCount } = useCart();
     const location = useLocation();
     const isCheckoutPage = location.pathname === '/checkout';
     const [isLocationOpen, setIsLocationOpen] = useState(false);
+    const [isSearchFocused, setIsSearchFocused] = useState(false);
     const { currentLocation, refreshLocation } = useAppLocation();
 
     // Search placeholder animation
@@ -103,8 +106,17 @@ const Header = () => {
                 <div className="px-4 md:px-8 h-18 bg-white/95 backdrop-blur-sm rounded-full shadow-2xl flex items-center justify-between border border-white/20">
                     {/* Logo */}
                     <div className="flex items-center gap-6 mr-4 md:mr-12">
-                        <Link to="/" className="flex items-center gap-1">
-                            <span className="text-2xl md:text-3xl font-black tracking-tight" style={{ color: settings?.primaryColor || 'var(--primary)' }}>{settings?.appName || 'App'}</span>
+                        <Link to="/" className="flex items-center gap-2.5 group shrink-0 relative z-30">
+                            {logoUrl && (
+                                <img
+                                    src={logoUrl}
+                                    alt={`${settings?.appName || 'App'} Logo`}
+                                    className="h-14 md:h-16 w-auto object-contain transition-all duration-300 group-hover:scale-105"
+                                />
+                            )}
+                            <span className="text-sm md:text-lg font-black uppercase tracking-widest text-slate-800 transition-colors duration-300 group-hover:text-[var(--primary)]">
+                                {settings?.appName || 'App'}
+                            </span>
                         </Link>
 
                         {/* Location Selector (Desktop ONLY) */}
@@ -131,21 +143,34 @@ const Header = () => {
 
                     {/* Desktop Navigation */}
                     <nav className="hidden md:flex items-center gap-6">
-                        <Link to="/" className="text-sm font-medium transition-colors hover:text-[var(--primary)]">Home</Link>
+                        <Link to="/" className="text-sm font-semibold transition-colors hover:text-[var(--primary)]">Home</Link>
 
-                        <Link to="/categories" className="text-sm font-medium transition-colors hover:text-[var(--primary)]">Categories</Link>
-                        <Link to="/offers" className="text-sm font-medium transition-colors hover:text-[var(--primary)]">Offers</Link>
+                        <Link to="/categories" className="text-sm font-semibold transition-colors hover:text-[var(--primary)]">Categories</Link>
+                        <Link to="/offers" className="text-sm font-semibold transition-colors hover:text-[var(--primary)]">Offers</Link>
                     </nav>
 
                     {/* Search Bar - Hidden on checkout page */}
                     {!isCheckoutPage && (
                         <div className="flex-1 flex items-center max-w-sm ml-4 md:ml-8 mr-4 md:mr-8">
-                            <div className="relative w-full">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                            <div className="relative w-full group">
+                                <Search 
+                                    className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 transition-colors duration-200 group-focus-within:text-[var(--primary)]" 
+                                    style={{ color: isSearchFocused ? (settings?.primaryColor || 'var(--primary)') : '#94a3b8' }}
+                                />
                                 <input
                                     type="search"
                                     placeholder={searchPlaceholder}
-                                    className="w-full rounded-full border-none bg-slate-100/50 md:bg-white md:border md:border-slate-200 pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-primary transition-all outline-none"
+                                    onFocus={() => setIsSearchFocused(true)}
+                                    onBlur={() => setIsSearchFocused(false)}
+                                    className="w-full rounded-full border bg-slate-50/50 hover:bg-white md:bg-white pl-10 pr-4 py-2.5 text-sm font-semibold placeholder:text-slate-400 text-slate-700 outline-none transition-all duration-300"
+                                    style={{
+                                        borderColor: isSearchFocused 
+                                            ? (settings?.primaryColor || 'var(--primary)') 
+                                            : '#e2e8f0', // slate-200
+                                        boxShadow: isSearchFocused 
+                                            ? `0 0 0 2px ${(settings?.primaryColor || 'var(--primary)')}33` // 20% opacity
+                                            : 'none'
+                                    }}
                                 />
                             </div>
                         </div>
@@ -153,26 +178,32 @@ const Header = () => {
 
                     {/* Desktop Right Icons */}
                     <div className="hidden md:flex items-center gap-4">
-                        <Link to="/wishlist" className="relative flex items-center justify-center p-2 hover:bg-slate-50 rounded-full transition-colors group">
-                            <Heart className="h-6 w-6 text-slate-600 group-hover:text-[var(--primary)] transition-colors" />
+                        <Link to="/wishlist" className="relative flex items-center justify-center p-2 hover:bg-slate-100/80 rounded-full transition-all duration-300 group hover:scale-105 active:scale-95">
+                            <Heart className="h-6 w-6 text-slate-600 group-hover:text-[var(--primary)] transition-transform duration-300 group-hover:scale-110" />
                             {wishlistCount > 0 && (
-                                <span className="absolute top-0 right-0 h-5 w-5 rounded-full bg-primary text-[10px] font-bold text-white flex items-center justify-center border-2 border-white shadow-sm animate-in zoom-in duration-300">
+                                <span 
+                                    className="absolute top-0 right-0 h-5 w-5 rounded-full text-[10px] font-bold text-white flex items-center justify-center border-2 border-white shadow-sm animate-in zoom-in duration-300"
+                                    style={{ backgroundColor: settings?.primaryColor || 'var(--primary)' }}
+                                >
                                     {wishlistCount}
                                 </span>
                             )}
                         </Link>
 
-                        <Link to="/checkout" id="header-cart-icon" className="relative flex items-center justify-center p-2 hover:bg-slate-50 rounded-full transition-colors group">
-                            <ShoppingCart className="h-6 w-6 text-slate-600 group-hover:text-[var(--primary)] transition-colors" />
+                        <Link to="/checkout" id="header-cart-icon" className="relative flex items-center justify-center p-2 hover:bg-slate-100/80 rounded-full transition-all duration-300 group hover:scale-105 active:scale-95">
+                            <ShoppingCart className="h-6 w-6 text-slate-600 group-hover:text-[var(--primary)] transition-transform duration-300 group-hover:scale-110" />
                             {cartCount > 0 && (
-                                <span className="absolute top-0 right-0 h-5 w-5 rounded-full bg-primary text-[10px] font-bold text-white flex items-center justify-center border-2 border-white shadow-sm animate-in zoom-in duration-300">
+                                <span 
+                                    className="absolute top-0 right-0 h-5 w-5 rounded-full text-[10px] font-bold text-white flex items-center justify-center border-2 border-white shadow-sm animate-in zoom-in duration-300"
+                                    style={{ backgroundColor: settings?.primaryColor || 'var(--primary)' }}
+                                >
                                     {cartCount}
                                 </span>
                             )}
                         </Link>
 
-                        <Link to="/profile" className="flex items-center justify-center">
-                            <User className="h-6 w-6 text-slate-600 hover:text-[var(--primary)] transition-colors" />
+                        <Link to="/profile" className="relative flex items-center justify-center p-2 hover:bg-slate-100/80 rounded-full transition-all duration-300 group hover:scale-105 active:scale-95">
+                            <User className="h-6 w-6 text-slate-600 group-hover:text-[var(--primary)] transition-transform duration-300 group-hover:scale-110" />
                         </Link>
                     </div>
                 </div>

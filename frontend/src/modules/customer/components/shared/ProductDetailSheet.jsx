@@ -312,17 +312,24 @@ const ProductDetailSheet = () => {
                                             <ArrowLeft size={18} className="text-gray-700" strokeWidth={2.5} />
                                         </motion.button>
 
-                                        {/* Discount Badge (center) */}
-                                        {(selectedProduct.originalPrice > selectedProduct.price) && (
-                                            <motion.div
-                                                initial={{ scale: 0, rotate: -10 }}
-                                                animate={{ scale: 1, rotate: 0 }}
-                                                transition={{ type: 'spring', delay: 0.2 }}
-                                                className="bg-gradient-to-r from-primary to-[var(--brand-400)] text-white text-[10px] font-[800] px-3 py-1.5 rounded-xl uppercase tracking-wider shadow-md shadow-brand-200/40"
-                                            >
-                                                {Math.round(((selectedProduct.originalPrice - selectedProduct.price) / selectedProduct.originalPrice) * 100)}% OFF
-                                            </motion.div>
-                                        )}
+                                        {(() => {
+                                             const original = selectedVariant ? Number(selectedVariant.price || 0) : Number(selectedProduct.originalPrice || 0);
+                                             const current = selectedVariant ? Number(selectedVariant.salePrice || selectedVariant.price || 0) : Number(selectedProduct.price || 0);
+                                             const discountVal = original > current && original > 0 ? Math.round(((original - current) / original) * 100) : 0;
+                                             
+                                             if (discountVal <= 0) return null;
+                                             
+                                             return (
+                                                 <motion.div
+                                                     initial={{ scale: 0, rotate: -10 }}
+                                                     animate={{ scale: 1, rotate: 0 }}
+                                                     transition={{ type: 'spring', delay: 0.2 }}
+                                                     className="bg-[#ff2c38] text-white text-[10px] font-[800] px-3 py-1.5 rounded-xl uppercase tracking-wider shadow-md shadow-red-200/40"
+                                                 >
+                                                     {discountVal}% OFF
+                                                 </motion.div>
+                                             );
+                                         })()}
 
                                         <motion.button
                                             whileHover={{ scale: 1.05 }}

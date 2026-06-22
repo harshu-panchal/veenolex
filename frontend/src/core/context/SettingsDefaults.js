@@ -43,6 +43,11 @@ export const DEFAULT_SETTINGS = {
     sellerCreateRequiresApproval: false,
     sellerEditRequiresApproval: false,
   },
+  promoMessages: [
+    "24/7 Delivery",
+    "Minimum Order ₹99",
+    "Save Big on Essentials!",
+  ],
 };
 
 /**

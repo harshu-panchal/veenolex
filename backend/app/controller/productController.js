@@ -125,8 +125,15 @@ function applyMediaFields(productData) {
 
   if (mergedGallery.length > 0) {
     productData.galleryImages = mergedGallery;
-  } else if (!Array.isArray(productData.galleryImages)) {
+  } else if (productData.galleryImages !== undefined) {
     productData.galleryImages = [];
+  }
+
+  const resultImages = parseImageList(productData.resultImages);
+  if (resultImages.length > 0) {
+    productData.resultImages = resultImages;
+  } else if (productData.resultImages !== undefined) {
+    productData.resultImages = [];
   }
 }
 
@@ -353,7 +360,7 @@ export const getProducts = async (req, res) => {
       const [rawProducts, total] = await Promise.all([
         Product.find(finalQuery)
           .select(
-            "name slug description sku price salePrice stock brand weight mainImage galleryImages headerId categoryId subcategoryId sellerId status approvalStatus approvalRequestedAt approvalReviewedAt approvalReviewedBy approvalNote lastSubmittedByRole isFeatured variants createdAt",
+            "name slug description sku price salePrice stock brand weight offerText marketedBy manufacturedBy bestBefore licenseNo ingredients mainImage galleryImages resultImages tabbedSections headerId categoryId subcategoryId sellerId status approvalStatus approvalRequestedAt approvalReviewedAt approvalReviewedBy approvalNote lastSubmittedByRole isFeatured variants createdAt",
           )
           // No .populate() — names resolved via cache-backed entityNameCache
           .sort(sortQuery)
@@ -476,7 +483,7 @@ export const getSellerProducts = async (req, res) => {
     ] = await Promise.all([
       Product.find(query)
         .select(
-          "name slug description sku price salePrice stock lowStockAlert brand weight mainImage galleryImages headerId categoryId subcategoryId sellerId status approvalStatus approvalRequestedAt approvalReviewedAt approvalReviewedBy approvalNote lastSubmittedByRole isFeatured variants createdAt",
+          "name slug description sku price salePrice stock lowStockAlert brand weight offerText marketedBy manufacturedBy bestBefore licenseNo ingredients mainImage galleryImages resultImages tabbedSections headerId categoryId subcategoryId sellerId status approvalStatus approvalRequestedAt approvalReviewedAt approvalReviewedBy approvalNote lastSubmittedByRole isFeatured variants createdAt",
         )
         .populate("headerId", "name")
         .populate("categoryId", "name")
@@ -594,10 +601,11 @@ export const createProduct = async (req, res) => {
       productData.sellerId = req.user.id;
     }
 
-    // Handle multipart files (mainImage and galleryImages)
+    // Handle multipart files (mainImage, galleryImages and resultImages)
     const files = req.files || [];
     if (files.length > 0) {
       const galleryUrls = [];
+      const resultUrls = [];
       for (const file of files) {
         try {
           if (file.fieldname === "mainImage") {
@@ -612,6 +620,12 @@ export const createProduct = async (req, res) => {
               resourceType: "image",
             });
             galleryUrls.push(url);
+          } else if (file.fieldname === "resultImages") {
+            const url = await uploadToCloudinary(file.buffer, "products", {
+              mimeType: file.mimetype,
+              resourceType: "image",
+            });
+            resultUrls.push(url);
           }
         } catch (err) {
           logger.error("Cloudinary upload failed", {
@@ -623,6 +637,9 @@ export const createProduct = async (req, res) => {
       if (galleryUrls.length > 0) {
         productData.galleryImages = galleryUrls;
       }
+      if (resultUrls.length > 0) {
+        productData.resultImages = resultUrls;
+      }
     }
 
     // Parse JSON fields if they come as strings from FormData
@@ -631,6 +648,16 @@ export const createProduct = async (req, res) => {
         productData.variants = JSON.parse(productData.variants);
       } catch (e) {
         logger.error("Failed to parse variants JSON", {
+          scope: "createProduct",
+          error: e,
+        });
+      }
+    }
+    if (typeof productData.tabbedSections === "string") {
+      try {
+        productData.tabbedSections = JSON.parse(productData.tabbedSections);
+      } catch (e) {
+        logger.error("Failed to parse tabbedSections JSON", {
           scope: "createProduct",
           error: e,
         });
@@ -754,10 +781,11 @@ export const updateProduct = async (req, res) => {
       delete productData.sellerId;
     }
 
-    // Handle multipart files (mainImage and galleryImages)
+    // Handle multipart files (mainImage, galleryImages and resultImages)
     const files = req.files || [];
     if (files.length > 0) {
       const galleryUrls = [];
+      const resultUrls = [];
       for (const file of files) {
         try {
           if (file.fieldname === "mainImage") {
@@ -772,6 +800,12 @@ export const updateProduct = async (req, res) => {
               resourceType: "image",
             });
             galleryUrls.push(url);
+          } else if (file.fieldname === "resultImages") {
+            const url = await uploadToCloudinary(file.buffer, "products", {
+              mimeType: file.mimetype,
+              resourceType: "image",
+            });
+            resultUrls.push(url);
           }
         } catch (err) {
           logger.error("Cloudinary upload failed during update", {
@@ -781,7 +815,20 @@ export const updateProduct = async (req, res) => {
         }
       }
       if (galleryUrls.length > 0) {
-        productData.galleryImages = galleryUrls;
+        const existingGallery = Array.isArray(productData.galleryImages)
+          ? productData.galleryImages
+          : typeof productData.galleryImages === "string" && productData.galleryImages.trim()
+          ? [productData.galleryImages]
+          : [];
+        productData.galleryImages = [...existingGallery, ...galleryUrls];
+      }
+      if (resultUrls.length > 0) {
+        const existingResults = Array.isArray(productData.resultImages)
+          ? productData.resultImages
+          : typeof productData.resultImages === "string" && productData.resultImages.trim()
+          ? [productData.resultImages]
+          : [];
+        productData.resultImages = [...existingResults, ...resultUrls];
       }
     }
 
@@ -791,6 +838,16 @@ export const updateProduct = async (req, res) => {
         productData.variants = JSON.parse(productData.variants);
       } catch (e) {
         logger.error("Failed to parse variants JSON during update", {
+          scope: "updateProduct",
+          error: e,
+        });
+      }
+    }
+    if (typeof productData.tabbedSections === "string") {
+      try {
+        productData.tabbedSections = JSON.parse(productData.tabbedSections);
+      } catch (e) {
+        logger.error("Failed to parse tabbedSections JSON during update", {
           scope: "updateProduct",
           error: e,
         });
@@ -986,7 +1043,7 @@ export const getProductById = async (req, res) => {
       async () =>
         Product.findById(id)
           .select(
-            "name slug description sku price salePrice stock lowStockAlert brand weight mainImage galleryImages headerId categoryId subcategoryId sellerId status approvalStatus approvalRequestedAt approvalReviewedAt approvalReviewedBy approvalNote lastSubmittedByRole isFeatured variants createdAt",
+            "name slug description sku price salePrice stock lowStockAlert brand weight offerText marketedBy manufacturedBy bestBefore licenseNo ingredients mainImage galleryImages resultImages tabbedSections headerId categoryId subcategoryId sellerId status approvalStatus approvalRequestedAt approvalReviewedAt approvalReviewedBy approvalNote lastSubmittedByRole isFeatured variants createdAt",
           )
           .populate("headerId", "name")
           .populate("categoryId", "name")
@@ -1104,7 +1161,7 @@ export const getModerationProducts = async (req, res) => {
       await Promise.all([
         Product.find(moderatedQuery)
           .select(
-            "name slug description sku price salePrice stock lowStockAlert brand weight mainImage galleryImages headerId categoryId subcategoryId sellerId status approvalStatus approvalRequestedAt approvalReviewedAt approvalReviewedBy approvalNote lastSubmittedByRole isFeatured variants createdAt",
+            "name slug description sku price salePrice stock lowStockAlert brand weight offerText marketedBy manufacturedBy bestBefore licenseNo ingredients mainImage galleryImages resultImages tabbedSections headerId categoryId subcategoryId sellerId status approvalStatus approvalRequestedAt approvalReviewedAt approvalReviewedBy approvalNote lastSubmittedByRole isFeatured variants createdAt",
           )
           .populate("headerId", "name")
           .populate("categoryId", "name")

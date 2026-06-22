@@ -104,42 +104,46 @@ const ExperienceBannerCarousel = ({ section, items, fullWidth = false, slideGap 
               className={cn(
                 "relative shrink-0 flex items-center justify-center box-border",
                 fullWidth
-                  ? `${aspectClass} w-full rounded-none px-0 overflow-hidden`
+                  ? `${aspectClass} w-full overflow-hidden`
                   : "w-full px-4 md:px-8 overflow-visible pb-6"
               )}
               style={{ width: `${100 / totalItems}%` }}
             >
               {fullWidth ? (
-                <img
-                  src={getBannerOptimizedSrc(activeImageUrl, useDesktopRatio)}
-                  srcSet={
-                    isCloudinaryUrl(activeImageUrl)
-                      ? buildCloudinarySrcSet(
-                          activeImageUrl,
-                          useDesktopRatio
-                            ? [
-                                { w: 724, h: 175 },
-                                { w: 1448, h: 350 },
-                                { w: 2172, h: 525 },
-                              ]
-                            : [
-                                { w: 412, h: 185 },
-                                { w: 824, h: 370 },
-                                { w: 1248, h: 560 },
-                              ],
-                          "f_auto,q_auto,c_fill,g_north"
-                        )
-                      : undefined
-                  }
-                  sizes="100vw"
-                  alt={banner.title || section?.title || "Banner"}
-                  className="w-full h-full object-cover object-top pointer-events-none"
-                  width={1448}
-                  height={useDesktopRatio ? 350 : 650}
-                  loading={idx === 0 ? "eager" : "lazy"}
-                  fetchPriority={idx === 0 ? "high" : "low"}
-                  decoding="async"
-                />
+                <div className="w-full h-full px-4 md:px-[50px] py-1 box-border">
+                  <div className="w-full h-full rounded-[1.5rem] md:rounded-[2rem] overflow-hidden shadow-lg border border-slate-100">
+                    <img
+                      src={getBannerOptimizedSrc(activeImageUrl, useDesktopRatio)}
+                      srcSet={
+                        isCloudinaryUrl(activeImageUrl)
+                          ? buildCloudinarySrcSet(
+                              activeImageUrl,
+                              useDesktopRatio
+                                ? [
+                                    { w: 724, h: 175 },
+                                    { w: 1448, h: 350 },
+                                    { w: 2172, h: 525 },
+                                  ]
+                                : [
+                                    { w: 412, h: 185 },
+                                    { w: 824, h: 370 },
+                                    { w: 1248, h: 560 },
+                                  ],
+                              "f_auto,q_auto,c_fill,g_north"
+                            )
+                          : undefined
+                      }
+                      sizes="100vw"
+                      alt={banner.title || section?.title || "Banner"}
+                      className="w-full h-full object-cover object-top pointer-events-none rounded-[1.5rem] md:rounded-[2rem]"
+                      width={1448}
+                      height={useDesktopRatio ? 350 : 650}
+                      loading={idx === 0 ? "eager" : "lazy"}
+                      fetchPriority={idx === 0 ? "high" : "low"}
+                      decoding="async"
+                    />
+                  </div>
+                </div>
               ) : (
                 <div className={cn("w-full rounded-3xl shadow-[0_8px_24px_rgba(0,0,0,0.05),_0_2px_8px_rgba(0,0,0,0.03)] bg-white relative", aspectClass)}>
                   <img

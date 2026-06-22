@@ -42,15 +42,15 @@ function CategoryNavColumn({
         layout: { type: "spring", stiffness: 520, damping: 38, mass: 0.55 },
       }}
       onClick={() => onCategorySelect && onCategorySelect(cat)}
-      className="relative z-[2] flex min-w-[48px] shrink-0 cursor-pointer flex-col items-center gap-0.5 px-2 pb-1.5 pt-0.5 snap-start md:min-w-[58px]">
-      <div className="relative z-10 flex h-9 w-9 items-center justify-center md:h-11 md:w-11">
+      className="relative z-[2] flex min-w-[48px] shrink-0 cursor-pointer flex-col items-center gap-1.5 px-2 pb-1.5 pt-0.5 snap-start md:min-w-[58px]">
+      <div className="relative z-10 flex h-9 w-9 md:h-11 md:w-11 items-center justify-center bg-white rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.06)] border border-slate-100 transition-all duration-200 hover:scale-105">
         {typeof cat.icon === "function" ||
           (typeof cat.icon === "object" && cat.icon.$$typeof) ? (
           <cat.icon
             sx={{
               fontSize: { xs: 20, md: 24 },
               color: iconColor,
-              opacity: isActive ? 1 : 0.62,
+              opacity: isActive ? 1 : 0.78,
               transition: "opacity 0.2s, transform 0.2s",
             }}
           />
@@ -60,7 +60,7 @@ function CategoryNavColumn({
             alt={cat.name}
             loading="lazy"
             className="h-5 w-5 object-contain md:h-6 md:w-6"
-            style={{ opacity: isActive ? 1 : 0.62 }}
+            style={{ opacity: isActive ? 1 : 0.78 }}
           />
         )}
       </div>
@@ -71,8 +71,8 @@ function CategoryNavColumn({
             isActive ? "font-black" : "font-semibold",
           )}
           style={{
-            color: isActive ? iconColor : (headerFontColor || "#111111"),
-            opacity: isActive ? 1 : 0.68,
+            color: isActive ? iconColor : (headerFontColor || "#1e293b"),
+            opacity: isActive ? 1 : 0.9,
             fontFamily: "'Inter', sans-serif",
           }}>
           {cat.name}
@@ -229,12 +229,12 @@ const MainLocationHeader = ({
   const headerBottomPadding = 12;
   const bgOpacity = 0.98;
 
-  const contentHeight = "48px";
+  const contentHeight = "72px";
   const contentOpacity = 1;
   const navHeight = "60px";
   const navOpacity = 1;
   const navMargin = 4;
-  const categorySpacing = 3;
+  const categorySpacing = 12;
   const cartOpacity = 1;
   const cartScale = 1;
 
@@ -306,6 +306,8 @@ const MainLocationHeader = ({
           <motion.button
             initial={{ opacity: 0, scale: 0.9, y: -8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.95 }}
             transition={{ duration: 0.5, delay: 0.15, ease: "easeOut" }}
             style={{
               opacity: cartOpacity,
@@ -315,12 +317,12 @@ const MainLocationHeader = ({
             type="button"
             aria-label="Open cart"
             onClick={() => navigate("/checkout")}
-            className="absolute top-3 right-5 sm:top-4 sm:right-6 md:top-5 md:right-8 z-20 w-12 h-12 sm:w-14 sm:h-14 md:w-20 md:h-20 cursor-pointer">
+            className="absolute top-3 right-5 sm:top-4 sm:right-6 md:top-5 md:right-8 z-20 w-12 h-12 sm:w-14 sm:h-14 md:w-20 md:h-20 cursor-pointer transition-transform">
             {cartAnimData ? (
               <Lottie
                 animationData={cartAnimData}
                 loop
-                className="w-full h-full pointer-events-none drop-shadow-[0_8px_18px_rgba(0,0,0,0.14)]"
+                className="w-full h-full pointer-events-none drop-shadow-[0_8px_18px_rgba(0,0,0,0.16)]"
               />
             ) : (
               <div className="w-full h-full" />
@@ -334,12 +336,12 @@ const MainLocationHeader = ({
               <div
                 onClick={() => navigate("/")}
                 className="flex items-center gap-3 cursor-pointer group shrink-0">
-                <div className="group-hover:scale-110 transition-all duration-300 drop-shadow-[0_2px_8px_rgba(255,255,255,0.2)]">
+                <div className="group-hover:scale-110 transition-all duration-300 drop-shadow-[0_2px_8px_rgba(255,255,255,0.15)] shrink-0">
                   <img
                     src={logoUrl}
                     alt={`${appName} Logo`}
                     loading="lazy"
-                    className="h-14 w-auto object-contain"
+                    className="h-16 md:h-20 w-auto object-contain"
                   />
                 </div>
               </div>
@@ -351,13 +353,13 @@ const MainLocationHeader = ({
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.99 }}
                   style={{ backgroundColor: "#FFFFFF" }}
-                  className="rounded-full px-4 h-11 shadow-sm flex items-center border border-slate-200 transition-all duration-200 focus-within:ring-2 focus-within:ring-primary/50 cursor-pointer">
-                  <SearchIcon sx={{ color: "#000000", fontSize: 20 }} />
+                  className="rounded-full px-5 h-11 shadow-sm hover:shadow-md flex items-center border border-slate-200 hover:border-slate-300/80 transition-all duration-200 focus-within:ring-2 focus-within:ring-primary/40 cursor-pointer">
+                  <SearchIcon sx={{ color: "var(--primary, #2E7D32)", fontSize: 20, opacity: 0.8 }} />
                   <input
                     type="text"
                     placeholder={searchPlaceholder || "Search Products..."}
                     readOnly
-                    className="flex-1 bg-transparent border-none outline-none pl-2 text-black font-medium placeholder:text-black text-[15px] cursor-pointer"
+                    className="flex-1 bg-transparent border-none outline-none pl-3 text-slate-800 font-semibold placeholder:text-slate-400 text-[15px] cursor-pointer"
                   />
                 </motion.div>
               </div>
@@ -376,37 +378,50 @@ const MainLocationHeader = ({
               }}
               className="relative z-10 pb-4">
               <div
-                onClick={() => navigate("/")}
-                className="mb-4 flex items-center gap-2 cursor-pointer select-none"
+                className="mb-4 flex items-center justify-between w-full relative z-10"
               >
-                <img
-                  src={logoUrl}
-                  alt={`${appName} Logo`}
-                  loading="lazy"
-                  className="h-12 w-auto object-contain"
-                />
-                <span
-                  style={{ color: headerFontColor }}
-                  className="text-sm font-black uppercase tracking-wider"
+                {/* Left: Logo */}
+                <div
+                  onClick={() => navigate("/")}
+                  className="cursor-pointer select-none shrink-0"
                 >
-                  {appName}
-                </span>
+                  <img
+                    src={logoUrl}
+                    alt={`${appName} Logo`}
+                    loading="lazy"
+                    className="h-16 w-auto object-contain transition-all active:scale-95 shrink-0"
+                  />
+                </div>
+
+                {/* Center: Brand name text */}
+                <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none">
+                  <span
+                    onClick={() => navigate("/")}
+                    style={{ color: headerFontColor }}
+                    className="text-sm font-black uppercase tracking-widest transition-colors duration-300 pointer-events-auto cursor-pointer"
+                  >
+                    {appName}
+                  </span>
+                </div>
+
+                {/* Right: Spacer to match left logo size, keeping alignment balanced */}
+                <div className="w-16 h-16 shrink-0" />
               </div>
             </motion.div>
           </div>
 
-          <div className="relative z-10 mt-[1.5px] flex items-center gap-2 md:hidden">
+          <div className="relative z-10 mt-1.5 mb-3.5 flex items-center gap-2 md:hidden">
             <motion.div
               onClick={handleSearchClick}
               whileTap={{ scale: 0.98 }}
               style={{ backgroundColor: "#FFFFFF" }}
-              className="flex-1 rounded-[10px] px-3 h-10 shadow-sm flex items-center border border-slate-200 transition-all duration-200 focus-within:ring-2 focus-within:ring-primary/50 cursor-pointer">
-              <SearchIcon sx={{ color: "#000000", fontSize: 18 }} />
+              className="flex-1 rounded-[12px] px-3.5 h-10 shadow-sm flex items-center border border-slate-200 hover:border-slate-300 transition-all duration-200 focus-within:ring-2 focus-within:ring-primary/40 cursor-pointer">
+              <SearchIcon sx={{ color: "var(--primary, #2E7D32)", fontSize: 18, opacity: 0.8 }} />
               <input
                 type="text"
                 placeholder={searchPlaceholder || "Search Products..."}
                 readOnly
-                className="flex-1 bg-transparent border-none outline-none pl-2 text-black font-medium placeholder:text-black text-[14px] cursor-pointer"
+                className="flex-1 bg-transparent border-none outline-none pl-2 text-slate-800 font-semibold placeholder:text-slate-400 text-[14px] cursor-pointer"
               />
             </motion.div>
           </div>

@@ -65,6 +65,14 @@ const settingSchema = new mongoose.Schema(
         metaDescription: String,
         metaKeywords: String,
         keywords: [{ type: String }], // Array for structured SEO keywords
+        promoMessages: {
+            type: [String],
+            default: [
+                "24/7 Delivery",
+                "Minimum Order ₹99",
+                "Save Big on Essentials!",
+            ],
+        },
 
         // Optional: multi-tenant (null = default tenant)
         tenantId: {

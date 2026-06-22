@@ -2,7 +2,8 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
     User, MapPin, Package, CreditCard, Wallet, ChevronRight,
-    LogOut, ShieldCheck, Heart, HelpCircle, Info, Edit2, ChevronLeft, Bell
+    LogOut, ShieldCheck, Heart, HelpCircle, Info, Edit2, ChevronLeft, Bell,
+    Facebook, Twitter, Instagram, Youtube
 } from 'lucide-react';
 import { useAuth } from '@core/context/AuthContext';
 import { useSettings } from '@core/context/SettingsContext';
@@ -275,6 +276,42 @@ const ProfilePage = () => {
                         </div>
                     </div>
                 </div>
+
+                {/* Social Links */}
+                {(() => {
+                    const facebookUrl = settings?.facebook || "https://facebook.com";
+                    const twitterUrl = settings?.twitter || "https://twitter.com";
+                    const instagramUrl = settings?.instagram || "https://instagram.com";
+                    const youtubeUrl = settings?.youtube || "https://youtube.com";
+                    
+                    return (
+                        <div className="bg-white rounded-xl p-4 border border-slate-200 flex flex-col items-center justify-center gap-3">
+                            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Connect With Us</p>
+                            <div className="flex gap-6">
+                                {facebookUrl && (
+                                    <a href={facebookUrl} target="_blank" rel="noopener noreferrer" className="p-3 bg-slate-100 text-slate-700 hover:text-blue-600 rounded-full transition-all hover:bg-blue-50 hover:scale-110 active:scale-95 shadow-sm">
+                                        <Facebook size={20} />
+                                    </a>
+                                )}
+                                {twitterUrl && (
+                                    <a href={twitterUrl} target="_blank" rel="noopener noreferrer" className="p-3 bg-slate-100 text-slate-700 hover:text-sky-500 rounded-full transition-all hover:bg-sky-50 hover:scale-110 active:scale-95 shadow-sm">
+                                        <Twitter size={20} />
+                                    </a>
+                                )}
+                                {instagramUrl && (
+                                    <a href={instagramUrl} target="_blank" rel="noopener noreferrer" className="p-3 bg-slate-100 text-slate-700 hover:text-pink-600 rounded-full transition-all hover:bg-pink-50 hover:scale-110 active:scale-95 shadow-sm">
+                                        <Instagram size={20} />
+                                    </a>
+                                )}
+                                {youtubeUrl && (
+                                    <a href={youtubeUrl} target="_blank" rel="noopener noreferrer" className="p-3 bg-slate-100 text-slate-700 hover:text-red-600 rounded-full transition-all hover:bg-red-50 hover:scale-110 active:scale-95 shadow-sm">
+                                        <Youtube size={20} />
+                                    </a>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })()}
 
                 {/* Logout Button */}
                 <button

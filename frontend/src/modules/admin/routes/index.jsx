@@ -90,8 +90,10 @@ const ShopByStoreManagement = React.lazy(
   () => import("../pages/ShopByStoreManagement"),
 );
 const AdminSettings = React.lazy(() => import("../pages/AdminSettings"));
+const PromoStripManagement = React.lazy(() => import("../pages/PromoStripManagement"));
 const EnvSettings = React.lazy(() => import("../pages/EnvSettings"));
 const AdminProfile = React.lazy(() => import("../pages/AdminProfile"));
+const PopupManagement = React.lazy(() => import("../pages/PopupManagement"));
 
 const navItems = [
   {
@@ -121,9 +123,11 @@ const navItems = [
       { label: "Create Sections", path: "/admin/experience-studio" },
       { label: "Hero & categories per page", path: "/admin/hero-categories" },
       { label: "Send Notifications", path: "/admin/notifications" },
+      { label: "Promo Strip", path: "/admin/promo-strip" },
       { label: "Coupons & Promos", path: "/admin/coupons" },
       { label: "Offer Sections", path: "/admin/offer-sections" },
       { label: "Shop by Store", path: "/admin/shop-by-store" },
+      { label: "Seasonal Popups", path: "/admin/popups" },
     ],
   },
   {
@@ -249,6 +253,8 @@ const AdminRoutes = () => {
         <Route path="/experience-studio" element={<ContentManager />} />
         <Route path="/hero-categories" element={<HeroCategoriesPerPage />} />
         <Route path="/notifications" element={<NotificationComposer />} />
+        <Route path="/promo-strip" element={<PromoStripManagement />} />
+        <Route path="/popups" element={<PopupManagement />} />
         <Route path="/offers" element={<OffersManagement />} />
         <Route path="/offer-sections" element={<OfferSectionsManagement />} />
         <Route path="/shop-by-store" element={<ShopByStoreManagement />} />

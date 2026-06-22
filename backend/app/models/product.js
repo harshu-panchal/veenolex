@@ -50,6 +50,36 @@ const productSchema = new mongoose.Schema(
             type: String,
             trim: true,
         },
+        offerText: {
+            type: String,
+            trim: true,
+            default: "",
+        },
+        marketedBy: {
+            type: String,
+            trim: true,
+            default: "",
+        },
+        manufacturedBy: {
+            type: String,
+            trim: true,
+            default: "",
+        },
+        bestBefore: {
+            type: String,
+            trim: true,
+            default: "",
+        },
+        licenseNo: {
+            type: String,
+            trim: true,
+            default: "",
+        },
+        ingredients: {
+            type: String,
+            trim: true,
+            default: "",
+        },
         tags: [{
             type: String,
             trim: true,
@@ -60,6 +90,21 @@ const productSchema = new mongoose.Schema(
         galleryImages: [{
             type: String, // Array of Cloudinary URLs
         }],
+        resultImages: [{
+            type: String, // Array of Cloudinary URLs
+        }],
+        tabbedSections: [
+            {
+                title: {
+                    type: String,
+                    trim: true,
+                },
+                content: {
+                    type: String,
+                    trim: true,
+                }
+            }
+        ],
         headerId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Category",

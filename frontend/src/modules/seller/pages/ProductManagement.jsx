@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import Card from "@shared/components/ui/Card";
 import Badge from "@shared/components/ui/Badge";
+import Button from "@shared/components/ui/Button";
 import {
   HiOutlinePlus,
   HiOutlineCube,
@@ -202,8 +203,17 @@ const ProductManagement = () => {
     tags: "",
     weight: "",
     brand: "",
+    offerText: "",
+    marketedBy: "",
+    manufacturedBy: "",
+    bestBefore: "",
+    licenseNo: "",
+    ingredients: "",
     mainImage: null,
     galleryImages: [],
+    resultImages: [],
+    resultFiles: [],
+    tabbedSections: [],
     variants: [
       { id: Date.now(), name: "", price: "", salePrice: "", stock: "", sku: "" },
     ],
@@ -328,14 +338,40 @@ const ProductManagement = () => {
       data.append("status", formData.status);
       data.append("brand", formData.brand);
       data.append("weight", formData.weight);
+      data.append("offerText", formData.offerText);
+      data.append("marketedBy", formData.marketedBy);
+      data.append("manufacturedBy", formData.manufacturedBy);
+      data.append("bestBefore", formData.bestBefore);
+      data.append("licenseNo", formData.licenseNo);
+      data.append("ingredients", formData.ingredients);
       data.append("tags", formData.tags);
       data.append("variants", JSON.stringify(formData.variants));
 
       if (formData.mainImageFile) {
         data.append("mainImage", formData.mainImageFile);
       }
+      if (formData.galleryImages && formData.galleryImages.length > 0) {
+        formData.galleryImages.forEach((url) => {
+          if (typeof url === "string" && url.startsWith("http")) {
+            data.append("galleryImages", url);
+          }
+        });
+      }
       if (formData.galleryFiles && formData.galleryFiles.length > 0) {
         formData.galleryFiles.forEach((file) => data.append("galleryImages", file));
+      }
+      if (formData.resultImages && formData.resultImages.length > 0) {
+        formData.resultImages.forEach((url) => {
+          if (typeof url === "string" && url.startsWith("http")) {
+            data.append("resultImages", url);
+          }
+        });
+      }
+      if (formData.resultFiles && formData.resultFiles.length > 0) {
+        formData.resultFiles.forEach((file) => data.append("resultImages", file));
+      }
+      if (formData.tabbedSections && formData.tabbedSections.length > 0) {
+        data.append("tabbedSections", JSON.stringify(formData.tabbedSections));
       }
 
       if (editingItem) {
@@ -371,16 +407,38 @@ const ProductManagement = () => {
       reader.onloadend = () => {
         if (type === "main") {
           setFormData({ ...formData, mainImage: reader.result, mainImageFile: file });
-        } else {
+        } else if (type === "gallery") {
           setFormData({
             ...formData,
             galleryImages: [...formData.galleryImages, reader.result],
             galleryFiles: [...(formData.galleryFiles || []), file]
           });
+        } else if (type === "results") {
+          setFormData({
+            ...formData,
+            resultImages: [...(formData.resultImages || []), reader.result],
+            resultFiles: [...(formData.resultFiles || []), file]
+          });
         }
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const deleteResultImage = (index) => {
+    const imageToDelete = formData.resultImages[index];
+    let newResultFiles = [...(formData.resultFiles || [])];
+    if (typeof imageToDelete === "string" && !imageToDelete.startsWith("http")) {
+      const newImageIndex = formData.resultImages
+        .slice(0, index)
+        .filter((img) => typeof img === "string" && !img.startsWith("http")).length;
+      newResultFiles = newResultFiles.filter((_, i) => i !== newImageIndex);
+    }
+    setFormData({
+      ...formData,
+      resultImages: (formData.resultImages || []).filter((_, i) => i !== index),
+      resultFiles: newResultFiles,
+    });
   };
 
   const exportProducts = () => {
@@ -423,8 +481,16 @@ const ProductManagement = () => {
         tags: Array.isArray(item.tags) ? item.tags.join(", ") : item.tags || "",
         weight: item.weight || "",
         brand: item.brand || "",
+        offerText: item.offerText || "",
+        marketedBy: item.marketedBy || "",
+        manufacturedBy: item.manufacturedBy || "",
+        bestBefore: item.bestBefore || "",
+        licenseNo: item.licenseNo || "",
+        ingredients: item.ingredients || "",
         mainImage: item.mainImage || null,
         galleryImages: item.galleryImages || [],
+        resultImages: item.resultImages || [],
+        tabbedSections: item.tabbedSections || [],
         variants: (item.variants && item.variants.length > 0) ? item.variants.map(v => ({ ...v, id: v._id || Date.now() })) : [
           {
             id: Date.now(),
@@ -453,8 +519,16 @@ const ProductManagement = () => {
         tags: "",
         weight: "",
         brand: "",
+        offerText: "",
+        marketedBy: "",
+        manufacturedBy: "",
+        bestBefore: "",
+        licenseNo: "",
+        ingredients: "",
         mainImage: null,
         galleryImages: [],
+        resultImages: [],
+        tabbedSections: [],
         variants: [
           {
             id: Date.now(),
@@ -935,6 +1009,8 @@ const ProductManagement = () => {
                       icon: HiOutlineFolderOpen,
                     },
                     { id: "media", label: "Photos", icon: HiOutlinePhoto },
+                    { id: "results", label: "Results", icon: HiOutlineCheckCircle },
+                    { id: "customTabs", label: "Tab Sections", icon: HiOutlineSquaresPlus },
                   ].map((tab) => (
                     <button
                       key={tab.id}
@@ -1076,6 +1152,106 @@ const ProductManagement = () => {
                           />
                         </div>
                       </div>
+                      <div className="space-y-1.5 flex flex-col">
+                        <label className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
+                          Offer Text
+                        </label>
+                        <input
+                          value={formData.offerText}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              offerText: e.target.value,
+                            })
+                          }
+                          className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none ring-primary/5 focus:ring-2"
+                          placeholder="e.g. Buy 1 Get 1 Free, 10% Off"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-1.5 flex flex-col">
+                          <label className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
+                            Marketed By
+                          </label>
+                          <input
+                            value={formData.marketedBy}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                marketedBy: e.target.value,
+                              })
+                            }
+                            className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none ring-primary/5 focus:ring-2"
+                            placeholder="e.g. Veenolex Consumer Private Limited..."
+                          />
+                        </div>
+                        <div className="space-y-1.5 flex flex-col">
+                          <label className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
+                            Manufactured By
+                          </label>
+                          <input
+                            value={formData.manufacturedBy}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                manufacturedBy: e.target.value,
+                              })
+                            }
+                            className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none ring-primary/5 focus:ring-2"
+                            placeholder="e.g. Indo Herbal Products..."
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-1.5 flex flex-col">
+                          <label className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
+                            Best Before
+                          </label>
+                          <input
+                            value={formData.bestBefore}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                bestBefore: e.target.value,
+                              })
+                            }
+                            className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none ring-primary/5 focus:ring-2"
+                            placeholder="e.g. 18 Months, 2 Years"
+                          />
+                        </div>
+                        <div className="space-y-1.5 flex flex-col">
+                          <label className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
+                            License No
+                          </label>
+                          <input
+                            value={formData.licenseNo}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                licenseNo: e.target.value,
+                              })
+                            }
+                            className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none ring-primary/5 focus:ring-2"
+                            placeholder="e.g. HIM/COS/20/305"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5 flex flex-col">
+                        <label className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
+                          Key Ingredients
+                        </label>
+                        <input
+                          value={formData.ingredients}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              ingredients: e.target.value,
+                            })
+                          }
+                          className="w-full px-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm font-semibold outline-none ring-primary/5 focus:ring-2"
+                          placeholder="e.g. Shea Butter, Cocoa Butter, Glycerin (comma separated)"
+                        />
+                      </div>
                     </div>
                   )}
                   {/* Additional tabs populated as needed */}
@@ -1204,6 +1380,163 @@ const ProductManagement = () => {
                           Existing gallery images are shown here. Uploading new images will append them to the gallery.
                         </p>
                       </div>
+                    </div>
+                  )}
+
+                  {modalTab === "results" && (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-right-2 duration-300">
+                      <div className="space-y-3">
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
+                          Results Section Photos
+                        </label>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          {(formData.resultImages || []).slice(0, 4).map((img, idx) => (
+                            <div
+                              key={`${img}-${idx}`}
+                              className="group aspect-square rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 overflow-hidden relative">
+                              <img src={img} alt={`Result ${idx + 1}`} className="w-full h-full object-cover" />
+                              <button
+                                type="button"
+                                onClick={() => deleteResultImage(idx)}
+                                className="absolute top-2 right-2 p-1.5 rounded-full bg-white/95 text-rose-500 shadow-md opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all z-20 cursor-pointer"
+                              >
+                                <HiOutlineTrash className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ))}
+                          {Array.from({ length: Math.max(0, 4 - (formData.resultImages || []).length) }).map((_, idx) => (
+                            <div
+                              key={`upload-${idx}`}
+                              className="aspect-square rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center group hover:border-primary hover:bg-primary/5 transition-all cursor-pointer overflow-hidden relative">
+                              <input
+                                type="file"
+                                className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                                onChange={(e) => handleImageUpload(e, "results")}
+                              />
+                              <div className="flex flex-col items-center">
+                                <HiOutlinePhoto className="h-8 w-8 text-slate-200" />
+                                <p className="text-[10px] text-slate-600 font-bold mt-2">UPLOAD</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-slate-500 font-medium">
+                          Existing results images are shown here. Uploading new images will append them to the list.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {modalTab === "customTabs" && (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-right-2 duration-300">
+                      <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                        <div>
+                          <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Tab Sections</h3>
+                          <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wider">
+                            Add custom tabs and content that will be displayed in the product details page (e.g., Key Ingredients, How to use).
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            setFormData({
+                              ...formData,
+                              tabbedSections: [
+                                ...(formData.tabbedSections || []),
+                                { title: "", content: "" }
+                              ]
+                            });
+                          }}
+                          variant="outline"
+                          size="sm"
+                          className="flex items-center gap-1.5 h-9"
+                        >
+                          <HiOutlinePlus className="h-4 w-4" /> Add Section
+                        </Button>
+                      </div>
+
+                      {(formData.tabbedSections || []).length === 0 ? (
+                        <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-lg bg-slate-50/50">
+                          <HiOutlineFolderOpen className="h-10 w-10 text-slate-300 mx-auto mb-3" />
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">No custom tab sections yet</p>
+                          <p className="text-[10px] text-slate-400 mt-1 mb-4">Click "Add Section" to create custom tabs for this product.</p>
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              setFormData({
+                                ...formData,
+                                tabbedSections: [{ title: "", content: "" }]
+                              });
+                            }}
+                            variant="outline"
+                            size="sm"
+                            className="h-9"
+                          >
+                            Create First Section
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-6">
+                          {(formData.tabbedSections || []).map((section, idx) => (
+                            <div key={idx} className="p-5 border border-slate-200 rounded-2xl bg-slate-50/30 relative group space-y-4 shadow-sm">
+                              <div className="absolute top-4 right-4 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all">
+                                <Button
+                                  type="button"
+                                  onClick={() => {
+                                    setFormData({
+                                      ...formData,
+                                      tabbedSections: formData.tabbedSections.filter((_, i) => i !== idx)
+                                    });
+                                  }}
+                                  variant="ghost"
+                                  className="p-1 h-auto text-rose-500 hover:bg-rose-50"
+                                >
+                                  <HiOutlineTrash className="h-4 w-4" />
+                                </Button>
+                              </div>
+
+                              <div className="grid grid-cols-1 gap-4">
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                    Tab Heading / Title
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={section.title}
+                                    onChange={(e) => {
+                                      const newSections = [...formData.tabbedSections];
+                                      newSections[idx] = { ...newSections[idx], title: e.target.value };
+                                      setFormData({ ...formData, tabbedSections: newSections });
+                                    }}
+                                    placeholder="e.g. Key Ingredients, How to use, Suitability"
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-md text-xs font-semibold focus:outline-none focus:border-primary/50"
+                                  />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                                    <span>Tab Content</span>
+                                    <span className="text-[9px] text-slate-400 lowercase font-medium normal-case font-normal italic">
+                                      Tip: Type 'Header: Description' on a new line to bold the header in green.
+                                    </span>
+                                  </label>
+                                  <textarea
+                                    value={section.content}
+                                    onChange={(e) => {
+                                      const newSections = [...formData.tabbedSections];
+                                      newSections[idx] = { ...newSections[idx], content: e.target.value };
+                                      setFormData({ ...formData, tabbedSections: newSections });
+                                    }}
+                                    placeholder="e.g.&#10;Natural Extracts: Packed with active plant nutrients...&#10;Vitamin E & C: Powerful antioxidants..."
+                                    rows={4}
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-md text-xs font-semibold focus:outline-none focus:border-primary/50"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 

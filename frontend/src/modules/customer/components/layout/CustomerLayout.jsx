@@ -94,9 +94,10 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
 
     // Hide elements on mobile only when product detail is open
     // On desktop, we want to keep the header visible even if the modal is open
-    const finalShowHeaderMobile = showHeader && !isProductDetailOpen;
-    const finalShowBottomNavMobile = showBottomNav && !isProductDetailOpen;
-    const finalShowFooterMessageMobile = showFooterMessage && !isProductDetailOpen;
+    const isProductPage = path.startsWith('/product');
+    const finalShowHeaderMobile = showHeader && !isProductDetailOpen && !isProductPage;
+    const finalShowBottomNavMobile = showBottomNav && !isProductDetailOpen && !isProductPage;
+    const finalShowFooterMessageMobile = showFooterMessage && !isProductDetailOpen && !isProductPage;
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col font-sans">

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useInViewAnimation } from "@/core/hooks/useInViewAnimation";
-import { Sparkles, Heart, Snowflake, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { Sparkles, Heart, Snowflake, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 
 // MUI Icons (shared with admin & icon selector)
 import HomeIcon from "@mui/icons-material/Home";
@@ -14,7 +14,7 @@ import SportsSoccerIcon from "@mui/icons-material/SportsSoccer";
 import CardGiftcardIcon from "@mui/icons-material/CardGiftcard";
 import VerifiedIcon from "@mui/icons-material/Verified";
 
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import { isMobileOrWebView } from "@/core/utils/deviceUtils";
 import { customerApi } from "../services/customerApi";
 import { toast } from "sonner";
@@ -38,6 +38,7 @@ import {
 import QuickCategorySlider from "../components/home/QuickCategorySlider";
 import LowestPriceSection from "../components/home/LowestPriceSection";
 import OfferSections from "../components/home/OfferSections";
+import PromoMarquee from "../components/home/PromoMarquee";
 
 const DEFAULT_CATEGORY_THEME = {
   gradient: "linear-gradient(to bottom, var(--primary), var(--brand-400))",
@@ -277,6 +278,57 @@ const Home = () => {
   const [categoryMap, setCategoryMap] = useState(() => cachedHomePageData?.categoryMap || {});
   const [subcategoryMap, setSubcategoryMap] = useState(() => cachedHomePageData?.subcategoryMap || {});
   const [pendingReturn, setPendingReturn] = useState(null);
+  const [activePopup, setActivePopup] = useState(null);
+  const [isPopupOpen, setIsPopupOpen] = useState(false);
+
+  useEffect(() => {
+    const fetchPopup = async () => {
+      try {
+        const res = await customerApi.getActivePopup();
+        const popup = res.data?.result || res.data;
+        if (popup && popup._id) {
+          const isDismissed = popup.showOnce && localStorage.getItem("dismissed_popup_" + popup._id);
+          if (!isDismissed) {
+            setActivePopup(popup);
+            setIsPopupOpen(true);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load active popup:", error);
+      }
+    };
+    fetchPopup();
+  }, []);
+
+  const handlePopupClick = (popup) => {
+    if (!popup) return;
+    setIsPopupOpen(false);
+    if (popup.showOnce) {
+      localStorage.setItem("dismissed_popup_" + popup._id, "true");
+    }
+    const { linkType, linkValue } = popup;
+    if (linkType === "none" || !linkValue) return;
+
+    if (linkType === "header") {
+      const match = categories.find((cat) => cat._id === linkValue);
+      if (match) {
+        setActiveCategory(match);
+      } else {
+        navigate("/");
+      }
+    } else if (linkType === "category" || linkType === "subcategory") {
+      navigate(`/category/${linkValue}`);
+    } else if (linkType === "product") {
+      navigate(`/product/${linkValue}`);
+    } else if (linkType === "url") {
+      if (/^https?:\/\//i.test(linkValue)) {
+        window.open(linkValue, "_blank", "noopener,noreferrer");
+      } else {
+        navigate(linkValue);
+      }
+    }
+  };
+
   const [offerSections, setOfferSections] = useState(() => cachedHomePageData?.offerSections || []);
   const [noServiceData, setNoServiceData] = useState(null);
 
@@ -477,7 +529,7 @@ const Home = () => {
   };
 
   return (
-    <div className={`min-h-screen pt-[210px] md:pt-[190px] ${products.length === 0 && !isLoading ? "bg-white" : "bg-[#FAF9F4]"}`}>
+    <div className={`min-h-screen pt-[250px] md:pt-[220px] ${products.length === 0 && !isLoading ? "bg-white" : "bg-[#FAF9F4]"}`}>
       <div className={cn("contents", isProductDetailOpen && "hidden md:contents")}>
         <MainLocationHeader categories={categories} activeCategory={activeCategory} onCategorySelect={setActiveCategory} hideSearchBar={true} />
       </div>
@@ -491,6 +543,7 @@ const Home = () => {
         </div>
       ) : (
         <>
+          <PromoMarquee />
 
           {heroConfig.banners?.items?.length > 0 && (
             <motion.div ref={heroRef} className="block mt-5 md:mt-8 will-change-transform" style={isMobile ? { opacity: 1 } : { opacity, scale, pointerEvents }}>
@@ -516,6 +569,99 @@ const Home = () => {
           )}
         </>
       )}
+      <AnimatePresence>
+        {isPopupOpen && activePopup && (
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+            {/* Background Click Close */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                setIsPopupOpen(false);
+                if (activePopup.showOnce) {
+                  localStorage.setItem("dismissed_popup_" + activePopup._id, "true");
+                }
+              }}
+              className="absolute inset-0 cursor-pointer"
+            />
+
+            {/* Popup Box */}
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              className="bg-white rounded-[2.5rem] overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.5)] w-full max-w-sm sm:max-w-md relative z-10 border border-white/20"
+            >
+              {/* Premium Floating Close button */}
+              <button
+                onClick={() => {
+                  setIsPopupOpen(false);
+                  if (activePopup.showOnce) {
+                    localStorage.setItem("dismissed_popup_" + activePopup._id, "true");
+                  }
+                }}
+                className="absolute top-4 right-4 z-20 p-2.5 bg-black/60 hover:bg-black/85 rounded-full text-white transition-all hover:scale-105 active:scale-95 shadow-md"
+              >
+                <X size={18} />
+              </button>
+
+              {/* Banner Image Container */}
+              <div 
+                onClick={() => handlePopupClick(activePopup)}
+                className="w-full aspect-[4/5] bg-slate-100 overflow-hidden relative cursor-pointer group"
+              >
+                <img
+                  src={activePopup.imageUrl}
+                  alt={activePopup.title}
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                />
+                
+                {/* Elegant overlay gradient on hover */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+                  <span className="text-white text-xs font-black uppercase tracking-wider bg-white/20 backdrop-blur-md py-2.5 px-5 rounded-full">
+                    View Details
+                  </span>
+                </div>
+              </div>
+
+              {/* Text Description and Actions */}
+              <div className="p-6 sm:p-8 text-center bg-white">
+                <h3 className="text-xl font-black text-slate-800 leading-tight">
+                  {activePopup.title}
+                </h3>
+                {activePopup.description && (
+                  <p className="text-xs text-slate-400 font-bold mt-2 leading-relaxed">
+                    {activePopup.description}
+                  </p>
+                )}
+                
+                {activePopup.linkType !== "none" ? (
+                  <button
+                    onClick={() => handlePopupClick(activePopup)}
+                    className="w-full mt-5 py-4 bg-black hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all active:scale-[0.98] shadow-lg shadow-black/10"
+                  >
+                    Check it out
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setIsPopupOpen(false);
+                      if (activePopup.showOnce) {
+                        localStorage.setItem("dismissed_popup_" + activePopup._id, "true");
+                      }
+                    }}
+                    className="w-full mt-5 py-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-black uppercase tracking-widest transition-all"
+                  >
+                    Close
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

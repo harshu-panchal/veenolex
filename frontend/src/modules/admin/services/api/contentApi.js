@@ -59,6 +59,13 @@ export const adminContentApi = {
     createCoupon: (data) => axiosInstance.post('/admin/coupons', data),
     updateCoupon: (id, data) => axiosInstance.put(`/admin/coupons/${id}`, data),
     deleteCoupon: (id) => axiosInstance.delete(`/admin/coupons/${id}`),
+
+    // Popup Management
+    getPopups: (params) => axiosInstance.get('/popups', { params }),
+    createPopup: (data) => axiosInstance.post('/popups', data),
+    updatePopup: (id, data) => axiosInstance.put(`/popups/${id}`, data),
+    deletePopup: (id) => axiosInstance.delete(`/popups/${id}`),
+    uploadPopupImage: (formData) => axiosInstance.post('/popups/upload-image', formData),
 };
 
 export default adminContentApi;
