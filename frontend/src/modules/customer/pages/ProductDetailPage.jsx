@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Heart, Plus, Minus, Star, ShieldCheck, Clock, ArrowLeft, MessageSquare, Search, Share2, ChevronLeft, ChevronRight, MapPin, Truck, RotateCcw } from 'lucide-react';
+import { Heart, Plus, Minus, Star, ShieldCheck, Clock, ArrowLeft, MessageSquare, Search, Share2, ChevronLeft, ChevronRight, MapPin, Truck, RotateCcw, Tag, Sparkles } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { useToast } from '@shared/components/ui/Toast';
@@ -13,6 +13,72 @@ import { useSettings } from '@core/context/SettingsContext';
 import Lottie from 'lottie-react';
 import LogoImage from '@/assets/Logo.png';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// Helper for mapping styles to colors for mock offer cards
+const getOfferColors = (style) => {
+    switch (style) {
+        case "green":
+            return {
+                bg: "bg-emerald-50/40",
+                border: "border-emerald-200/80",
+                text: "text-emerald-700",
+                badge: "bg-emerald-500 text-white",
+                dot: "border-emerald-200",
+            };
+        case "orange":
+            return {
+                bg: "bg-orange-50/40",
+                border: "border-orange-200/80",
+                text: "text-orange-700",
+                badge: "bg-orange-500 text-white",
+                dot: "border-orange-200",
+            };
+        case "blue":
+        default:
+            return {
+                bg: "bg-sky-50/40",
+                border: "border-sky-200/80",
+                text: "text-sky-700",
+                badge: "bg-sky-500 text-white",
+                dot: "border-sky-200",
+            };
+    }
+};
+
+// Render small inline icon for mock offer cards
+const smallIconFor = (icon) => {
+    if (icon === "clock") return <Clock size={12} />;
+    if (icon === "tag") return <Tag size={12} />;
+    return <Sparkles size={12} />;
+};
+
+// Static mock offers for UI
+const mockOffers = [
+    {
+        _id: "mock-1",
+        title: "Flat 20% OFF",
+        description: "Get 20% off on your first order. Minimum value ₹499.",
+        code: "WELCOME20",
+        style: "green",
+        icon: "sparkles"
+    },
+    {
+        _id: "mock-2",
+        title: "Free Shipping",
+        description: "Free delivery on orders above ₹399.",
+        code: "FREESHIP",
+        style: "blue",
+        icon: "tag"
+    },
+    {
+        _id: "mock-3",
+        title: "Save ₹100",
+        description: "Flat ₹100 off on purchasing above ₹999.",
+        code: "SAVE100",
+        style: "orange",
+        icon: "clock"
+    }
+];
 
 // Utility to clean RTF/HTML content and decode basic HTML entities
 const cleanDescription = (text) => {
@@ -224,6 +290,43 @@ const ProductDetailPage = () => {
     const [product, setProduct] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
+
+    // Coupons states
+    const [coupons, setCoupons] = useState([]);
+    const [couponsLoading, setCouponsLoading] = useState(false);
+    const [appliedCoupon, setAppliedCoupon] = useState(null);
+
+    const getDiscountedPrice = (price) => {
+        if (!appliedCoupon) return price;
+        
+        let discount = 0;
+        if (appliedCoupon.discountType === "percentage") {
+            discount = Math.round((price * appliedCoupon.discountValue) / 100);
+            if (appliedCoupon.maxDiscount && discount > appliedCoupon.maxDiscount) {
+                discount = appliedCoupon.maxDiscount;
+            }
+        } else if (appliedCoupon.discountType === "fixed") {
+            discount = appliedCoupon.discountValue;
+        }
+        
+        const finalPrice = price - discount;
+        return finalPrice > 0 ? finalPrice : 0;
+    };
+
+    const fetchCoupons = async () => {
+        try {
+            setCouponsLoading(true);
+            const res = await customerApi.getActiveCoupons();
+            const list = res.data?.results || res.data?.result || res.data || [];
+            if (Array.isArray(list)) {
+                setCoupons(list);
+            }
+        } catch (err) {
+            console.error("Failed to fetch coupons:", err);
+        } finally {
+            setCouponsLoading(false);
+        }
+    };
     const [activeImage, setActiveImage] = useState('');
     const [reviews, setReviews] = useState([]);
     const [reviewLoading, setReviewLoading] = useState(false);
@@ -241,6 +344,24 @@ const ProductDetailPage = () => {
     const titleRef = React.useRef(null);
 
     const cleanedDescription = React.useMemo(() => cleanDescription(product?.description), [product?.description]);
+
+    const applicableCoupons = React.useMemo(() => {
+        if (!product) return [];
+        const productCategoryId = typeof product.categoryId === 'object' 
+            ? String(product.categoryId?._id || product.categoryId?.id || '') 
+            : String(product.categoryId || '');
+            
+        return coupons.filter(coupon => {
+            if (!coupon.applicableCategories || coupon.applicableCategories.length === 0) {
+                return true; // General coupon
+            }
+            return coupon.applicableCategories.some(cat => {
+                const catId = typeof cat === 'object' ? String(cat._id || cat.id || '') : String(cat);
+                return catId === productCategoryId;
+            });
+        });
+    }, [coupons, product]);
+
     const [activeSectionTab, setActiveSectionTab] = useState('ingredients');
     const activeTabs = React.useMemo(() => {
         if (product && Array.isArray(product.tabbedSections) && product.tabbedSections.length > 0) {
@@ -352,7 +473,7 @@ const ProductDetailPage = () => {
             ...product,
             variantSku: variantKey,
             variantName: activeVariant?.name || "",
-            price: activePrice
+            price: finalPrice
         });
         showToast(`${product.name} added to cart`, 'success');
     };
@@ -403,9 +524,34 @@ const ProductDetailPage = () => {
     const activeVariant = selectedVariant || defaultVariant;
     const activePrice = Number(activeVariant?.salePrice || activeVariant?.price || product?.salePrice || product?.price || 0);
     const activeOriginalPrice = Number(activeVariant?.price || product?.price || 0);
+    const finalPrice = appliedCoupon ? getDiscountedPrice(activePrice) : activePrice;
     const activeDiscountPercent = activeOriginalPrice > activePrice 
         ? Math.round(((activeOriginalPrice - activePrice) / activeOriginalPrice) * 100) 
         : 0;
+
+    const handleApplyCoupon = (coupon) => {
+        if (appliedCoupon && appliedCoupon.code === coupon.code) {
+            setAppliedCoupon(null);
+            showToast(`Coupon "${coupon.code}" removed`, "info");
+            return;
+        }
+        
+        // Validate minOrderValue condition locally based on activePrice
+        if (coupon.minOrderValue && activePrice < coupon.minOrderValue) {
+            showToast(`This coupon requires a minimum price of ₹${coupon.minOrderValue}`, "error");
+            return;
+        }
+        
+        setAppliedCoupon(coupon);
+        showToast(`Coupon "${coupon.code}" applied!`, "success");
+    };
+
+    useEffect(() => {
+        if (appliedCoupon && appliedCoupon.minOrderValue && activePrice < appliedCoupon.minOrderValue) {
+            setAppliedCoupon(null);
+            showToast(`Coupon "${appliedCoupon.code}" removed because price is below ₹${appliedCoupon.minOrderValue}`, "info");
+        }
+    }, [activePrice, appliedCoupon]);
 
     const netContentInfo = React.useMemo(() => {
         if (!product) return { content: "150ml", usp: "" };
@@ -563,6 +709,7 @@ const ProductDetailPage = () => {
     useEffect(() => {
         if (id) {
             fetchData();
+            fetchCoupons();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [id]);
@@ -682,6 +829,90 @@ const ProductDetailPage = () => {
         stock: product.stock,
         sku: "default"
     }];
+
+    const renderOfferSection = () => {
+        if (applicableCoupons.length === 0) return null;
+
+        return (
+            <div className="space-y-3 mt-4 pt-3 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                        <Tag size={14} className="text-primary" /> Available Offers
+                    </span>
+                </div>
+                
+                <div className="flex gap-3 overflow-x-auto pb-3 pt-1 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
+                    {applicableCoupons.map((coupon) => {
+                        const style = coupon.discountType === "free_delivery" ? "blue" : coupon.discountType === "fixed" ? "orange" : "green";
+                        const icon = coupon.discountType === "free_delivery" ? "tag" : coupon.discountType === "fixed" ? "clock" : "sparkles";
+                        const colors = getOfferColors(style);
+
+                        const displayTitle = coupon.title || (
+                            coupon.discountType === "free_delivery" 
+                                ? "Free Delivery" 
+                                : coupon.discountType === "percentage" 
+                                    ? `${coupon.discountValue}% OFF` 
+                                    : `₹${coupon.discountValue} OFF`
+                        );
+
+                        const displayDescription = coupon.description || (
+                            coupon.minOrderValue > 0 
+                                ? `Get discount on orders above ₹${coupon.minOrderValue}` 
+                                : "Special discount just for you!"
+                        );
+
+                        return (
+                            <div
+                                key={coupon._id}
+                                className={cn(
+                                    "flex-shrink-0 w-64 border border-dashed rounded-2xl p-4 flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden",
+                                    colors.bg,
+                                    colors.border
+                                )}
+                            >
+                                {/* Left & Right ticket cutouts */}
+                                <div className={cn("absolute top-1/2 -left-2 w-4 h-4 bg-white rounded-full border-r -translate-y-1/2", colors.dot)}></div>
+                                <div className={cn("absolute top-1/2 -right-2 w-4 h-4 bg-white rounded-full border-l -translate-y-1/2", colors.dot)}></div>
+                                
+                                <div className="space-y-1 text-left">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className={cn("p-1.5 rounded-lg shrink-0", colors.badge)}>
+                                            {smallIconFor(icon)}
+                                        </span>
+                                        <span className={cn("text-[10px] font-black tracking-widest", colors.text)}>
+                                            {coupon.code}
+                                        </span>
+                                    </div>
+                                    <h4 className="text-xs font-black text-slate-800 line-clamp-1">{displayTitle}</h4>
+                                    <p className="text-[10px] text-slate-500 font-semibold leading-relaxed line-clamp-2">{displayDescription}</p>
+                                    {coupon.minOrderValue > 0 && (
+                                        <p className="text-[9px] text-slate-400 font-extrabold uppercase mt-1">Min. Order: ₹{coupon.minOrderValue}</p>
+                                    )}
+                                </div>
+                                
+                                <div className="flex items-center justify-between mt-3 pt-3 border-t border-dashed border-slate-200">
+                                    <button 
+                                        onClick={() => handleApplyCoupon(coupon)}
+                                        className={cn(
+                                            "text-[10px] font-extrabold uppercase tracking-wider cursor-pointer transition-all",
+                                            appliedCoupon && appliedCoupon.code === coupon.code
+                                                ? "text-emerald-600 bg-emerald-100/60 px-2.5 py-1 rounded-lg flex items-center gap-1 font-black shadow-[0_2px_4px_rgba(0,0,0,0.02)]"
+                                                : "text-primary hover:underline"
+                                        )}
+                                    >
+                                        {appliedCoupon && appliedCoupon.code === coupon.code ? "✓ Applied" : "Apply Code"}
+                                    </button>
+                                    <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">
+                                        T&C Apply
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    };
 
     return (
         <div className="relative z-10 pt-0 pb-8 md:py-8 w-full max-w-[1920px] mx-auto px-4 md:px-[50px] animate-in fade-in duration-700 mt-0 md:mt-24 font-['Inter']">
@@ -879,17 +1110,26 @@ const ProductDetailPage = () => {
                             </div>
 
                             <div className="flex items-baseline gap-2">
-                                <span className="text-2xl font-black text-slate-900">₹{activePrice}</span>
-                                {activeOriginalPrice > activePrice && (
+                                <span className="text-2xl font-black text-slate-900">₹{finalPrice}</span>
+                                {appliedCoupon ? (
+                                    <>
+                                        <span className="text-[11px] text-slate-400 font-semibold line-through">₹{activePrice}</span>
+                                        <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider">
+                                            {appliedCoupon.code} Applied
+                                        </span>
+                                    </>
+                                ) : activeOriginalPrice > activePrice ? (
                                     <>
                                         <span className="text-[11px] text-slate-400 font-semibold line-through">MRP: ₹{activeOriginalPrice}</span>
                                         <span className="text-[11px] text-[#ff2c38] font-extrabold uppercase tracking-wide">
                                             {activeDiscountPercent}% off
                                         </span>
                                     </>
-                                )}
+                                ) : null}
                                 <span className="text-[10px] text-slate-400 italic font-semibold ml-1">Incl. of all taxes</span>
                             </div>
+
+                            {renderOfferSection()}
                         </div>
 
                         {/* Desktop Only Rating, Category & Price Block */}
@@ -906,19 +1146,32 @@ const ProductDetailPage = () => {
                             <div className="absolute top-0 right-0 w-36 h-36 bg-brand-500/5 rounded-full blur-3xl" />
                             <div className="flex flex-col gap-1.5">
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Best Price</span>
-                                <div className="flex items-baseline gap-4">
-                                    <span className="text-4xl md:text-5xl font-black text-primary tracking-tight">₹{product.salePrice || product.price}</span>
-                                    {(product.salePrice && product.salePrice < product.price) && (
-                                        <span className="text-lg md:text-xl text-slate-400 line-through font-bold">₹{product.price}</span>
-                                    )}
-                                    {product.salePrice && product.salePrice < product.price && (
-                                        <span className="text-xs bg-red-50 border border-red-100 text-red-500 px-2.5 py-1.5 rounded-xl font-black uppercase tracking-wide">
-                                            {Math.round(((product.price - product.salePrice) / product.price) * 100)}% OFF
-                                        </span>
-                                    )}
+                                <div className="flex items-baseline gap-4 flex-wrap">
+                                    <span className="text-4xl md:text-5xl font-black text-primary tracking-tight">₹{finalPrice}</span>
+                                    {appliedCoupon ? (
+                                        <>
+                                            <span className="text-lg md:text-xl text-slate-400 line-through font-bold">₹{activePrice}</span>
+                                            <span className="bg-emerald-100 text-emerald-800 text-xs font-black px-3 py-1 rounded-xl uppercase tracking-wider">
+                                                {appliedCoupon.code} Applied
+                                            </span>
+                                        </>
+                                    ) : activeOriginalPrice > activePrice ? (
+                                        <>
+                                            <span className="text-lg md:text-xl text-slate-400 line-through font-bold">₹{activeOriginalPrice}</span>
+                                            <span className="text-xs bg-red-50 border border-red-100 text-red-500 px-2.5 py-1.5 rounded-xl font-black uppercase tracking-wide">
+                                                {activeDiscountPercent}% OFF
+                                            </span>
+                                        </>
+                                    ) : null}
                                 </div>
                             </div>
                         </div>
+
+                        {applicableCoupons.length > 0 && (
+                            <div className="hidden md:block mb-6">
+                                {renderOfferSection()}
+                            </div>
+                        )}
 
                         <p className="hidden md:block text-slate-500 text-xs md:text-sm leading-relaxed mb-6 font-normal max-w-2xl font-sans mt-4 whitespace-pre-line">
                             {cleanedDescription || "Fresh and premium quality product sourced directly from local vendors."}
@@ -1763,7 +2016,7 @@ const ProductDetailPage = () => {
                     <div className="flex flex-col">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Price</span>
                         <span className="text-xl font-black text-slate-900">
-                            ₹{activePrice}
+                            ₹{finalPrice}
                         </span>
                     </div>
 
