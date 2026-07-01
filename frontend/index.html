@@ -17,8 +17,150 @@
 </head>
 
 <body>
+  <!-- Splash Screen: Shows instantly before React loads -->
+  <div id="splash-screen" style="
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #ffffff 0%, #FFF9EC 50%, #FFF4D6 100%);
+    transition: opacity 2s ease, visibility 2s ease;
+  ">
+    <style>
+      @keyframes splash-shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+      }
+      @keyframes splash-logo-pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.03); opacity: 0.92; }
+      }
+      @keyframes splash-bar-fill {
+        0% { width: 0%; }
+        60% { width: 70%; }
+        100% { width: 95%; }
+      }
+      @keyframes splash-dot-bounce {
+        0%, 80%, 100% { transform: translateY(0); }
+        40% { transform: translateY(-6px); }
+      }
+      #splash-screen .splash-logo-wrap {
+        position: relative;
+        animation: splash-logo-pulse 2.2s ease-in-out infinite;
+      }
+      #splash-screen .splash-logo-wrap::after {
+        content: '';
+        position: absolute;
+        inset: -8px;
+        border-radius: 50%;
+        background: linear-gradient(90deg,
+          transparent 0%,
+          rgba(230, 176, 50, 0.12) 25%,
+          rgba(230, 176, 50, 0.25) 50%,
+          rgba(230, 176, 50, 0.12) 75%,
+          transparent 100%
+        );
+        background-size: 200% 100%;
+        animation: splash-shimmer 4s ease-in-out infinite;
+        pointer-events: none;
+      }
+      #splash-screen .splash-text {
+        position: relative;
+        overflow: hidden;
+        background: linear-gradient(90deg, #C4922A, #E6B032, #F0C85A, #E6B032, #C4922A);
+        background-size: 200% auto;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        animation: splash-shimmer 4.5s ease-in-out infinite;
+      }
+      #splash-screen .splash-bar-track {
+        width: 140px;
+        height: 3px;
+        background: rgba(196, 146, 42, 0.12);
+        border-radius: 99px;
+        overflow: hidden;
+        margin-top: 28px;
+      }
+      #splash-screen .splash-bar-fill {
+        height: 100%;
+        border-radius: 99px;
+        background: linear-gradient(90deg, #C4922A, #E6B032, #F0C85A);
+        animation: splash-bar-fill 2.5s ease-out forwards;
+      }
+      #splash-screen .splash-dots {
+        display: flex;
+        gap: 6px;
+        margin-top: 18px;
+      }
+      #splash-screen .splash-dots span {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #D4A23A;
+        opacity: 0.5;
+        animation: splash-dot-bounce 1.2s ease-in-out infinite;
+      }
+      #splash-screen .splash-dots span:nth-child(2) { animation-delay: 0.15s; }
+      #splash-screen .splash-dots span:nth-child(3) { animation-delay: 0.3s; }
+      #splash-screen.hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+    </style>
+
+    <div class="splash-logo-wrap">
+      <img src="/logo.png" alt="Veenolex" width="120" height="120" style="
+        display: block;
+        object-fit: contain;
+        filter: drop-shadow(0 8px 24px rgba(196, 146, 42, 0.18));
+      " />
+    </div>
+
+    <p class="splash-text" style="
+      margin-top: 20px;
+      font-family: 'Inter', 'Outfit', sans-serif;
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: 5px;
+      text-transform: uppercase;
+    ">VEENOLEX</p>
+
+    <div class="splash-bar-track">
+      <div class="splash-bar-fill"></div>
+    </div>
+
+    <div class="splash-dots">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+  </div>
+
   <div id="root"></div>
   <script type="module" src="/src/main.jsx"></script>
+  <script>
+    // Hide splash once React has rendered content
+    (function() {
+      var splash = document.getElementById('splash-screen');
+      if (!splash) return;
+      var observer = new MutationObserver(function() {
+        var root = document.getElementById('root');
+        if (root && root.children.length > 0) {
+          setTimeout(function() { splash.classList.add('hidden'); }, 300);
+          setTimeout(function() { splash.remove(); }, 2500);
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.getElementById('root'), { childList: true });
+      // Fallback: remove after 6s max
+      setTimeout(function() { if (splash.parentNode) { splash.classList.add('hidden'); setTimeout(function() { splash.remove(); }, 2500); } }, 6000);
+    })();
+  </script>
 </body>
 
 </html>

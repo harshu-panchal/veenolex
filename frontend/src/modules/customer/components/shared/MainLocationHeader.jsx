@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, useScroll, useTransform } from "framer-motion";
+import gsap from "gsap";
 import Lottie from "lottie-react";
 import LocationDrawer from "./LocationDrawer";
 import { useLocation } from "../../context/LocationContext";
@@ -24,7 +25,35 @@ import FavoriteBorderOutlinedIcon from "@mui/icons-material/FavoriteBorderOutlin
 import ShoppingCartOutlinedIcon from "@mui/icons-material/ShoppingCartOutlined";
 import AccountCircleOutlinedIcon from "@mui/icons-material/AccountCircleOutlined";
 
+const SkeletonCategoryBar = () => (
+  <div className="flex items-end gap-0 overflow-x-auto no-scrollbar -mx-2 px-2 min-h-[68px] md:min-h-[76px] pt-1 pb-0.5">
+    {Array.from({ length: 6 }).map((_, i) => (
+      <div key={i} className="flex flex-col items-center gap-1.5 px-2 min-w-[48px] md:min-w-[58px]">
+        <div className="h-9 w-9 md:h-11 md:w-11 rounded-full shimmer-bg" />
+        <div className="h-2.5 w-10 rounded-full shimmer-bg mt-1" />
+      </div>
+    ))}
+    <style>{`
+      @keyframes shimmer {
+        0%   { background-position: -400px 0; }
+        100% { background-position:  400px 0; }
+      }
+      .shimmer-bg {
+        background: linear-gradient(
+          90deg,
+          rgba(0,0,0,0.06) 25%,
+          rgba(0,0,0,0.12) 37%,
+          rgba(0,0,0,0.06) 63%
+        );
+        background-size: 800px 100%;
+        animation: shimmer 1.4s ease-in-out infinite;
+      }
+    `}</style>
+  </div>
+);
+
 function CategoryNavColumn({
+  index,
   cat,
   isActive,
   categoryAccent,
@@ -33,39 +62,107 @@ function CategoryNavColumn({
   headerIconColor,
 }) {
   const iconColor = headerIconColor || "#111111";
+  
+  const iconWrapRef = useRef(null);
+  const rippleRef = useRef(null);
+  const barRef = useRef(null);
+  const labelRef = useRef(null);
+  const wasActive = useRef(false);
+
+  // 1. MOUNT ENTRANCE
+  useEffect(() => {
+    gsap.fromTo(
+      iconWrapRef.current,
+      { y: 12, opacity: 0, scale: 0.75 },
+      { y: 0, opacity: 1, scale: 1, duration: 0.45, ease: "back.out(1.7)", delay: index * 0.055 }
+    );
+  }, [index]);
+
+  // 2. ACTIVE STATE SPRING
+  useEffect(() => {
+    if (isActive !== wasActive.current) {
+      if (isActive) {
+        gsap.to(iconWrapRef.current, { y: -6, scale: 1.14, ease: "elastic.out(1, 0.4)", duration: 0.5 });
+        gsap.fromTo(labelRef.current, { scale: 0.88 }, { scale: 1, ease: "back.out(2)", duration: 0.3 });
+        if (barRef.current) {
+          gsap.fromTo(barRef.current, 
+            { scaleX: 0, opacity: 0 }, 
+            { scaleX: 1, opacity: 1, ease: "elastic.out(1, 0.5)", duration: 0.5, transformOrigin: "center center" }
+          );
+        }
+      } else {
+        gsap.to(iconWrapRef.current, { y: 0, scale: 1, ease: "power3.out", duration: 0.3 });
+        if (barRef.current) {
+          gsap.to(barRef.current, { scaleX: 0, opacity: 0, duration: 0.2 });
+        }
+      }
+      wasActive.current = isActive;
+    }
+  }, [isActive]);
+
+  const handleClick = () => {
+    // 3. RIPPLE BURST & 4. PRESS FEEDBACK
+    if (rippleRef.current) {
+      gsap.fromTo(rippleRef.current,
+        { scale: 0, opacity: 0.45 },
+        { scale: 2.4, opacity: 0, duration: 0.55, ease: "power2.out" }
+      );
+    }
+    
+    const tl = gsap.timeline();
+    tl.to(iconWrapRef.current, { scale: 0.87, duration: 0.1, ease: "power2.in" })
+      .to(iconWrapRef.current, { scale: 1.13, duration: 0.18, ease: "back.out(2)" })
+      .to(iconWrapRef.current, { scale: 1.14, duration: 0.22, ease: "elastic.out(1,0.4)" });
+
+    if (onCategorySelect) onCategorySelect(cat);
+  };
+
+  const handleMouseEnter = () => {
+    if (!isActive) {
+      gsap.to(iconWrapRef.current, { y: -3, scale: 1.07, duration: 0.22, ease: "power2.out" });
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (!isActive) {
+      gsap.to(iconWrapRef.current, { y: 0, scale: 1, duration: 0.28, ease: "power2.out" });
+    }
+  };
 
   return (
-    <motion.div
-      layout
-      whileTap={{ scale: 0.96 }}
-      transition={{
-        layout: { type: "spring", stiffness: 520, damping: 38, mass: 0.55 },
-      }}
-      onClick={() => onCategorySelect && onCategorySelect(cat)}
+    <div
+      onClick={handleClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       className="relative z-[2] flex min-w-[48px] shrink-0 cursor-pointer flex-col items-center gap-1.5 px-2 pb-1.5 pt-0.5 snap-start md:min-w-[58px]">
-      <div className="relative z-10 flex h-9 w-9 md:h-11 md:w-11 items-center justify-center bg-white rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.06)] border border-slate-100 transition-all duration-200 hover:scale-105">
-        {typeof cat.icon === "function" ||
-          (typeof cat.icon === "object" && cat.icon.$$typeof) ? (
-          <cat.icon
-            sx={{
-              fontSize: { xs: 20, md: 24 },
-              color: iconColor,
-              opacity: isActive ? 1 : 0.78,
-              transition: "opacity 0.2s, transform 0.2s",
-            }}
-          />
-        ) : (
-          <img
-            src={applyCloudinaryTransform(cat.icon, "f_auto,q_auto,w_100")}
-            alt={cat.name}
-            loading="lazy"
-            className="h-5 w-5 object-contain md:h-6 md:w-6"
-            style={{ opacity: isActive ? 1 : 0.78 }}
-          />
-        )}
+      
+      <div className="relative z-10 flex h-9 w-9 md:h-11 md:w-11 items-center justify-center">
+        <div ref={rippleRef} className="absolute inset-0 rounded-full" style={{ backgroundColor: categoryAccent, opacity: 0, pointerEvents: 'none' }} />
+        <div ref={iconWrapRef} className="relative z-10 flex h-full w-full items-center justify-center bg-white rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.06)] border border-slate-100">
+          {typeof cat.icon === "function" ||
+            (typeof cat.icon === "object" && cat.icon.$$typeof) ? (
+            <cat.icon
+              sx={{
+                fontSize: { xs: 20, md: 24 },
+                color: iconColor,
+                opacity: isActive ? 1 : 0.78,
+                transition: "opacity 0.2s",
+              }}
+            />
+          ) : (
+            <img
+              src={applyCloudinaryTransform(cat.icon, "f_auto,q_auto,w_100")}
+              alt={cat.name}
+              loading="lazy"
+              className="h-5 w-5 object-contain md:h-6 md:w-6"
+              style={{ opacity: isActive ? 1 : 0.78 }}
+            />
+          )}
+        </div>
       </div>
       <div className="relative mt-px w-full">
         <span
+          ref={labelRef}
           className={cn(
             "relative z-10 mx-auto block max-w-[80px] truncate px-1 pb-0.5 text-center text-[10px] font-['Inter'] tracking-tight md:max-w-[96px] md:text-[12px]",
             isActive ? "font-black" : "font-semibold",
@@ -78,19 +175,12 @@ function CategoryNavColumn({
           {cat.name}
         </span>
       </div>
-      {isActive && (
-        <motion.div
-          layoutId="active-category-line"
-          className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[3px] w-8 rounded-full"
-          style={{ backgroundColor: categoryAccent }}
-          transition={{
-            type: "spring",
-            stiffness: 380,
-            damping: 30,
-          }}
-        />
-      )}
-    </motion.div>
+      <div
+        ref={barRef}
+        className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[3px] w-8 rounded-full"
+        style={{ backgroundColor: categoryAccent, opacity: 0, transformOrigin: "center center" }}
+      />
+    </div>
   );
 }
 
@@ -119,6 +209,7 @@ const MainLocationHeader = ({
   activeCategory,
   onCategorySelect,
   hideSearchBar = false,
+  isLoading = false,
 }) => {
   const { scrollY } = useScroll();
   const [isLocationOpen, setIsLocationOpen] = useState(false);
@@ -427,7 +518,9 @@ const MainLocationHeader = ({
           </div>
 
           {/* Categories Navigation - Smooth Collapse */}
-          {categories.length > 0 && (
+          {isLoading ? (
+            <SkeletonCategoryBar />
+          ) : categories.length > 0 && (
             <motion.div
               layout
               transition={{
@@ -446,11 +539,12 @@ const MainLocationHeader = ({
                 overflowY: "hidden",
               }}
               className="relative flex items-end md:justify-start gap-0 overflow-x-auto no-scrollbar -mx-2 px-2 md:mx-0 md:px-2 lg:px-6 z-10 snap-x pt-1 min-h-[68px] md:min-h-[76px] pb-0.5">
-              {categories.slice(0, 10).map((cat) => {
+              {categories.slice(0, 20).map((cat, index) => {
                 const isActive = activeCategory?.id === cat.id;
                 return (
                   <CategoryNavColumn
                     key={cat.id}
+                    index={index}
                     cat={cat}
                     isActive={isActive}
                     categoryAccent={categoryAccent}

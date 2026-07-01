@@ -98,11 +98,16 @@ async function computeSellerStats(sellerOid, range) {
     trendStartDate.setDate(trendStartDate.getDate() - 7);
   }
 
+  // 40 days data lock for Sellers
+  const fortyDaysAgo = new Date();
+  fortyDaysAgo.setDate(fortyDaysAgo.getDate() - 40);
+
   const [statsResult] = await Order.aggregate([
     {
       $match: {
         seller: sellerOid,
         status: { $ne: "cancelled" },
+        createdAt: { $gte: fortyDaysAgo },
       },
     },
     {

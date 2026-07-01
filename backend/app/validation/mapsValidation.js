@@ -41,3 +41,8 @@ export const routeRequestSchema = Joi.object({
     .valid("driving", "walking", "bicycling", "transit")
     .optional(),
 });
+
+/** Query schema for `/maps/autocomplete`. */
+export const autocompleteQuerySchema = Joi.object({
+  input: trimmedString.min(3).max(500).required(),
+});

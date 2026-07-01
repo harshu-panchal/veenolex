@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import CouponCarousel from "@/components/CouponCarousel";
 
 /**
  * CheckoutCouponSection
@@ -37,8 +38,8 @@ const CheckoutCouponSection = React.memo(function CheckoutCouponSection({
 }) {
   return (
     <>
-      {/* Inline coupon carousel */}
-      <motion.div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+      {/* Inline coupon grid */}
+      <motion.div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 overflow-hidden w-full box-border">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Tag size={20} className="text-orange-500" />
@@ -55,64 +56,12 @@ const CheckoutCouponSection = React.memo(function CheckoutCouponSection({
             No coupons available right now.
           </p>
         ) : (
-          <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4 snap-x">
-            {coupons.map((coupon) => {
-              const isApplied = selectedCoupon?.code === coupon.code;
-              return (
-                <div
-                  key={coupon.code}
-                  className={`flex-shrink-0 w-[200px] snap-start rounded-2xl border-2 border-dashed p-3 flex flex-col gap-2 transition-all ${
-                    isApplied
-                      ? "border-green-400 bg-green-50"
-                      : "border-orange-200 bg-gradient-to-br from-orange-50 to-yellow-50"
-                  }`}>
-                  <div className="flex items-center justify-between">
-                    <span
-                      className={`text-xs font-black px-2 py-0.5 rounded-lg tracking-widest uppercase ${
-                        isApplied
-                          ? "bg-green-100 text-green-700"
-                          : "bg-orange-100 text-orange-600"
-                      }`}>
-                      {coupon.code}
-                    </span>
-                    {isApplied && (
-                      <span className="text-[10px] font-black text-green-600 uppercase tracking-wide">
-                        ✓ Applied
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm font-black text-slate-800 leading-tight">
-                    {coupon.discountType === "percentage"
-                      ? `${coupon.discountValue}% OFF`
-                      : `₹${coupon.discountValue} OFF`}
-                    {coupon.minOrderValue > 0 && (
-                      <span className="block text-[10px] font-medium text-slate-500">
-                        on orders above ₹{coupon.minOrderValue}
-                      </span>
-                    )}
-                  </p>
-                  {coupon.description && (
-                    <p className="text-[10px] text-slate-500 leading-snug line-clamp-2">
-                      {coupon.description}
-                    </p>
-                  )}
-                  {isApplied ? (
-                    <button
-                      onClick={onRemoveCoupon}
-                      className="mt-auto w-full py-1.5 rounded-xl text-xs font-black bg-red-50 text-red-500 hover:bg-red-100 active:scale-95 transition-all">
-                      Remove
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => onApplyCoupon(coupon)}
-                      className="mt-auto w-full py-1.5 rounded-xl text-xs font-black bg-primary text-primary-foreground hover:bg-[var(--brand-400)] active:scale-95 transition-all">
-                      Apply
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <CouponCarousel 
+            coupons={coupons}
+            selectedCoupon={selectedCoupon}
+            onApplyCoupon={onApplyCoupon}
+            onRemoveCoupon={onRemoveCoupon}
+          />
         )}
       </motion.div>
 

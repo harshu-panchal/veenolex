@@ -21,6 +21,7 @@ import {
   Terminal,
   Sparkles,
   User,
+  FileSpreadsheet,
 } from "lucide-react";
 
 const Dashboard = React.lazy(() => import("../pages/Dashboard"));
@@ -94,6 +95,7 @@ const PromoStripManagement = React.lazy(() => import("../pages/PromoStripManagem
 const EnvSettings = React.lazy(() => import("../pages/EnvSettings"));
 const AdminProfile = React.lazy(() => import("../pages/AdminProfile"));
 const PopupManagement = React.lazy(() => import("../pages/PopupManagement"));
+const ReportsPage = React.lazy(() => import("../pages/ReportsPage"));
 
 const navItems = [
   {
@@ -208,6 +210,7 @@ const navItems = [
     icon: Settings,
     color: "slate",
   },
+  { label: "Reports", path: "/admin/reports", icon: FileSpreadsheet, color: "teal" },
   { label: "My Profile", path: "/admin/profile", icon: User, color: "indigo" },
   { label: "System Settings", path: "/admin/env", icon: Terminal, color: "dark" },
 ];
@@ -281,6 +284,7 @@ const AdminRoutes = () => {
         <Route path="/billing" element={<BillingCharges />} />
         <Route path="/settings" element={<AdminSettings />} />
         <Route path="/env" element={<EnvSettings />} />
+        <Route path="/reports" element={<ReportsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </DashboardLayout>

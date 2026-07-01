@@ -328,7 +328,7 @@ const Dashboard = () => {
         {/* Revenue Chart */}
         <Card title="Revenue Overview" subtitle="Last 7 days performance" className="lg:col-span-2">
           <div className="h-[300px] min-h-[280px] w-full mt-4">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={revenueChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
@@ -378,7 +378,7 @@ const Dashboard = () => {
         {/* Product Performance */}
         <Card title="Top Categories" subtitle="Sales by category">
           <div className="h-[300px] min-h-[280px] w-full mt-4">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={300}>
               <BarChart data={statsData?.categoryMix || []} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                 <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: "#475569", fontSize: 12 }} />

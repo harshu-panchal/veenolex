@@ -13,6 +13,7 @@ import {
   User,
   AlertTriangle,
   ShieldCheck,
+  Truck,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Button from "@/shared/components/ui/Button";
@@ -177,6 +178,7 @@ const OrderDetails = () => {
   const [clockTick, setClockTick] = useState(Date.now());
 
   const isReturn = order?.returnStatus && order.returnStatus !== "none";
+  const isShiprocket = order?.isOutOfZone || order?.deliveryType === "SHIPROCKET";
 
   useEffect(() => {
     const fetchOrderDetails = async () => {
@@ -551,13 +553,15 @@ const OrderDetails = () => {
     }
   };
 
-  // Check if current rider is assigned to this return
+  // Check if current rider is assigned to this order / return
   const isAssignedRider = useMemo(() => {
     if (!order || !user) return false;
-    if (!isReturn) return true; // Standard orders are handled differently/already assigned to someone
-
-    const returnRiderId = order.returnDeliveryBoy?._id || order.returnDeliveryBoy;
-    return String(returnRiderId) === String(user._id);
+    if (isReturn) {
+      const returnRiderId = order.returnDeliveryBoy?._id || order.returnDeliveryBoy;
+      return String(returnRiderId) === String(user._id);
+    }
+    const deliveryBoyId = order.deliveryBoy?._id || order.deliveryBoy;
+    return String(deliveryBoyId) === String(user._id);
   }, [order, user, isReturn]);
 
   const isReturnWaitAccept = useMemo(() => {
@@ -620,6 +624,7 @@ const OrderDetails = () => {
           {(order.payment?.method?.toLowerCase() === "cash" ||
             order.payment?.method?.toLowerCase() === "cod") &&
             !isReturn &&
+            !isShiprocket &&
             step < 4 && (
               <span className={`mt-1 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm animate-pulse bg-orange-600`}>
                 COLLECT CASH: ₹{Math.max(0, (order.pricing?.total || 0) - (order.pricing?.walletAmount || 0))}
@@ -629,6 +634,27 @@ const OrderDetails = () => {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
+        {/* Shiprocket Delivery Notice */}
+        {isShiprocket && (
+          <Card className="bg-[#FFF8E8] border border-[#F4D98B] p-6 rounded-[24px] text-center space-y-4">
+            <div className="mx-auto w-12 h-12 rounded-full bg-[#F6E7BF] flex items-center justify-center text-[#C87400]">
+              <Truck size={24} />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-lg text-slate-800">Shiprocket Order</h3>
+              <p className="text-sm text-slate-600 mt-1 leading-relaxed">
+                This order is shipped via Shiprocket. Local delivery partner assignment and workflow tracking are disabled.
+              </p>
+            </div>
+            {order.shipRocketDetails?.trackingNumber && (
+              <div className="bg-white rounded-2xl p-3 border border-[#F4D98B] max-w-xs mx-auto">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Tracking ID</span>
+                <span className="font-black text-slate-800 text-sm">{order.shipRocketDetails.trackingNumber}</span>
+              </div>
+            )}
+          </Card>
+        )}
+
         {/* Acceptance Guard for Returns */}
         <AnimatePresence>
           {isReturnWaitAccept && (
@@ -742,8 +768,8 @@ const OrderDetails = () => {
         </AnimatePresence>
 
 
-        {/* Map Section - Hidden when completed */}
-        {(isReturn ? step < 5 : step < 4) && (!isReturn || isAssignedRider) && (
+        {/* Map Section - Hidden when completed or Shiprocket */}
+        {!isShiprocket && (isReturn ? step < 5 : step < 4) && isAssignedRider && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -760,79 +786,83 @@ const OrderDetails = () => {
           </motion.div>
         )}
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-[#FFF8E8] rounded-3xl p-4 shadow-sm border border-[#F4D98B] flex items-center justify-between gap-4"
-        >
-          <div className="flex items-center gap-3">
-            <div className="h-11 w-11 bg-[#F6E7BF] rounded-xl flex items-center justify-center text-[#C87400]">
-              <Navigation size={20} />
+        {!isShiprocket && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-[#FFF8E8] rounded-3xl p-4 shadow-sm border border-[#F4D98B] flex items-center justify-between gap-4"
+          >
+            <div className="flex items-center gap-3">
+              <div className="h-11 w-11 bg-[#F6E7BF] rounded-xl flex items-center justify-center text-[#C87400]">
+                <Navigation size={20} />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-[#C85D00] uppercase tracking-wider">
+                  Estimated Time
+                </p>
+                <p className="text-xl font-black text-[#8B3F00] leading-none">
+                  {summary.arrivalTimeText}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-[11px] font-bold text-[#C85D00] uppercase tracking-wider">
-                Estimated Time
-              </p>
-              <p className="text-xl font-black text-[#8B3F00] leading-none">
-                {summary.arrivalTimeText}
-              </p>
+            <div className="text-right flex flex-col items-end gap-2">
+              <div>
+                <p className="text-[11px] font-bold text-[#C85D00] uppercase tracking-wider">
+                  Arriving in
+                </p>
+                <p className="text-xl font-black text-[#8B3F00] leading-none">
+                  {summary.arrivingInText}
+                </p>
+              </div>
+              <div className="inline-flex items-center rounded-full bg-white/80 px-3 py-1.5 text-[11px] font-bold text-[#C87400] ring-1 ring-[#F4D98B]">
+                Total distance: {summary.totalDistanceText}
+              </div>
             </div>
-          </div>
-          <div className="text-right flex flex-col items-end gap-2">
-            <div>
-              <p className="text-[11px] font-bold text-[#C85D00] uppercase tracking-wider">
-                Arriving in
-              </p>
-              <p className="text-xl font-black text-[#8B3F00] leading-none">
-                {summary.arrivingInText}
-              </p>
-            </div>
-            <div className="inline-flex items-center rounded-full bg-white/80 px-3 py-1.5 text-[11px] font-bold text-[#C87400] ring-1 ring-[#F4D98B]">
-              Total distance: {summary.totalDistanceText}
-            </div>
-          </div>
-        </motion.div>
+          </motion.div>
+        )}
 
-        <Card className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
-          <div className="flex justify-between items-center px-2 mb-2 relative">
-            <div className="absolute top-1/2 left-0 w-full h-1 bg-slate-100 -z-10 rounded-full" />
-            <motion.div
-              className="absolute top-1/2 left-0 h-1 bg-brand-500 -z-10 rounded-full"
-              initial={{ width: "0%" }}
-              animate={{
-                width: `${((publicStatusStage - 1) / (PUBLIC_STATUS_STEPS.length - 1)) * 100}%`,
-              }}
-              transition={{ duration: 0.5, ease: "easeInOut" }}
-            />
-            {PUBLIC_STATUS_STEPS.map(({ id, label }) => (
+        {!isShiprocket && (
+          <Card className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+            <div className="flex justify-between items-center px-2 mb-2 relative">
+              <div className="absolute top-1/2 left-0 w-full h-1 bg-slate-100 -z-10 rounded-full" />
               <motion.div
-                key={id}
-                initial={false}
+                className="absolute top-1/2 left-0 h-1 bg-brand-500 -z-10 rounded-full"
+                initial={{ width: "0%" }}
                 animate={{
-                  scale: id === publicStatusStage ? 1.15 : 1,
-                  backgroundColor: id <= publicStatusStage ? "var(--primary)" : "#ffffff",
-                  borderColor: id <= publicStatusStage ? "var(--primary)" : "#e5e7eb",
-                  color: id <= publicStatusStage ? "#ffffff" : "#9ca3af",
+                  width: `${((publicStatusStage - 1) / (PUBLIC_STATUS_STEPS.length - 1)) * 100}%`,
                 }}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 z-10 shadow-sm"
-                aria-label={label}
-              >
-                {id < publicStatusStage ? <CheckCircle size={16} /> : id}
-              </motion.div>
-            ))}
-          </div>
-          <div className="flex justify-between mt-2 text-xs text-slate-500 font-medium px-1">
-            {PUBLIC_STATUS_STEPS.map(({ id, label }) => (
-              <span key={id} className="text-center">
-                {label}
-              </span>
-            ))}
-          </div>
-        </Card>
+                transition={{ duration: 0.5, ease: "easeInOut" }}
+              />
+              {PUBLIC_STATUS_STEPS.map(({ id, label }) => (
+                <motion.div
+                  key={id}
+                  initial={false}
+                  animate={{
+                    scale: id === publicStatusStage ? 1.15 : 1,
+                    backgroundColor: id <= publicStatusStage ? "var(--primary)" : "#ffffff",
+                    borderColor: id <= publicStatusStage ? "var(--primary)" : "#e5e7eb",
+                    color: id <= publicStatusStage ? "#ffffff" : "#9ca3af",
+                  }}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 z-10 shadow-sm"
+                  aria-label={label}
+                >
+                  {id < publicStatusStage ? <CheckCircle size={16} /> : id}
+                </motion.div>
+              ))}
+            </div>
+            <div className="flex justify-between mt-2 text-xs text-slate-500 font-medium px-1">
+              {PUBLIC_STATUS_STEPS.map(({ id, label }) => (
+                <span key={id} className="text-center">
+                  {label}
+                </span>
+              ))}
+            </div>
+          </Card>
+        )}
 
         <AnimatePresence mode="wait">
           {/* Customer pickup card: show at return steps 1-2, standard delivery steps 1-2 */}
-          {(isReturn ? (step === 1 || step === 2) : step <= 2) && (
+          {!isShiprocket && (isReturn ? (step === 1 || step === 2) : step <= 2) && (
             <motion.div
               key="pickup"
               variants={containerVariants}
@@ -895,7 +925,7 @@ const OrderDetails = () => {
 
         <AnimatePresence mode="wait">
           {/* Seller card: return steps 3-4, standard delivery steps 3-4 */}
-          {(isReturn ? (step === 3 || step === 4) : step >= 3) && step < (isReturn ? 5 : 5) && (
+          {!isShiprocket && (isReturn ? (step === 3 || step === 4) : step >= 3) && step < (isReturn ? 5 : 5) && (
             <motion.div
               key="customer"
               variants={containerVariants}
@@ -1155,7 +1185,7 @@ const OrderDetails = () => {
       </div>
 
       {/* Slide button: for returns shown at steps 1 and 3 (navigation steps); for standard shown at steps 1-2 */}
-      {((isReturn && (step === 1 || step === 3) && isAssignedRider) || (!isReturn && step <= 2)) && (
+      {!isShiprocket && ((isReturn && (step === 1 || step === 3) && isAssignedRider) || (!isReturn && step <= 2)) && (
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur-md shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)]">
           <div className="max-w-2xl mx-auto p-4">
             <div className="relative h-16 bg-slate-100 rounded-full overflow-hidden select-none">

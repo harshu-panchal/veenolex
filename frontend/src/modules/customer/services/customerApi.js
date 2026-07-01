@@ -59,6 +59,8 @@ export const customerApi = {
   // Explicit timeout so checkout never waits forever if the server blocks (e.g. Redis/Bull).
   checkoutPreview: (data) =>
     axiosInstance.post("/orders/checkout/preview", data, { timeout: 120000 }),
+  processOrder: (data) =>
+    axiosInstance.post("/checkout/process-order", data, { timeout: 120000 }),
   createOrder: (data) =>
     axiosInstance.post("/orders", data, { timeout: 120000 }),
   verifyOnlineOrderPayment: (orderId, data) =>
@@ -140,6 +142,8 @@ export const customerApi = {
     axiosInstance.get("/maps/geocode", { params: { address, ...params } }),
   geocodePlaceId: (placeId, params = {}) =>
     axiosInstance.get("/maps/geocode", { params: { placeId, ...params } }),
+  autocomplete: (input, params = {}) =>
+    axiosInstance.get("/maps/autocomplete", { params: { input, ...params } }),
 
   // Push (FCM) test
   testPushNotification: () => axiosInstance.post("/push/test"),

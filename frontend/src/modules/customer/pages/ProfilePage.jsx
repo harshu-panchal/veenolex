@@ -3,17 +3,19 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
     User, MapPin, Package, CreditCard, Wallet, ChevronRight,
     LogOut, ShieldCheck, Heart, HelpCircle, Info, Edit2, ChevronLeft, Bell,
-    Facebook, Twitter, Instagram, Youtube
+    Facebook, Twitter, Instagram, Youtube, Navigation
 } from 'lucide-react';
 import { useAuth } from '@core/context/AuthContext';
 import { useSettings } from '@core/context/SettingsContext';
 import { customerApi } from '../services/customerApi';
+import { useLocation } from '../context/LocationContext';
 import { toast } from 'sonner';
 import {
     describePushSupport,
     ensureFcmTokenRegistered,
     startForegroundPushListener
 } from '@core/firebase/pushClient';
+import ChangeLocationModal from '../../../components/ChangeLocationModal';
 
 const TEST_PUSH_STATUS_POLL_INTERVAL_MS = 1500;
 const TEST_PUSH_STATUS_MAX_ATTEMPTS = 20;
@@ -45,6 +47,29 @@ const ProfilePage = () => {
     const appName = settings?.appName || 'App';
     const [isTestingPush, setIsTestingPush] = React.useState(false);
     const [headerColor, setHeaderColor] = React.useState("#2E7D32");
+    
+    // Location Context
+    const { currentLocation, updateLocation } = useLocation();
+
+    // Location States
+    const [showLocationModal, setShowLocationModal] = React.useState(false);
+    const [locationLoading, setLocationLoading] = React.useState(false);
+
+    const timeAgo = (date) => {
+        if (!date) return '';
+        const seconds = Math.floor((new Date() - new Date(date)) / 1000);
+        let interval = seconds / 31536000;
+        if (interval > 1) return Math.floor(interval) + " years ago";
+        interval = seconds / 2592000;
+        if (interval > 1) return Math.floor(interval) + " months ago";
+        interval = seconds / 86400;
+        if (interval > 1) return Math.floor(interval) + " days ago";
+        interval = seconds / 3600;
+        if (interval > 1) return Math.floor(interval) + " hours ago";
+        interval = seconds / 60;
+        if (interval > 1) return Math.floor(interval) + " minutes ago";
+        return Math.floor(seconds) + " seconds ago";
+    };
 
     React.useEffect(() => {
         const fetchHeaderColor = async () => {
@@ -140,6 +165,57 @@ const ProfilePage = () => {
         }
     };
 
+    const handleSaveLocation = async (newLocation) => {
+        setLocationLoading(true);
+        try {
+            const locWithTime = { ...newLocation, updatedAt: new Date().toISOString() };
+            
+            // 1. Save to LocationContext
+            updateLocation({
+                name: locWithTime.address,
+                city: locWithTime.city,
+                state: locWithTime.state,
+                pincode: locWithTime.pincode,
+                latitude: locWithTime.latitude,
+                longitude: locWithTime.longitude,
+                time: "12-15 mins",
+                updatedAt: locWithTime.updatedAt
+            }, { persist: true, updateSavedHome: false });
+            
+            // 2. Save to backend (update user profile in database)
+            await customerApi.updateProfile({
+                location: {
+                    latitude: locWithTime.latitude,
+                    longitude: locWithTime.longitude,
+                    address: locWithTime.address,
+                    city: locWithTime.city,
+                    pincode: locWithTime.pincode,
+                    state: locWithTime.state,
+                    updatedAt: locWithTime.updatedAt
+                }
+            });
+            
+            // 3. Close modal
+            setShowLocationModal(false);
+            
+            // 4. Show success message (use existing toast/alert)
+            toast.success("Location updated successfully!");
+            
+            // 5. Reload product listing with new location
+            // (so Zone-In/Zone-Out updates immediately)
+            const event = new CustomEvent("locationChanged", {
+                detail: locWithTime
+            });
+            window.dispatchEvent(event);
+            console.log("📍 Location changed event dispatched:", locWithTime);
+            
+        } catch (error) {
+            toast.error("Failed to update location. Try again.");
+        } finally {
+            setLocationLoading(false);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-[#FAF9F4] pb-24 md:pb-8 font-sans">
             <div 
@@ -193,6 +269,41 @@ const ProfilePage = () => {
                     <Link to="/profile/edit" className="p-2.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">
                         <Edit2 size={16} />
                     </Link>
+                </div>
+
+                {/* Location Section */}
+                <div className="bg-white rounded-xl p-4 border border-slate-200 flex items-start justify-between">
+                    <div className="flex-1 pr-4">
+                        <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-1.5 mb-1.5">
+                            <Navigation size={16} className="text-primary" /> Current Location
+                        </h4>
+                        
+                        {!currentLocation?.name && !currentLocation?.latitude ? (
+                            <p className="text-xs font-medium text-slate-500 mb-0.5">📍 Location not set</p>
+                        ) : (
+                            <>
+                                <p className="text-xs font-medium text-slate-700 leading-snug mb-1">
+                                    {currentLocation.name || currentLocation.address}
+                                </p>
+                                {(currentLocation.latitude && currentLocation.longitude) && (
+                                    <p className="text-[10px] text-slate-400 font-mono tracking-wide mb-1">
+                                        Lat: {Number(currentLocation.latitude).toFixed(5)}, Lng: {Number(currentLocation.longitude).toFixed(5)}
+                                    </p>
+                                )}
+                                {currentLocation.updatedAt && (
+                                    <p className="text-[10px] font-medium text-slate-400 italic">
+                                        Last updated: {timeAgo(currentLocation.updatedAt)}
+                                    </p>
+                                )}
+                            </>
+                        )}
+                    </div>
+                    <button 
+                        onClick={() => setShowLocationModal(true)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-primary text-primary bg-transparent hover:bg-primary/5 text-[11px] font-bold transition-colors whitespace-nowrap shrink-0 mt-1"
+                    >
+                        <MapPin size={12} /> Change Location
+                    </button>
                 </div>
 
                 {/* Menu Sections */}
@@ -327,6 +438,13 @@ const ProfilePage = () => {
                 </div>
 
             </div>
+
+            <ChangeLocationModal 
+                isOpen={showLocationModal} 
+                onClose={() => setShowLocationModal(false)}
+                onConfirm={handleSaveLocation}
+                isLoading={locationLoading}
+            />
         </div>
     );
 };

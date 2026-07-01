@@ -47,6 +47,7 @@ import {
 } from "./app/jobs/firebaseTrackingCleanupJob.js";
 import logger from "./app/services/logger.js";
 import { stopScheduledJobs } from "./app/services/distributedScheduler.js";
+import mapsRouter from "./routes/maps.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -93,7 +94,7 @@ function parseAllowedOrigins() {
   const raw =
     process.env.CORS_ALLOWED_ORIGINS ||
     process.env.FRONTEND_URL ||
-    "http://localhost:5173,http://localhost:3000";
+    "http://localhost:5175,http://localhost:3000";
   const parsed = raw
     .split(",")
     .map((origin) => origin.trim())
@@ -211,6 +212,8 @@ function createApp() {
       });
     }
   });
+
+  app.use("/api/maps", mapsRouter);
 
   // Setup all routes (includes /health, /metrics, /api/*)
   setupRoutes(app);
@@ -476,3 +479,4 @@ async function main() {
 
 // Start the application
 main();
+// Trigger restart

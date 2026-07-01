@@ -29,7 +29,14 @@ export const getSellerEarnings = async (req, res) => {
         const sellerId = req.user.id;
         const sellerOid = new mongoose.Types.ObjectId(sellerId);
 
-        const transactions = await Transaction.find({ user: sellerId, userModel: 'Seller' })
+        const fortyDaysAgo = new Date();
+        fortyDaysAgo.setDate(fortyDaysAgo.getDate() - 40);
+
+        const transactions = await Transaction.find({ 
+            user: sellerId, 
+            userModel: 'Seller',
+            createdAt: { $gte: fortyDaysAgo }
+        })
             .sort({ createdAt: -1 })
             .populate("order", "orderId");
 
@@ -53,6 +60,7 @@ export const getSellerEarnings = async (req, res) => {
                 $match: {
                     seller: sellerOid,
                     status: { $ne: 'cancelled' },
+                    createdAt: { $gte: fortyDaysAgo },
                 },
             },
             {
@@ -78,7 +86,8 @@ export const getSellerEarnings = async (req, res) => {
                     user: new mongoose.Types.ObjectId(sellerId),
                     userModel: 'Seller',
                     type: 'Order Payment',
-                    createdAt: { $gte: sixMonthsAgo }
+                    // Changed from sixMonthsAgo to fortyDaysAgo to enforce the 40-day data limit
+                    createdAt: { $gte: fortyDaysAgo }
                 }
             },
             {

@@ -83,7 +83,26 @@ export function buildSellerOrdersQuery({
     ...base,
     ...normalizeSellerStatusFilter(statusParam),
   };
-  return appendDateRange(withStatus, { startDate, endDate });
+  
+  let query = appendDateRange(withStatus, { startDate, endDate });
+
+  // For sellers, restrict orders strictly to the last 40 days
+  if (role === "seller") {
+    const fortyDaysAgo = new Date();
+    fortyDaysAgo.setDate(fortyDaysAgo.getDate() - 40);
+    fortyDaysAgo.setHours(0, 0, 0, 0);
+
+    if (query.createdAt) {
+      const existingGte = query.createdAt.$gte ? new Date(query.createdAt.$gte) : null;
+      if (!existingGte || existingGte < fortyDaysAgo) {
+        query.createdAt.$gte = fortyDaysAgo;
+      }
+    } else {
+      query.createdAt = { $gte: fortyDaysAgo };
+    }
+  }
+
+  return query;
 }
 
 export async function fetchSellerOrdersPage({

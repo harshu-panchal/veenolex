@@ -22,7 +22,14 @@ import mapsRoute from "./mapsRoutes.js";
 import mediaRoute from "./mediaRoutes.js";
 import healthRoute from "./healthRoutes.js";
 import metricsRoute from "./metricsRoutes.js";
+import franchiseRoute from "./franchiseRoutes.js";
 import authOtpRoute from "../modules/otp/otp.routes.js";
+import checkoutRoute from "./checkoutRoutes.js";
+import userRoute from "./userRoutes.js";
+import ordersWithRoleFilterRoutes from "./ordersWithRoleFilter.js";
+import reportsWithRoleFilterRoutes from "./reportsWithRoleFilter.js";
+import franchiseReportWithRoleFilterRoutes from "./franchiseReportWithRoleFilter.js";
+import offlineSalesRoutes from "./offlineSalesRoutes.js";
 
 import express from "express";
 
@@ -33,6 +40,8 @@ const setupRoutes = (app) => {
     app.use("/health", healthRoute);
     app.use("/metrics", metricsRoute);
 
+    router.use("/checkout", checkoutRoute);
+    router.use("/user", userRoute);
     router.use("/customer", customerRoute);
     router.use("/delivery", deliveryRoute);
     // categoryRoute is mounted twice on purpose:
@@ -40,6 +49,7 @@ const setupRoutes = (app) => {
     //   /categories       → public category browsing (read-only handlers)
     // Same router, two URL surfaces. Do not deduplicate without coordinated frontend changes.
     router.use("/admin/categories", categoryRoute);
+    router.use("/admin/reports", franchiseRoute);
     router.use("/admin", adminRoute);
     router.use("/seller", sellerRoute);
     router.use("/settings", settingsRoute);
@@ -49,6 +59,9 @@ const setupRoutes = (app) => {
     router.use("/cart", cartRoute);
     router.use("/wishlist", wishlistRoute);
     router.use("/orders", orderRoute);
+    router.use("/orders", ordersWithRoleFilterRoutes);
+    router.use("/reports", reportsWithRoleFilterRoutes);
+    router.use("/reports", franchiseReportWithRoleFilterRoutes);
     router.use("/payments", paymentRoute);
     router.use("/maps", mapsRoute);
     router.use("/media", mediaRoute);
@@ -70,6 +83,7 @@ const setupRoutes = (app) => {
     router.use("/reviews", reviewRoute);
     router.use("/admin/faqs", faqRoute);
     router.use("/public/faqs", faqRoute); // For public access without admin prefix
+    router.use("/offline-sales", offlineSalesRoutes);
 
     app.use("/api", router);
 }

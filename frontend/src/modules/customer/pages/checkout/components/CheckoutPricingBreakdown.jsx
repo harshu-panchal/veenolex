@@ -28,6 +28,7 @@ const CheckoutPricingBreakdown = React.memo(function CheckoutPricingBreakdown({
   cartTotal,
   selectedCoupon,
   discountAmount,
+  isShipRocket = false,
 }) {
   const deliveryFee = pricingPreview?.deliveryFeeCharged || 0;
   const handlingFee = pricingPreview?.handlingFeeCharged || 0;
@@ -60,13 +61,20 @@ const CheckoutPricingBreakdown = React.memo(function CheckoutPricingBreakdown({
 
       {/* Bill Details */}
       <motion.div className="bg-white rounded-[2rem] p-6 shadow-xl shadow-gray-200/50 border border-slate-100">
-        <div className="flex items-center gap-2 mb-6">
-          <div className="h-10 w-10 rounded-2xl bg-brand-50 flex items-center justify-center">
-            <Clipboard size={20} className="text-primary" />
+        <div className="flex flex-col mb-6">
+          <div className="flex items-center gap-2">
+            <div className="h-10 w-10 rounded-2xl bg-brand-50 flex items-center justify-center">
+              <Clipboard size={20} className="text-primary" />
+            </div>
+            <h3 className="font-[1000] text-slate-800 text-xl tracking-tight">
+              Order Summary
+            </h3>
           </div>
-          <h3 className="font-[1000] text-slate-800 text-xl tracking-tight">
-            Order Summary
-          </h3>
+          {isShipRocket && (
+            <p className="text-[13px] font-bold text-orange-500 mt-1.5 pl-12 text-left">
+              Estimated delivery: 2-3 days
+            </p>
+          )}
         </div>
 
         <div className="space-y-4">
@@ -84,23 +92,7 @@ const CheckoutPricingBreakdown = React.memo(function CheckoutPricingBreakdown({
             </span>
             <span className="font-black text-slate-800">₹{deliveryFee}</span>
           </div>
-          {pricingPreview &&
-            typeof pricingPreview.distanceKmActual === "number" &&
-            typeof pricingPreview.distanceKmRounded === "number" && (
-              <div className="px-2 -mt-3 flex items-center justify-between text-[11px] font-semibold text-slate-400">
-                <span>
-                  Distance: {pricingPreview.distanceKmActual.toFixed(2)} km
-                  {pricingPreview.distanceKmRounded
-                    ? ` (billed ${pricingPreview.distanceKmRounded.toFixed(2)} km)`
-                    : ""}
-                </span>
-                <span className=" tracking-wider">
-                  {pricingPreview?.snapshots?.deliverySettings?.deliveryPricingMode ||
-                    pricingPreview?.snapshots?.deliverySettings?.pricingMode ||
-                    ""}
-                </span>
-              </div>
-            )}
+
           <div className="flex justify-between items-center px-2">
             <span className="text-slate-500 font-bold text-[13px] tracking-wider">
               Handling Fee
@@ -157,7 +149,11 @@ const CheckoutPricingBreakdown = React.memo(function CheckoutPricingBreakdown({
                   {finalAmountToPay === 0 ? "Fully Covered" : "Total Payable"}
                 </span>
                 <span className="text-[10px] text-slate-400 font-bold tracking-[0.2em]">
-                  {finalAmountToPay === 0 ? "Paid via Wallet" : "Safe & Secure Payment"}
+                  {finalAmountToPay === 0 && walletAmountToUse > 0 
+                    ? "Paid via Wallet" 
+                    : finalAmountToPay === 0 
+                    ? "Free Order" 
+                    : "Safe & Secure Payment"}
                 </span>
               </div>
               <span className="font-[1000] text-primary text-3xl tracking-tighter italic">

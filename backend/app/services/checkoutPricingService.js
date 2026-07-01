@@ -39,9 +39,9 @@ export function groupHydratedItemsBySeller(hydratedItems = []) {
   return grouped;
 }
 
-async function computeDistanceKmForSeller({ sellerId, addressLocation, session = null }) {
+async function computeDistanceKmForSeller({ sellerId, addressLocation, items = [], session = null }) {
   const normalizedLocation = normalizeLocation(addressLocation);
-  if (!normalizedLocation) return 0;
+  if (!normalizedLocation) return { distanceKm: 0, isOutOfZone: false };
 
   const query = Seller.findById(sellerId).select("location serviceRadius shopName").lean();
   if (session) query.session(session);
@@ -52,7 +52,7 @@ async function computeDistanceKmForSeller({ sellerId, addressLocation, session =
     throw err;
   }
   const coords = seller?.location?.coordinates;
-  if (!Array.isArray(coords) || coords.length < 2) return 0;
+  if (!Array.isArray(coords) || coords.length < 2) return { distanceKm: 0, isOutOfZone: false };
 
   const [sellerLng, sellerLat] = coords;
   const distanceInMeters = distanceMeters(
@@ -65,12 +65,16 @@ async function computeDistanceKmForSeller({ sellerId, addressLocation, session =
   
   const radius = Number(seller.serviceRadius || 5);
   if (distanceKm > radius) {
+    const hasOutZoneEnabled = items.length > 0 && items.every(item => item.zoneOutDeliveryEnabled);
+    if (hasOutZoneEnabled) {
+      return { distanceKm, isOutOfZone: true };
+    }
     const err = new Error(`${seller.shopName || "Store"} does not deliver to your current location (Distance: ${distanceKm}km, Service Radius: ${radius}km)`);
     err.statusCode = 400;
     throw err;
   }
 
-  return distanceKm;
+  return { distanceKm, isOutOfZone: false };
 }
 
 function sumField(rows, field) {
@@ -437,9 +441,10 @@ export async function buildCheckoutPricingSnapshot({
 
   for (const sellerId of sellerIds) {
     const sellerItems = itemsBySeller.get(sellerId) || [];
-    const distanceKm = await computeDistanceKmForSeller({
+    const { distanceKm, isOutOfZone } = await computeDistanceKmForSeller({
       sellerId,
       addressLocation: address?.location,
+      items: sellerItems,
       session,
     });
     // Distribute discount proportionally by seller subtotal
@@ -456,9 +461,28 @@ export async function buildCheckoutPricingSnapshot({
       taxTotal: 0,
       session,
     });
+
+    if (isOutOfZone) {
+      const zoneOutPriceTotal = sellerItems.reduce((sum, item) => sum + (item.zoneOutPrice || 0), 0);
+      breakdown.deliveryFeeCharged = zoneOutPriceTotal;
+      
+      // Re-calculate grossTotal and grandTotal/payableAmount
+      const productSubtotal = Number(breakdown.productSubtotal || 0);
+      const handlingFeeCharged = Number(breakdown.handlingFeeCharged || 0);
+      const discountTotal = Number(breakdown.discountTotal || 0);
+      const taxTotal = Number(breakdown.taxTotal || 0);
+      const grossTotal = round2(
+        productSubtotal + breakdown.deliveryFeeCharged + handlingFeeCharged - discountTotal + taxTotal
+      );
+      breakdown.grossTotal = grossTotal;
+      breakdown.grandTotal = grossTotal;
+      breakdown.payableAmount = grossTotal;
+    }
+
     sellerBreakdownEntries.push({
       sellerId,
       distanceKm,
+      isOutOfZone,
       items: sellerItems,
       breakdown: {
         ...breakdown,
@@ -495,6 +519,7 @@ export async function buildCheckoutPricingSnapshot({
   const aggregateBreakdown = buildAggregateBreakdown(
     sellerBreakdownEntries.map((entry) => entry.breakdown),
   );
+  aggregateBreakdown.isOutOfZone = sellerBreakdownEntries.some((entry) => entry.isOutOfZone);
 
   return {
     hydratedItems,

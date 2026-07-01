@@ -20,6 +20,8 @@ export const adminFinanceApi = {
             params,
             responseType: 'blob',
         }),
+    getFranchiseReport: (params) =>
+        axiosInstance.get('/admin/reports/franchises', { params }),
 
     // Delivery payouts / funds
     getDeliveryTransactions: (params) =>

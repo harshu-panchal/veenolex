@@ -1,9 +1,9 @@
 import express from "express";
-import { geocodeAddressController } from "../controller/mapsController.js";
+import { geocodeAddressController, autocompleteAddressController } from "../controller/mapsController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { mapsRateLimit } from "../middleware/mapsRateLimit.js";
 import { validate } from "../middleware/validate.js";
-import { geocodeQuerySchema } from "../validation/mapsValidation.js";
+import { geocodeQuerySchema, autocompleteQuerySchema } from "../validation/mapsValidation.js";
 
 const router = express.Router();
 
@@ -18,6 +18,15 @@ router.get(
     mapsRateLimit,
     validate(geocodeQuerySchema, "query"),
     geocodeAddressController,
+);
+
+// Autocomplete places search (server-side key).
+router.get(
+    "/autocomplete",
+    verifyToken,
+    mapsRateLimit,
+    validate(autocompleteQuerySchema, "query"),
+    autocompleteAddressController,
 );
 
 export default router;

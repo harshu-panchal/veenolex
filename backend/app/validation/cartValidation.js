@@ -24,7 +24,7 @@ const objectIdLike = trimmedString.min(8).max(64);
 // These files were not wired into any route before this PR, so no
 // production traffic actually sent the legacy key — the rename is
 // purely internal.
-const variantSkuField = trimmedString.max(64).optional();
+const variantSkuField = Joi.string().trim().max(64).allow("", null).optional();
 
 /** POST /cart/add — add an item to the customer's cart. */
 export const addToCartSchema = Joi.object({

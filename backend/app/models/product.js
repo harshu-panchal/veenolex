@@ -170,6 +170,19 @@ const productSchema = new mongoose.Schema(
         isFeatured: {
             type: Boolean,
             default: false,
+        },
+        zoneOutDeliveryEnabled: {
+            type: Boolean,
+            default: true  // Allow products to be shown outside service radius
+        },
+        shippingPartner: {
+            type: String,
+            enum: ["SELLER", "SHIPROCKET"],
+            default: "SELLER"
+        },
+        zoneOutPrice: {
+            type: Number,
+            default: null  // Extra charge for out-of-zone delivery (if any)
         }
     },
     { timestamps: true }

@@ -161,6 +161,9 @@ const Orders = () => {
 
     const tabs = ['All', 'Pending', 'Confirmed', 'Packed', 'Out for Delivery', 'Delivered', 'Cancelled'];
     const todayStr = new Date().toISOString().split('T')[0];
+    const fortyDaysAgo = new Date();
+    fortyDaysAgo.setDate(fortyDaysAgo.getDate() - 40);
+    const fortyDaysAgoStr = fortyDaysAgo.toISOString().split('T')[0];
 
     const safeOrders = useMemo(
         () => (Array.isArray(orders) ? orders : []),
@@ -372,6 +375,7 @@ const Orders = () => {
                                         <div className="w-full sm:w-32">
                                             <DatePicker
                                                 value={startDate}
+                                                min={fortyDaysAgoStr}
                                                 max={todayStr}
                                                 align="left"
                                                 onChange={(value) => {
@@ -383,6 +387,10 @@ const Orders = () => {
                                                     const today = new Date().toISOString().split("T")[0];
                                                     if (value > today) {
                                                         showToast("Start date cannot be in the future", "error");
+                                                        return;
+                                                    }
+                                                    if (value < fortyDaysAgoStr) {
+                                                        showToast("Start date cannot be more than 40 days ago", "error");
                                                         return;
                                                     }
                                                     if (endDate && value > endDate) {
@@ -402,7 +410,7 @@ const Orders = () => {
                                             <DatePicker
                                                 value={endDate}
                                                 max={todayStr}
-                                                min={startDate || undefined}
+                                                min={startDate || fortyDaysAgoStr}
                                                 align="right"
                                                 popupClassName="mt-4"
                                                 disabled={!startDate}
@@ -415,6 +423,10 @@ const Orders = () => {
                                                     const today = new Date().toISOString().split("T")[0];
                                                     if (value > today) {
                                                         showToast("End date cannot be in the future", "error");
+                                                        return;
+                                                    }
+                                                    if (value < fortyDaysAgoStr) {
+                                                        showToast("End date cannot be more than 40 days ago", "error");
                                                         return;
                                                     }
                                                     if (startDate && value < startDate) {

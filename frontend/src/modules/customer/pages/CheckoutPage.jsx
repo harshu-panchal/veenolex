@@ -57,6 +57,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import useAddressAutocomplete from "@/hooks/useAddressAutocomplete";
 
 
 // Sub-components
@@ -144,25 +145,40 @@ const CheckoutPage = () => {
   const [orderId, setOrderId] = useState(null);
   const [pricingPreview, setPricingPreview] = useState(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [showOutOfZoneConfirm, setShowOutOfZoneConfirm] = useState(false);
+  const [outOfZoneShippingCost, setOutOfZoneShippingCost] = useState(0);
   const postOrderNavigateRef = useRef(null);
   const previewDebounceRef = useRef(null);
   const [currentAddress, setCurrentAddress] = useState({
     type: "Home",
-    name: "Harshvardhan Panchal",
-    address: "81 Pipliyahana Road, Near 214",
+    name: user?.name || "",
+    address: currentLocation?.name || "",
     landmark: "",
-    city: "Indore - 452018",
-    phone: "6268423925",
+    city: [currentLocation?.city, currentLocation?.state, currentLocation?.pincode].filter(Boolean).join(", "),
+    phone: user?.phone || "",
+    location: currentLocation?.latitude && currentLocation?.longitude 
+      ? { lat: currentLocation.latitude, lng: currentLocation.longitude } 
+      : null,
   });
   const [isEditAddressOpen, setIsEditAddressOpen] = useState(false);
-  const [editAddressForm, setEditAddressForm] = useState({
-    type: "Home",
-    name: "Harshvardhan Panchal",
-    address: "81 Pipliyahana Road, Near 214",
-    landmark: "",
-    city: "Indore - 452018",
-    phone: "6268423925",
-  });
+  const [editAddressForm, setEditAddressForm] = useState(currentAddress);
+  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
+  const { suggestions: addressSuggestions, loading: isAddressAutocompleteLoading } = useAddressAutocomplete(editAddressForm.address);
+  
+  // Sync currentAddress if global currentLocation changes (e.g. from Profile page)
+  useEffect(() => {
+    if (currentLocation) {
+      setCurrentAddress(prev => ({
+        ...prev,
+        address: currentLocation.name || prev.address,
+        city: [currentLocation.city, currentLocation.state, currentLocation.pincode].filter(Boolean).join(", ") || prev.city,
+        location: currentLocation.latitude && currentLocation.longitude
+          ? { lat: currentLocation.latitude, lng: currentLocation.longitude }
+          : prev.location
+      }));
+    }
+  }, [currentLocation]);
+
   const [showRecipientForm, setShowRecipientForm] = useState(false);
   const [recipientData, setRecipientData] = useState({
     completeAddress: "",
@@ -248,7 +264,8 @@ const CheckoutPage = () => {
     }
   }, [useWallet, user?.walletBalance, pricingPreview?.grandTotal]);
 
-  const finalAmountToPay = Math.max(0, (pricingPreview?.grandTotal || 0) - walletAmountToUse);
+  const estimatedGrandTotal = pricingPreview?.grandTotal ?? Math.max(0, cartTotal + selectedTip - discountAmount);
+  const finalAmountToPay = Math.max(0, estimatedGrandTotal - walletAmountToUse);
 
   const buildAddressForOrder = () => {
     if (savedRecipient) {
@@ -718,6 +735,72 @@ const CheckoutPage = () => {
       .catch(() => { });
   }, [cartProductIdKey]);
 
+  const handlePrePlaceOrderCheck = () => {
+    const hasOutOfZone = !!pricingPreview?.isOutOfZone || cart.some(item => item.isInZone === false);
+    if (hasOutOfZone) {
+      const cost = pricingPreview?.deliveryFeeCharged || cart.reduce((acc, item) => item.isInZone === false ? acc + (item.shippingCost || item.zoneOutPrice || 0) : acc, 0);
+      setOutOfZoneShippingCost(cost);
+      setShowOutOfZoneConfirm(true);
+    } else {
+      executeProcessOrder();
+    }
+  };
+
+  const executeProcessOrder = async () => {
+    setShowOutOfZoneConfirm(false);
+    setIsPlacingOrder(true);
+    try {
+      const item = cart[0];
+      if (!item) throw new Error("Cart is empty");
+      
+      const resolvedLoc = currentLocation?.latitude
+        ? { lat: currentLocation.latitude, lng: currentLocation.longitude }
+        : currentAddress?.location?.lat
+        ? { lat: currentAddress.location.lat, lng: currentAddress.location.lng }
+        : null;
+
+      const payload = {
+        userId: user?._id || user?.id,
+        productId: item.id || item._id,
+        quantity: item.quantity,
+        userLocation: resolvedLoc,
+        deliveryAddress: buildAddressForOrder()
+      };
+      
+      const response = await customerApi.processOrder(payload);
+
+      if (response.data.success) {
+        clearCart();
+        const { deliveryType, trackingNumber, orderId } = response.data;
+        
+        if (deliveryType === "SHIPROCKET") {
+           showToast(`Track your order here: ${trackingNumber}`, "success");
+        } else {
+           showToast("Seller will contact you shortly", "success");
+        }
+        
+        setOrderId(orderId);
+        setShowSuccess(true);
+        
+        if (postOrderNavigateRef.current) clearTimeout(postOrderNavigateRef.current);
+        postOrderNavigateRef.current = setTimeout(() => {
+          postOrderNavigateRef.current = null;
+          setIsPlacingOrder(false);
+          navigate(`/orders/${orderId}`);
+        }, 3000);
+      } else {
+        setIsPlacingOrder(false);
+        showToast(response.data.message || "Could not place order.", "error");
+      }
+    } catch (error) {
+      setIsPlacingOrder(false);
+      showToast(
+        error.response?.data?.message || "Failed to place order. Please try again.",
+        "error"
+      );
+    }
+  };
+
   const handlePlaceOrder = async () => {
     setIsPlacingOrder(true);
     try {
@@ -1037,6 +1120,7 @@ const CheckoutPage = () => {
               cartTotal={cartTotal}
               selectedCoupon={selectedCoupon}
               discountAmount={discountAmount}
+              isShipRocket={!!pricingPreview?.isOutOfZone || cart.some(item => item.isInZone === false)}
             />
 
             {/* Payment Selector */}
@@ -1054,7 +1138,7 @@ const CheckoutPage = () => {
             <div className="hidden lg:block">
               <SlideToPay
                 amount={finalAmountToPay}
-                onSuccess={handlePlaceOrder}
+                onSuccess={handlePrePlaceOrderCheck}
                 isLoading={isPlacingOrder || isPreviewLoading || !pricingPreview}
                 text={finalAmountToPay === 0 ? "Place Free Order" : "Order Now"}
               />
@@ -1071,7 +1155,7 @@ const CheckoutPage = () => {
         <div className="max-w-4xl mx-auto">
           <SlideToPay
             amount={finalAmountToPay}
-            onSuccess={handlePlaceOrder}
+            onSuccess={handlePrePlaceOrderCheck}
             isLoading={isPlacingOrder || isPreviewLoading || !pricingPreview}
             text={finalAmountToPay === 0 ? "Place Free Order" : "Slide to Pay"}
           />
@@ -1120,6 +1204,39 @@ const CheckoutPage = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Out of Zone Delivery Confirmation Modal */}
+      <Dialog open={showOutOfZoneConfirm} onOpenChange={setShowOutOfZoneConfirm}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-600">
+              <span className="text-xl">⚠️</span> Delivery Alert
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-slate-600 font-medium leading-relaxed">
+              Your location is outside seller's zone. This will be delivered via ShipRocket (2-3 business days).
+            </p>
+            <div className="mt-4 p-3 bg-orange-50 rounded-lg border border-orange-100 flex justify-between items-center">
+              <span className="font-bold text-slate-700 text-sm">Shipping cost:</span>
+              <span className="font-black text-orange-600">₹{outOfZoneShippingCost}</span>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowOutOfZoneConfirm(false)}
+              className="w-full text-slate-600 border-slate-200">
+              Cancel
+            </Button>
+            <Button
+              onClick={executeProcessOrder}
+              className="w-full bg-primary hover:bg-[#0b721b] text-white font-bold">
+              Confirm & Place Order
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Edit Current Address Modal */}
       <Dialog open={isEditAddressOpen} onOpenChange={setIsEditAddressOpen}>
         <DialogContent className="sm:max-w-[425px] overflow-hidden p-0">
@@ -1134,15 +1251,73 @@ const CheckoutPage = () => {
               <DialogDescription>Update the details of your current delivery address.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
+              <div style={{ position: "relative", width: "100%" }} className="grid gap-2">
                 <Label htmlFor="edit-address" className="text-xs font-semibold text-slate-700">Address</Label>
                 <Input
                   id="edit-address"
-                  value={editAddressForm.address}
-                  onChange={(e) => setEditAddressForm((prev) => ({ ...prev, address: e.target.value }))}
-                  className="h-10"
+                  type="text"
                   placeholder="House, street, area"
+                  value={editAddressForm.address}
+                  autoComplete="off"
+                  onChange={(e) => {
+                    setEditAddressForm((prev) => ({ ...prev, address: e.target.value }));
+                    setShowAddressSuggestions(true);
+                  }}
+                  onBlur={() => setTimeout(() => setShowAddressSuggestions(false), 200)}
+                  style={{ width: "100%" }}
+                  className="h-10"
                 />
+
+                {isAddressAutocompleteLoading && (
+                  <p style={{ fontSize: 12, color: "#888", margin: "4px 0 0" }}>
+                    Searching...
+                  </p>
+                )}
+
+                {showAddressSuggestions && addressSuggestions.length > 0 && (
+                  <ul
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: 0,
+                      right: 0,
+                      background: "white",
+                      border: "1px solid #ddd",
+                      borderRadius: "8px",
+                      listStyle: "none",
+                      margin: "4px 0 0",
+                      padding: 0,
+                      zIndex: 9999,
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                      maxHeight: "220px",
+                      overflowY: "auto",
+                    }}
+                  >
+                    {addressSuggestions.map((s) => (
+                      <li
+                        key={s.place_id}
+                        onMouseDown={() => {
+                          setEditAddressForm((prev) => ({
+                            ...prev,
+                            address: s.description,
+                            placeId: s.place_id
+                          }));
+                          setShowAddressSuggestions(false);
+                        }}
+                        style={{
+                          padding: "10px 14px",
+                          cursor: "pointer",
+                          fontSize: "14px",
+                          borderBottom: "1px solid #f0f0f0",
+                        }}
+                        onMouseEnter={(e) => (e.target.style.background = "#f5f9ff")}
+                        onMouseLeave={(e) => (e.target.style.background = "white")}
+                      >
+                        📍 {s.description}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="edit-landmark" className="text-xs font-semibold text-slate-700">Nearest Landmark (optional)</Label>

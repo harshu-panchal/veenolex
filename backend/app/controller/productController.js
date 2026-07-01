@@ -260,6 +260,8 @@ export const getProducts = async (req, res) => {
     const requestedSellerIds = parseSellerIdFilters({ sellerId, sellerIds });
     const coords = parseCustomerCoordinates({ lat, lng });
     const shouldApplyLocationFilter = enforceRadius || coords.valid;
+    let nearbySet = new Set();
+
     if (enforceRadius && !coords.valid) {
       return handleResponse(
         res,
@@ -267,38 +269,36 @@ export const getProducts = async (req, res) => {
         "lat and lng are required for customer product visibility",
       );
     }
+    
     if (shouldApplyLocationFilter) {
       const nearbySellerIds = await getNearbySellerIdsForCustomer(
         coords.lat,
         coords.lng,
       );
 
-      if (!nearbySellerIds.length) {
-        return handleResponse(res, 200, "No sellers found in your area", {
-          items: [],
-          page: 1,
-          limit: 24,
-          total: 0,
-          totalPages: 1,
-        });
-      }
-
-      const nearbySet = new Set(nearbySellerIds.map(String));
+      nearbySet = new Set(nearbySellerIds.map(String));
       const finalSellerIds = requestedSellerIds.length
         ? requestedSellerIds.filter((id) => nearbySet.has(String(id)))
         : nearbySellerIds;
 
-      if (!finalSellerIds.length) {
-        return handleResponse(res, 200, "No products available in your area", {
-          items: [],
-          page: 1,
-          limit: 24,
-          total: 0,
-          totalPages: 1,
-        });
+      let locationCondition = [];
+      if (finalSellerIds.length > 0) {
+        locationCondition.push({ sellerId: { $in: finalSellerIds } });
+      }
+      
+      let outOfZoneCondition = { zoneOutDeliveryEnabled: true };
+      if (requestedSellerIds.length > 0) {
+        outOfZoneCondition.sellerId = { $in: requestedSellerIds };
       }
 
-      query.sellerId = { $in: finalSellerIds };
+      if (locationCondition.length > 0) {
+        query.$or = [...locationCondition, outOfZoneCondition];
+      } else {
+        query.zoneOutDeliveryEnabled = true;
+        if (requestedSellerIds.length > 0) {
+           query.sellerId = { $in: requestedSellerIds };
+        }
+      }
     }
 
     if (categoryIds && typeof categoryIds === "string") {
@@ -360,7 +360,7 @@ export const getProducts = async (req, res) => {
       const [rawProducts, total] = await Promise.all([
         Product.find(finalQuery)
           .select(
-            "name slug description sku price salePrice stock brand weight offerText marketedBy manufacturedBy bestBefore licenseNo ingredients mainImage galleryImages resultImages tabbedSections headerId categoryId subcategoryId sellerId status approvalStatus approvalRequestedAt approvalReviewedAt approvalReviewedBy approvalNote lastSubmittedByRole isFeatured variants createdAt",
+            "name slug description sku price salePrice stock brand weight offerText marketedBy manufacturedBy bestBefore licenseNo ingredients mainImage galleryImages resultImages tabbedSections headerId categoryId subcategoryId sellerId status approvalStatus approvalRequestedAt approvalReviewedAt approvalReviewedBy approvalNote lastSubmittedByRole isFeatured variants createdAt zoneOutDeliveryEnabled shippingPartner zoneOutPrice",
           )
           // No .populate() — names resolved via cache-backed entityNameCache
           .sort(sortQuery)
@@ -393,21 +393,41 @@ export const getProducts = async (req, res) => {
       const nameMap = Object.fromEntries([...categoryEntries, ...sellerEntries]);
 
       // Enrich products to match the shape previously returned by .populate()
-      const products = rawProducts.map((p) => ({
-        ...p,
-        headerId: p.headerId
-          ? { _id: p.headerId, name: nameMap[String(p.headerId)] ?? null }
-          : null,
-        categoryId: p.categoryId
-          ? { _id: p.categoryId, name: nameMap[String(p.categoryId)] ?? null }
-          : null,
-        subcategoryId: p.subcategoryId
-          ? { _id: p.subcategoryId, name: nameMap[String(p.subcategoryId)] ?? null }
-          : null,
-        sellerId: p.sellerId
-          ? { _id: p.sellerId, shopName: nameMap[String(p.sellerId)] ?? null }
-          : null,
-      }));
+      const products = rawProducts.map((p) => {
+        let isInZone = true;
+        let deliveryMethod = "SELLER_DIRECT";
+        let estimatedDeliveryTime = "2-3 hours";
+        let deliveryBadge = "Fast Local Delivery";
+        
+        if (shouldApplyLocationFilter && p.sellerId) {
+          isInZone = nearbySet.has(String(p.sellerId));
+          if (!isInZone && p.zoneOutDeliveryEnabled) {
+            deliveryMethod = "SHIPROCKET";
+            estimatedDeliveryTime = "2-3 days";
+            deliveryBadge = "Standard Delivery";
+          }
+        }
+
+        return {
+          ...p,
+          isInZone,
+          deliveryMethod,
+          estimatedDeliveryTime,
+          deliveryBadge,
+          headerId: p.headerId
+            ? { _id: p.headerId, name: nameMap[String(p.headerId)] ?? null }
+            : null,
+          categoryId: p.categoryId
+            ? { _id: p.categoryId, name: nameMap[String(p.categoryId)] ?? null }
+            : null,
+          subcategoryId: p.subcategoryId
+            ? { _id: p.subcategoryId, name: nameMap[String(p.subcategoryId)] ?? null }
+            : null,
+          sellerId: p.sellerId
+            ? { _id: p.sellerId, shopName: nameMap[String(p.sellerId)] ?? null }
+            : null,
+        };
+      });
 
       return {
         items: normalizeProductListModeration(products),

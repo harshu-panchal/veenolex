@@ -542,6 +542,25 @@ const orderSchema = new mongoose.Schema(
       lat: Number,
       lng: Number,
     },
+    deliveryType: {
+      type: String,
+      enum: ["SELLER_DIRECT", "SHIPROCKET"],
+      default: "SELLER_DIRECT"
+    },
+    shipRocketDetails: {
+      orderId: String,
+      trackingNumber: String,
+      status: String,
+      estimatedDelivery: Date
+    },
+    isOutOfZone: {
+      type: Boolean,
+      default: false
+    },
+    shippingCost: {
+      type: Number,
+      default: 0
+    },
   },
   { timestamps: true },
 );

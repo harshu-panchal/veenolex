@@ -404,7 +404,7 @@ const ProductCard = React.memo(
                 "font-[1000] text-[#1A1A1A] leading-none",
                 compact ? "text-[12px] sm:text-[13px]" : "text-[14px] sm:text-base",
               )}>
-              ₹{product.price}
+              ₹{product.price + (product.shippingCost || product.zoneOutPrice || 0)}
             </span>
             {product.originalPrice > product.price && (
               <span
@@ -412,10 +412,50 @@ const ProductCard = React.memo(
                   "font-medium text-gray-400 line-through leading-none",
                   compact ? "text-[9px] sm:text-[10px]" : "text-[10px] sm:text-[12px]",
                 )}>
-                ₹{product.originalPrice}
+                ₹{product.originalPrice + (product.shippingCost || product.zoneOutPrice || 0)}
               </span>
             )}
           </div>
+          
+          {/* Delivery Badge */}
+          {product.deliveryMethod && (
+            <div className="delivery-badge mt-1.5 mb-1 self-start">
+              {product.deliveryMethod === "SELLER_DIRECT" ? (
+                <span style={{
+                  backgroundColor: "#E8F5E9",
+                  color: "#27AE60",
+                  padding: "4px 8px",
+                  borderRadius: "20px",
+                  fontSize: "10px",
+                  fontWeight: "700"
+                }}>
+                  ⚡ {product.deliveryBadge || "Fast Local Delivery"}
+                </span>
+              ) : (
+                <span style={{
+                  backgroundColor: "#FFF3E0",
+                  color: "#FF7A00",
+                  padding: "4px 8px",
+                  borderRadius: "20px",
+                  fontSize: "10px",
+                  fontWeight: "700"
+                }}>
+                  🚚 {
+                    (product.deliveryBadge === "Delivery via ShipRocket" || product.deliveryBadge === "Delivery via Shiprocket")
+                      ? "Standard Delivery"
+                      : (product.deliveryBadge || "Standard Shipping")
+                  }
+                </span>
+              )}
+              
+              {/* Show extra shipping cost if Zone-Out */}
+              {product.shippingCost > 0 && (
+                <p style={{ fontSize: "9px", color: "#999", margin: "4px 0 0", fontWeight: "600" }}>
+                  +₹{product.shippingCost} shipping
+                </p>
+              )}
+            </div>
+          )}
 
           {/* ADD Button / Quantity Selector */}
           <div className="mt-2 w-full flex">
@@ -502,12 +542,12 @@ const ProductCard = React.memo(
           {/* Price Section */}
           <div className="mt-auto flex items-center gap-2 justify-center">
             <span className="font-extrabold text-slate-800 text-base">
-              ₹{product.price}
+              ₹{product.price + (product.shippingCost || product.zoneOutPrice || 0)}
             </span>
             {product.originalPrice > product.price && (
               <>
                 <span className="font-medium text-slate-400 line-through text-[12px]">
-                  ₹{product.originalPrice}
+                  ₹{product.originalPrice + (product.shippingCost || product.zoneOutPrice || 0)}
                 </span>
                 <span className="bg-brand-50 text-brand-700 text-[10px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">
                   {Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)}% OFF
@@ -515,6 +555,46 @@ const ProductCard = React.memo(
               </>
             )}
           </div>
+
+          {/* Delivery Badge */}
+          {product.deliveryMethod && (
+            <div className="delivery-badge mt-1.5 mb-1 self-center flex flex-col items-center">
+              {product.deliveryMethod === "SELLER_DIRECT" ? (
+                <span style={{
+                  backgroundColor: "#E8F5E9",
+                  color: "#27AE60",
+                  padding: "5px 10px",
+                  borderRadius: "20px",
+                  fontSize: "11px",
+                  fontWeight: "700"
+                }}>
+                  ⚡ {product.deliveryBadge || "Fast Local Delivery"}
+                </span>
+              ) : (
+                <span style={{
+                  backgroundColor: "#FFF3E0",
+                  color: "#FF7A00",
+                  padding: "5px 10px",
+                  borderRadius: "20px",
+                  fontSize: "11px",
+                  fontWeight: "700"
+                }}>
+                  🚚 {
+                    (product.deliveryBadge === "Delivery via ShipRocket" || product.deliveryBadge === "Delivery via Shiprocket")
+                      ? "Standard Delivery"
+                      : (product.deliveryBadge || "Standard Shipping")
+                  }
+                </span>
+              )}
+              
+              {/* Show extra shipping cost if Zone-Out */}
+              {product.shippingCost > 0 && (
+                <p style={{ fontSize: "10px", color: "#999", margin: "4px 0 0", fontWeight: "600" }}>
+                  +₹{product.shippingCost} shipping
+                </p>
+              )}
+            </div>
+          )}
 
           {/* ADD TO CART Button / Quantity Selector */}
           <div className="mt-3 w-full flex">

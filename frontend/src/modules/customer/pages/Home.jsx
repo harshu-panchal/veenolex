@@ -485,14 +485,7 @@ const Home = () => {
     fetchHeroConfig();
   }, [activeCategory, currentLocation?.latitude, currentLocation?.longitude]);
 
-  useEffect(() => {
-    const firstUrl = heroConfig?.banners?.items?.[0]?.imageUrl;
-    if (!firstUrl) return;
-    const link = document.createElement("link");
-    link.rel = "preload"; link.as = "image"; link.href = applyCloudinaryTransform(firstUrl, "f_auto,q_auto,c_fill,g_north,w_1448,h_650");
-    link.setAttribute("fetchpriority", "high"); document.head.appendChild(link);
-    return () => { if (link.parentNode) link.parentNode.removeChild(link); };
-  }, [heroConfig?.banners?.items?.[0]?.imageUrl]);
+
 
   useEffect(() => {
     const totalSlides = 3;
@@ -509,6 +502,18 @@ const Home = () => {
     if (ids.length > 0) { const resolved = ids.map((id) => categoryMap[id]).filter(Boolean).map((c) => ({ id: c._id, name: c.name, image: c.image || "https://cdn-icons-png.flaticon.com/128/3514/3514491.png", icon: c.icon })); if (resolved.length > 0) return resolved; }
     return quickCategories;
   }, [heroConfig.categoryIds, categoryMap, quickCategories]);
+
+  const filteredProducts = useMemo(() => {
+    if (!activeCategory || activeCategory._id === "all") return products;
+    return products.filter((p) => {
+      const activeId = String(activeCategory._id).toLowerCase();
+      return (
+        String(p.headerId?._id || p.headerId).toLowerCase() === activeId || 
+        String(p.categoryId?._id || p.categoryId).toLowerCase() === activeId || 
+        String(p.subcategoryId?._id || p.subcategoryId).toLowerCase() === activeId
+      );
+    });
+  }, [products, activeCategory]);
 
   const sectionsForRenderer = headerSections.length ? headerSections : experienceSections;
   const isMobile = useMemo(() => isMobileOrWebView(), []);
@@ -531,7 +536,7 @@ const Home = () => {
   return (
     <div className={`min-h-screen pt-[250px] md:pt-[220px] ${products.length === 0 && !isLoading ? "bg-white" : "bg-[#FAF9F4]"}`}>
       <div className={cn("contents", isProductDetailOpen && "hidden md:contents")}>
-        <MainLocationHeader categories={categories} activeCategory={activeCategory} onCategorySelect={setActiveCategory} hideSearchBar={true} />
+        <MainLocationHeader categories={categories} activeCategory={activeCategory} onCategorySelect={setActiveCategory} hideSearchBar={true} isLoading={isLoading} />
       </div>
 
       {products.length === 0 && !isLoading ? (
@@ -558,13 +563,41 @@ const Home = () => {
             </motion.div>
           )}
 
-          <QuickCategorySlider categories={effectiveQuickCategories} onCategoryClick={(id) => navigate(`/category/${id}`)} />
-          <LowestPriceSection products={products} onSeeAll={() => navigate("/category/all")} />
-          <OfferSections sections={offerSections} noServiceData={noServiceData} />
-
-          {sectionsForRenderer.length > 0 && (
-            <div className="container mx-auto px-4 md:px-8 lg:px-[50px] pt-0 pb-10 md:pt-0 md:pb-16">
-              <SectionRenderer sections={sectionsForRenderer} productsById={productsById} categoriesById={categoryMap} subcategoriesById={subcategoryMap} />
+          {activeCategory._id === "all" ? (
+            <>
+              <QuickCategorySlider categories={effectiveQuickCategories} onCategoryClick={(id) => navigate(`/category/${id}`)} />
+              <LowestPriceSection products={products} onSeeAll={() => navigate("/category/all")} />
+              <OfferSections sections={offerSections} noServiceData={noServiceData} />
+              {sectionsForRenderer.length > 0 && (
+                <div className="container mx-auto px-4 md:px-8 lg:px-[50px] pt-0 pb-10 md:pt-0 md:pb-16">
+                  <SectionRenderer sections={sectionsForRenderer} productsById={productsById} categoriesById={categoryMap} subcategoriesById={subcategoryMap} />
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="container mx-auto px-4 md:px-8 lg:px-[50px] pt-8 pb-10 md:pt-10 md:pb-16">
+              <h2 className="text-2xl md:text-3xl font-black text-slate-800 uppercase tracking-wide mb-6">
+                {activeCategory.name}
+              </h2>
+              {filteredProducts.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-5">
+                  {filteredProducts.map((p) => (
+                    <ProductCard key={p._id || p.id} product={p} />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20">
+                  <div className="w-20 h-20 mb-4 bg-slate-100 rounded-full flex items-center justify-center">
+                    <Search className="w-8 h-8 text-slate-400" />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-500">No products in this category</h3>
+                </div>
+              )}
+              {sectionsForRenderer.length > 0 && (
+                <div className="mt-12">
+                  <SectionRenderer sections={sectionsForRenderer} productsById={productsById} categoriesById={categoryMap} subcategoriesById={subcategoryMap} />
+                </div>
+              )}
             </div>
           )}
         </>

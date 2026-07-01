@@ -86,9 +86,7 @@ const INDEX_DEFINITIONS = {
     { keys: { phone: 1 }, options: { name: "idx_phone", background: true, sparse: true } },
   ],
 
-  customers: [
-    { keys: { phone: 1 }, options: { name: "idx_phone", background: true, sparse: true } },
-    { keys: { email: 1 }, options: { name: "idx_email", background: true, sparse: true } },
+  users: [
     { keys: { createdAt: -1 }, options: { name: "idx_created", background: true } },
   ],
 

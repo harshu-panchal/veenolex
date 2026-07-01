@@ -16,7 +16,7 @@ import MiniCart from '../components/shared/MiniCart';
 import SectionRenderer from "../components/experience/SectionRenderer";
 import { useLocation as useAppLocation } from '../context/LocationContext';
 import { useSettings } from '@core/context/SettingsContext';
-import Lottie from 'lottie-react';
+import { getUserLocation } from '@/utils/geolocationService';
 
 const CategoryProductsPage = () => {
     const { categoryName: catId } = useParams();
@@ -43,17 +43,41 @@ const CategoryProductsPage = () => {
     const fetchData = async () => {
         setIsLoading(true);
         try {
-            const hasValidLocation =
-                Number.isFinite(currentLocation?.latitude) &&
-                Number.isFinite(currentLocation?.longitude);
+            let userLat = currentLocation?.latitude;
+            let userLng = currentLocation?.longitude;
+
+            // Read from latest localStorage if available (updated via ProfilePage)
+            try {
+                const savedLoc = localStorage.getItem('userLocation');
+                if (savedLoc) {
+                    const parsed = JSON.parse(savedLoc);
+                    if (Number.isFinite(parsed.latitude) && Number.isFinite(parsed.longitude)) {
+                        userLat = parsed.latitude;
+                        userLng = parsed.longitude;
+                    }
+                }
+            } catch (e) {}
+
+            // 1. On component mount, call getUserLocation() and get user coordinates
+            if (!Number.isFinite(userLat) || !Number.isFinite(userLng)) {
+                try {
+                    const coords = await getUserLocation();
+                    userLat = coords.latitude;
+                    userLng = coords.longitude;
+                } catch (err) {
+                    console.log("Could not fetch location automatically:", err.message);
+                }
+            }
+
+            const hasValidLocation = Number.isFinite(userLat) && Number.isFinite(userLng);
 
             // Fetch products and categories in parallel instead of sequentially
             const [prodRes, catRes] = await Promise.all([
                 hasValidLocation
                     ? customerApi.getProducts({
                         categoryId: catId,
-                        lat: currentLocation.latitude,
-                        lng: currentLocation.longitude,
+                        lat: userLat,
+                        lng: userLng,
                     })
                     : Promise.resolve({ data: { success: true, result: { items: [] } } }),
                 customerApi.getCategories({ tree: true }),
@@ -117,6 +141,14 @@ const CategoryProductsPage = () => {
     useEffect(() => {
         fetchData();
         setSelectedSubCategory(location.state?.activeSubcategoryId || 'all');
+    }, [catId, location.state?.activeSubcategoryId, currentLocation?.latitude, currentLocation?.longitude]);
+
+    useEffect(() => {
+        const handleLocationChange = () => {
+            fetchData();
+        };
+        window.addEventListener('locationChanged', handleLocationChange);
+        return () => window.removeEventListener('locationChanged', handleLocationChange);
     }, [catId, location.state?.activeSubcategoryId, currentLocation?.latitude, currentLocation?.longitude]);
 
     const safeProducts = Array.isArray(products) ? products : [];
