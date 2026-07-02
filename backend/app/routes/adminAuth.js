@@ -47,6 +47,7 @@ import {
 } from "../controller/adminFinanceController.js";
 
 import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
+import { sendSpecificNotification } from "../modules/notifications/notification.controller.js";
 import {
     adminBootstrapRateLimiter,
     authRouteRateLimiter,
@@ -194,6 +195,7 @@ router.get("/seller-withdrawals", verifyToken, allowRoles("admin"), getSellerWit
 router.get("/delivery-withdrawals", verifyToken, allowRoles("admin"), getDeliveryWithdrawals);
 router.get("/seller-transactions", verifyToken, allowRoles("admin"), getSellerTransactions);
 router.put("/withdrawals/:id", verifyToken, allowRoles("admin"), updateWithdrawalStatus);
+router.post("/notifications/send", verifyToken, allowRoles("admin"), sendSpecificNotification);
 
 // Protected admin route example
 router.get(

@@ -26,6 +26,10 @@ import { useSettings } from '@core/context/SettingsContext';
 import { Smile } from 'lucide-react';
 import axiosInstance from '@core/api/axios';
 import { adminApi } from '../services/adminApi';
+import { sendNotificationToCustomers } from '../../../services/adminCustomerService';
+import { CustomerAudienceSelector } from "../../../components/CustomerAudienceSelector";
+import { SellerAudienceSelector } from "../../../components/SellerAudienceSelector";
+import { DeliveryAudienceSelector } from "../../../components/DeliveryAudienceSelector";
 
 const EMOJIS = [
     '🔥', '🎉', '✅', '⚡', '💥', '💸', '🛍️', '🎁', '🚚', '📦',
@@ -44,6 +48,9 @@ const NotificationComposer = () => {
     const [title, setTitle] = useState('');
     const [message, setMessage] = useState('');
     const [selectedSegment, setSelectedSegment] = useState('customers');
+    const [customerSelection, setCustomerSelection] = useState(null);
+    const [sellerSelection, setSellerSelection] = useState(null);
+    const [deliverySelection, setDeliverySelection] = useState(null);
     const [deepLink, setDeepLink] = useState('');
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState('');
@@ -127,15 +134,91 @@ const NotificationComposer = () => {
                 }
             }
 
-            const broadcastRes = await adminApi.broadcastNotification({
-                audience: selectedSegment,
-                title,
-                message,
-                deepLink: deepLink || '',
-                imageUrl: uploadedImageUrl || '',
-            });
+            let res;
+            if (selectedSegment === 'customers' && customerSelection) {
+                if (customerSelection.type === 'one') {
+                    if (!customerSelection.customer?.id) {
+                        showToast('Please select a customer first', 'warning');
+                        setIsSending(false);
+                        return;
+                    }
+                    res = await sendNotificationToCustomers({
+                        customerIds: [customerSelection.customer.id],
+                        title,
+                        message,
+                        template: null
+                    });
+                } else if (customerSelection.type === 'all') {
+                    res = await sendNotificationToCustomers({
+                        customerIds: 'ALL',
+                        title,
+                        message,
+                        template: null
+                    });
+                } else {
+                    res = await adminApi.broadcastNotification({
+                        audience: selectedSegment,
+                        title,
+                        message,
+                        deepLink: deepLink || '',
+                        imageUrl: uploadedImageUrl || '',
+                    });
+                }
+            } else if (selectedSegment === 'sellers' && sellerSelection) {
+                if (sellerSelection.type === 'one') {
+                    if (!sellerSelection.seller?.id) {
+                        showToast('Please select a seller first', 'warning');
+                        setIsSending(false);
+                        return;
+                    }
+                    res = await sendNotificationToCustomers({
+                        customerIds: [sellerSelection.seller.id],
+                        title,
+                        message,
+                        template: null
+                    });
+                } else {
+                    res = await adminApi.broadcastNotification({
+                        audience: selectedSegment,
+                        title,
+                        message,
+                        deepLink: deepLink || '',
+                        imageUrl: uploadedImageUrl || '',
+                    });
+                }
+            } else if (selectedSegment === 'delivery' && deliverySelection) {
+                if (deliverySelection.type === 'one') {
+                    if (!deliverySelection.partner?.id) {
+                        showToast('Please select a delivery partner first', 'warning');
+                        setIsSending(false);
+                        return;
+                    }
+                    res = await sendNotificationToCustomers({
+                        customerIds: [deliverySelection.partner.id],
+                        title,
+                        message,
+                        template: null
+                    });
+                } else {
+                    res = await adminApi.broadcastNotification({
+                        audience: selectedSegment,
+                        title,
+                        message,
+                        deepLink: deepLink || '',
+                        imageUrl: uploadedImageUrl || '',
+                    });
+                }
+            } else {
+                res = await adminApi.broadcastNotification({
+                    audience: selectedSegment,
+                    title,
+                    message,
+                    deepLink: deepLink || '',
+                    imageUrl: uploadedImageUrl || '',
+                });
+            }
 
-            const result = broadcastRes?.data?.result || {};
+            const result = res?.result || res?.data?.result || {};
             const targetedUsers = Number(result?.targetedUsers || 0);
             const delivered = Number(result?.delivered || 0);
             showToast(
@@ -283,6 +366,8 @@ const NotificationComposer = () => {
 
                             {/* Form Fields */}
                             <div className="space-y-5">
+
+
                                 {/* Title */}
                                 <div className="space-y-2">
                                     <div className="flex items-center justify-between">
@@ -532,45 +617,70 @@ const NotificationComposer = () => {
                         <h3 className="ds-h4 px-1">Audience Segmentation</h3>
                         <div className="space-y-2">
                             {segments.map((seg) => (
-                                <button
-                                    key={seg.id}
-                                    onClick={() => setSelectedSegment(seg.id)}
-                                    className={cn(
-                                        "w-full p-4 rounded-xl text-left transition-all",
-                                        selectedSegment === seg.id
-                                            ? "bg-slate-900 text-white shadow-lg ring-2 ring-slate-900"
-                                            : "bg-white text-slate-700 ring-1 ring-slate-200 hover:ring-slate-300"
-                                    )}
-                                >
-                                    <div className="flex items-start gap-3">
-                                        <div className={cn(
-                                            "p-2 rounded-lg flex-shrink-0",
-                                            selectedSegment === seg.id ? "bg-white/10" : `bg-${seg.color}-50`
-                                        )}>
-                                            <seg.icon className={cn(
-                                                "ds-icon-md",
-                                                selectedSegment === seg.id ? "text-white" : `text-${seg.color}-600`
-                                            )} />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center justify-between mb-1">
-                                                <h4 className="ds-body font-bold truncate">{seg.label}</h4>
-                                                <span className={cn(
-                                                    "ds-body font-bold",
-                                                    selectedSegment === seg.id ? "text-primary" : "text-slate-900"
-                                                )}>
-                                                    {Number(seg.count || 0).toLocaleString('en-IN')}
-                                                </span>
-                                            </div>
-                                            <p className={cn(
-                                                "ds-caption",
-                                                selectedSegment === seg.id ? "text-white/60" : "text-slate-400"
+                                <React.Fragment key={seg.id}>
+                                    <button
+                                        onClick={() => setSelectedSegment(seg.id)}
+                                        className={cn(
+                                            "w-full p-4 rounded-xl text-left transition-all",
+                                            selectedSegment === seg.id
+                                                ? "bg-slate-900 text-white shadow-lg ring-2 ring-slate-900"
+                                                : "bg-white text-slate-700 ring-1 ring-slate-200 hover:ring-slate-300"
+                                        )}
+                                    >
+                                        <div className="flex items-start gap-3">
+                                            <div className={cn(
+                                                "p-2 rounded-lg flex-shrink-0",
+                                                selectedSegment === seg.id ? "bg-white/10" : `bg-${seg.color}-50`
                                             )}>
-                                                {seg.description}
-                                            </p>
+                                                <seg.icon className={cn(
+                                                    "ds-icon-md",
+                                                    selectedSegment === seg.id ? "text-white" : `text-${seg.color}-600`
+                                                )} />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <h4 className="ds-body font-bold truncate">{seg.label}</h4>
+                                                    <span className={cn(
+                                                        "ds-body font-bold",
+                                                        selectedSegment === seg.id ? "text-primary" : "text-slate-900"
+                                                    )}>
+                                                        {Number(seg.count || 0).toLocaleString('en-IN')}
+                                                    </span>
+                                                </div>
+                                                <p className={cn(
+                                                    "ds-caption",
+                                                    selectedSegment === seg.id ? "text-white/60" : "text-slate-400"
+                                                )}>
+                                                    {seg.description}
+                                                </p>
+                                            </div>
                                         </div>
-                                    </div>
-                                </button>
+                                    </button>
+                                    {seg.id === 'customers' && selectedSegment === 'customers' && (
+                                        <CustomerAudienceSelector
+                                            onSelectionChange={(selection) => {
+                                                setCustomerSelection(selection);
+                                                console.log("Customer selection:", selection);
+                                            }}
+                                        />
+                                    )}
+                                    {seg.id === 'sellers' && selectedSegment === 'sellers' && (
+                                        <SellerAudienceSelector
+                                            onSelectionChange={(selection) => {
+                                                setSellerSelection(selection);
+                                                console.log("Seller selection:", selection);
+                                            }}
+                                        />
+                                    )}
+                                    {seg.id === 'delivery' && selectedSegment === 'delivery' && (
+                                        <DeliveryAudienceSelector
+                                            onSelectionChange={(selection) => {
+                                                setDeliverySelection(selection);
+                                                console.log("Delivery partner selection:", selection);
+                                            }}
+                                        />
+                                    )}
+                                </React.Fragment>
                             ))}
                         </div>
                     </div>

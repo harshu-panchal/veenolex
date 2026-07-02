@@ -543,6 +543,123 @@ export const broadcastNotification = async (req, res) => {
   }
 };
 
+export const sendSpecificNotification = async (req, res) => {
+  try {
+    const role = resolveRole(req);
+    const adminId = String(req?.user?.id || "").trim();
+    if (!adminId || role !== NOTIFICATION_ROLES.ADMIN) {
+      return handleResponse(res, 403, "Only admin can send notifications");
+    }
+
+    const audience = String(req.body?.audience || "").trim().toLowerCase();
+    const customerIds = Array.isArray(req.body?.customerIds) ? req.body.customerIds : [];
+    const title = String(req.body?.title || "").trim();
+    const message = String(req.body?.message || "").trim();
+    const deepLink = String(req.body?.deepLink || "").trim();
+    const imageUrl = String(req.body?.imageUrl || "").trim();
+
+    if (!title) {
+      return handleResponse(res, 400, "title is required");
+    }
+    if (!message) {
+      return handleResponse(res, 400, "message is required");
+    }
+
+    let targetUserIds = [];
+    if (audience === "all_customers") {
+      const customers = await User.find({ role: { $in: ["user", "customer"] } }).select("_id").lean();
+      targetUserIds = customers.map(c => c._id);
+    } else {
+      if (!customerIds.length) {
+        return handleResponse(res, 400, "customerIds is required for specific audience");
+      }
+      targetUserIds = customerIds.map(id => new mongoose.Types.ObjectId(id));
+    }
+
+    const tokenOwners = await PushToken.find({
+      userId: { $in: targetUserIds },
+      isActive: true,
+    })
+      .select("userId role")
+      .lean();
+
+    const uniqueRecipients = new Map();
+    for (const item of tokenOwners) {
+      const userId = String(item?.userId || "").trim();
+      const recipientRole = String(item?.role || "").trim();
+      if (!userId || !recipientRole) continue;
+      const key = `${recipientRole}:${userId}`;
+      if (!uniqueRecipients.has(key)) {
+        uniqueRecipients.set(key, {
+          userId,
+          role: recipientRole,
+        });
+      }
+    }
+
+    const recipients = Array.from(uniqueRecipients.values());
+    if (!recipients.length) {
+      return handleResponse(res, 200, "No active push recipients found for selected customer(s)", {
+        audience,
+        targetedUsers: 0,
+        notificationsCreated: 0,
+        delivered: 0,
+        failed: 0,
+      });
+    }
+
+    const broadcastId = `SEND-${Date.now()}-${adminId.slice(-6)}`;
+    const docs = recipients.map((recipient) => {
+      const recipientModel = ROLE_TO_RECIPIENT_MODEL[recipient.role] || "User";
+      const timestamp = Date.now();
+      const dedupeKey = `${broadcastId}:${recipient.role}:${recipient.userId}:${timestamp}`;
+      return {
+        userId: recipient.userId,
+        role: recipient.role,
+        recipient: recipient.userId,
+        recipientModel,
+        type: "system",
+        title,
+        body: message,
+        message,
+        isRead: false,
+        status: "pending",
+        channel: "push",
+        provider: "fcm",
+        dedupeKey,
+        data: {
+          audience,
+          deepLink,
+          imageUrl,
+          broadcastId,
+          source: "admin_send",
+          sentBy: adminId,
+        },
+      };
+    });
+
+    const created = await Notification.insertMany(docs, { ordered: false });
+    const notificationIds = created.map((item) => item?._id).filter(Boolean);
+    const deliveryResults = await Promise.allSettled(
+      notificationIds.map((notificationId) => deliverNotificationById(notificationId)),
+    );
+
+    const delivered = deliveryResults.filter((result) => result.status === "fulfilled").length;
+    const failed = deliveryResults.length - delivered;
+
+    return handleResponse(res, 200, "Notification sent successfully", {
+      broadcastId,
+      audience,
+      targetedUsers: recipients.length,
+      notificationsCreated: notificationIds.length,
+      delivered,
+      failed,
+    });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
 export const getBroadcastAudienceStats = async (req, res) => {
   try {
     const role = resolveRole(req);
@@ -582,5 +699,6 @@ export default {
   testPushNotification,
   getTestPushNotificationStatus,
   broadcastNotification,
+  sendSpecificNotification,
   getBroadcastAudienceStats,
 };
