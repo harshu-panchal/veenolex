@@ -123,7 +123,12 @@ const productSchema = new mongoose.Schema(
         sellerId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Seller",
-            required: true,
+            required: false, // Optional because Admin master catalog products do not have a seller
+        },
+        adminProductId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Product",
+            required: false, // Set when this product is cloned from an admin master catalog product
         },
         status: {
             type: String,

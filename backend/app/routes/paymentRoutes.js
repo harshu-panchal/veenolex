@@ -3,6 +3,7 @@ import {
   createPaymentOrder,
   verifyPaymentStatus,
   handlePhonePeWebhook,
+  handlePhonePeSellerWebhook
 } from "../controller/paymentController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { paymentRouteRateLimiter } from "../middleware/securityMiddlewares.js";
@@ -39,6 +40,12 @@ paymentRoute.post(
   "/webhook/phonepe",
   express.raw({ type: "application/json" }), // SDK needs raw body for verification
   handlePhonePeWebhook,
+);
+
+paymentRoute.post(
+  "/webhook/phonepe/seller",
+  express.raw({ type: "application/json" }), 
+  handlePhonePeSellerWebhook,
 );
 
 export default paymentRoute;

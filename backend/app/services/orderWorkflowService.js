@@ -1,9 +1,13 @@
 import mongoose from "mongoose";
 import Order from "../models/order.js";
+import SellerProductRequest from "../models/sellerProductRequest.js";
+import Admin from "../models/admin.js";
 import DeliveryAssignment from "../models/deliveryAssignment.js";
 import OrderOtp from "../models/orderOtp.js";
 import Seller from "../models/seller.js";
 import Delivery from "../models/delivery.js";
+import SellerInventory from "../models/sellerInventory.js";
+import Product from "../models/product.js";
 import {
   clearOrderTracking,
   clearRiderPresence,
@@ -188,7 +192,7 @@ export async function sellerAcceptAtomic(sellerId, orderId) {
   await scheduleDeliveryTimeoutJob(orderId, 1);
 
   await DeliveryAssignment.create({
-    orderMongoId: updated._id,
+    orderMongoId: updated._id, sourceId: updated._id, sourceType: "ORDER",
     orderId: updated.orderId,
     status: "broadcasting",
     radiusMeters: INITIAL_DELIVERY_RADIUS_M(),
@@ -297,7 +301,9 @@ export async function deliveryAcceptAtomic(deliveryId, orderId, idempotencyKey) 
         const cacheKey = `idem:delivery_accept:${orderId}:${idempotencyKey}`;
         const hit = await redis.get(cacheKey);
         if (hit) {
-          const order = await Order.findOne({ orderId }).lean();
+          const isReq = orderId.startsWith("REQ");
+          const Model = isReq ? SellerProductRequest : Order;
+          const order = await Model.findOne(isReq ? { requestNumber: orderId } : { orderId }).lean();
           return { order, duplicate: true };
         }
       }
@@ -307,47 +313,73 @@ export async function deliveryAcceptAtomic(deliveryId, orderId, idempotencyKey) 
   }
 
   const now = new Date();
-  const updated = await Order.findOneAndUpdate(
-    {
-      orderId,
-      workflowVersion: { $gte: 2 },
-      workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
-      deliveryBoy: null,
-      deliverySearchExpiresAt: { $gt: now },
-      skippedBy: { $nin: [deliveryOid] },
-    },
-    {
-      $set: {
-        deliveryBoy: deliveryOid,
-        workflowStatus: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
-        status: legacyStatusFromWorkflow(WORKFLOW_STATUS.DELIVERY_ASSIGNED),
-        assignedAt: now,
-        deliveryRiderStep: 1,
+  let updated;
+  
+  if (orderId.startsWith("REQ")) {
+    updated = await SellerProductRequest.findOneAndUpdate(
+      {
+        requestNumber: orderId,
+        deliveryWorkflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
+        deliveryBoy: null,
+        deliverySearchExpiresAt: { $gt: now },
       },
-      $inc: { assignmentVersion: 1 },
-    },
-    { new: true },
-  );
+      {
+        $set: {
+          deliveryBoy: deliveryOid,
+          deliveryWorkflowStatus: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
+          assignedAt: now,
+          deliveryRiderStep: 1,
+        },
+        $inc: { assignmentVersion: 1 },
+      },
+      { new: true }
+    );
+  } else {
+    updated = await Order.findOneAndUpdate(
+      {
+        orderId,
+        workflowVersion: { $gte: 2 },
+        workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
+        deliveryBoy: null,
+        deliverySearchExpiresAt: { $gt: now },
+        skippedBy: { $nin: [deliveryOid] },
+      },
+      {
+        $set: {
+          deliveryBoy: deliveryOid,
+          workflowStatus: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
+          status: legacyStatusFromWorkflow(WORKFLOW_STATUS.DELIVERY_ASSIGNED),
+          assignedAt: now,
+          deliveryRiderStep: 1,
+        },
+        $inc: { assignmentVersion: 1 },
+      },
+      { new: true }
+    );
+  }
 
   if (!updated) {
-    const o = await Order.findOne({ orderId }).lean();
+    const isReq = orderId.startsWith("REQ");
+    const Model = isReq ? SellerProductRequest : Order;
+    const o = await Model.findOne(isReq ? { requestNumber: orderId } : { orderId }).lean();
+    
     if (!o) {
       const err = new Error("Order not found");
       err.statusCode = 404;
       throw err;
     }
     let msg = "Order already assigned or not available";
+    const statusField = isReq ? o.deliveryWorkflowStatus : o.workflowStatus;
+    
     if (o.deliverySearchExpiresAt && new Date(o.deliverySearchExpiresAt) <= now) {
-      msg =
-        "Accept window has expired. Wait for the next delivery request.";
+      msg = "Accept window has expired. Wait for the next delivery request.";
     } else if (o.deliveryBoy) {
       msg = "Another rider already accepted this order.";
     } else if (
-      (o.skippedBy || []).some((id) => id.toString() === deliveryOid.toString())
+      !isReq && (o.skippedBy || []).some((id) => id.toString() === deliveryOid.toString())
     ) {
-      msg =
-        "You rejected this order earlier, so it cannot be accepted now.";
-    } else if (o.workflowStatus !== WORKFLOW_STATUS.DELIVERY_SEARCH) {
+      msg = "You rejected this order earlier, so it cannot be accepted now.";
+    } else if (statusField !== WORKFLOW_STATUS.DELIVERY_SEARCH) {
       msg = "This order is no longer open for delivery.";
     }
     const err = new Error(msg);
@@ -355,12 +387,15 @@ export async function deliveryAcceptAtomic(deliveryId, orderId, idempotencyKey) 
     throw err;
   }
 
-  await removeDeliveryTimeoutJob(orderId, updated.deliverySearchMeta?.attempt || 1);
+  if (!orderId.startsWith("REQ")) {
+    await removeDeliveryTimeoutJob(orderId, updated.deliverySearchMeta?.attempt || 1);
+  }
 
   const lastBroadcast = await DeliveryAssignment.findOne({
     orderId,
     status: "broadcasting",
   }).sort({ createdAt: -1 });
+  
   if (lastBroadcast) {
     lastBroadcast.status = "assigned";
     lastBroadcast.winnerDeliveryId = deliveryOid;
@@ -383,23 +418,30 @@ export async function deliveryAcceptAtomic(deliveryId, orderId, idempotencyKey) 
     }
   }
 
-  emitNotificationEvent(NOTIFICATION_EVENTS.DELIVERY_ASSIGNED, {
-    orderId: updated.orderId,
-    deliveryId: deliveryOid,
-    customerId: updated.customer,
-    sellerId: updated.seller,
-  });
+  if (!orderId.startsWith("REQ")) {
+    emitNotificationEvent(NOTIFICATION_EVENTS.DELIVERY_ASSIGNED, {
+      orderId: updated.orderId,
+      deliveryId: deliveryOid,
+      customerId: updated.customer,
+      sellerId: updated.seller,
+    });
+  }
 
-  await retractDeliveryBroadcastForOrder(updated.orderId, deliveryOid);
+  await retractDeliveryBroadcastForOrder(orderId, deliveryOid);
 
-  emitOrderStatusUpdate(
-    updated.orderId,
-    {
-      workflowStatus: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
-      deliveryBoyId: deliveryOid.toString(),
-    },
-    updated.customer,
-  );
+  if (!orderId.startsWith("REQ")) {
+    emitOrderStatusUpdate(
+      updated.orderId,
+      {
+        workflowStatus: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
+        deliveryBoyId: deliveryOid.toString(),
+      },
+      updated.customer,
+    );
+  } else {
+    // For requests, emit to seller if needed.
+    // Assuming emitOrderStatusUpdate isn't required for B2B yet
+  }
 
   return { order: updated, duplicate: false };
 }
@@ -782,19 +824,35 @@ export async function markArrivedAtStoreAtomic(deliveryId, orderId, lat, lng) {
     throw err;
   }
 
-  const order = await Order.findOne({
-    orderId,
-    deliveryBoy: deliveryId,
-    workflowVersion: { $gte: 2 },
-  });
+  let order;
+  let isRequest = false;
 
-  if (!order || order.workflowStatus !== WORKFLOW_STATUS.DELIVERY_ASSIGNED) {
-    const err = new Error("Invalid state: arrive at store first");
-    err.statusCode = 409;
-    throw err;
+  if (orderId && orderId.toUpperCase().startsWith("REQ-")) {
+    isRequest = true;
+    order = await SellerProductRequest.findOne({
+      requestNumber: orderId,
+      deliveryBoy: deliveryId,
+    });
+    if (!order || order.deliveryWorkflowStatus !== "DELIVERY_ASSIGNED") {
+      const err = new Error("Invalid state: arrive at store first");
+      err.statusCode = 409;
+      throw err;
+    }
+  } else {
+    order = await Order.findOne({
+      orderId,
+      deliveryBoy: deliveryId,
+      workflowVersion: { $gte: 2 },
+    });
+    if (!order || order.workflowStatus !== WORKFLOW_STATUS.DELIVERY_ASSIGNED) {
+      const err = new Error("Invalid state: arrive at store first");
+      err.statusCode = 409;
+      throw err;
+    }
   }
 
-  const seller = await Seller.findById(order.seller).select("location").lean();
+  const sellerId = isRequest ? order.sellerId : order.seller;
+  const seller = await Seller.findById(sellerId).select("location").lean();
   const coords = seller?.location?.coordinates;
   if (!Array.isArray(coords) || coords.length < 2) {
     const err = new Error("Seller location not configured");
@@ -812,27 +870,55 @@ export async function markArrivedAtStoreAtomic(deliveryId, orderId, lat, lng) {
   */
 
   const now = new Date();
-  const updated = await Order.findOneAndUpdate(
-    {
-      orderId,
-      workflowStatus: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
-      deliveryBoy: deliveryId,
-    },
-    {
-      $set: {
-        workflowStatus: WORKFLOW_STATUS.PICKUP_READY,
-        status: legacyStatusFromWorkflow(WORKFLOW_STATUS.PICKUP_READY),
-        pickupReadyAt: now,
-        deliveryRiderStep: 2,
+  let updated;
+
+  if (isRequest) {
+    updated = await SellerProductRequest.findOneAndUpdate(
+      {
+        requestNumber: orderId,
+        deliveryWorkflowStatus: "DELIVERY_ASSIGNED",
+        deliveryBoy: deliveryId,
       },
-    },
-    { new: true },
-  );
+      {
+        $set: {
+          deliveryWorkflowStatus: "PICKUP_READY",
+        },
+      },
+      { new: true }
+    );
+  } else {
+    updated = await Order.findOneAndUpdate(
+      {
+        orderId,
+        workflowStatus: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
+        deliveryBoy: deliveryId,
+      },
+      {
+        $set: {
+          workflowStatus: WORKFLOW_STATUS.PICKUP_READY,
+          status: legacyStatusFromWorkflow(WORKFLOW_STATUS.PICKUP_READY),
+          pickupReadyAt: now,
+          deliveryRiderStep: 2,
+        },
+      },
+      { new: true },
+    );
+  }
 
   if (!updated) {
     const err = new Error("Could not mark arrived at store");
     err.statusCode = 409;
     throw err;
+  }
+
+  if (isRequest) {
+    // Basic push for seller request
+    emitOrderStatusUpdate(
+      orderId,
+      { workflowStatus: "PICKUP_READY" },
+      updated.sellerId
+    );
+    return updated;
   }
 
   emitOrderStatusUpdate(
@@ -868,23 +954,38 @@ export async function confirmPickupAtomic(deliveryId, orderId, lat, lng) {
     throw err;
   }
 
-  const order = await Order.findOne({
-    orderId,
-    deliveryBoy: deliveryId,
-    workflowVersion: { $gte: 2 },
-  });
+  let order;
+  let isRequest = false;
 
-  const prePickup = new Set([
-    WORKFLOW_STATUS.DELIVERY_ASSIGNED,
-    WORKFLOW_STATUS.PICKUP_READY,
-  ]);
-  if (!order || !prePickup.has(order.workflowStatus)) {
-    const err = new Error("Invalid state for pickup confirmation");
-    err.statusCode = 409;
-    throw err;
+  if (orderId && orderId.toUpperCase().startsWith("REQ-")) {
+    isRequest = true;
+    order = await SellerProductRequest.findOne({
+      requestNumber: orderId,
+      deliveryBoy: deliveryId,
+    });
+    if (!order || !["DELIVERY_ASSIGNED", "PICKUP_READY"].includes(order.deliveryWorkflowStatus)) {
+      const err = new Error("Invalid state for pickup confirmation");
+      err.statusCode = 409;
+      throw err;
+    }
+  } else {
+    order = await Order.findOne({
+      orderId,
+      deliveryBoy: deliveryId,
+      workflowVersion: { $gte: 2 },
+    });
+    const prePickup = new Set([
+      WORKFLOW_STATUS.DELIVERY_ASSIGNED,
+      WORKFLOW_STATUS.PICKUP_READY,
+    ]);
+    if (!order || !prePickup.has(order.workflowStatus)) {
+      const err = new Error("Invalid state for pickup confirmation");
+      err.statusCode = 409;
+      throw err;
+    }
   }
 
-  const seller = await Seller.findById(order.seller).select("location").lean();
+  const seller = await Seller.findById(order.seller || order.sellerId).select("location").lean();
   const coords = seller?.location?.coordinates;
   if (!Array.isArray(coords) || coords.length < 2) {
     const err = new Error("Seller location not configured");
@@ -893,37 +994,57 @@ export async function confirmPickupAtomic(deliveryId, orderId, lat, lng) {
   }
   const [slng, slat] = coords;
   const d = distanceMeters(lat, lng, slat, slng);
-  /*
-  if (d > PICKUP_RADIUS_M()) {
-    const err = new Error(`Too far from store (>${PICKUP_RADIUS_M()}m)`);
-    err.statusCode = 400;
-    throw err;
-  }
-  */
 
   const now = new Date();
-  const updated = await Order.findOneAndUpdate(
-    {
-      orderId,
-      workflowStatus: { $in: [...prePickup] },
-      deliveryBoy: deliveryId,
-    },
-    {
-      $set: {
-        workflowStatus: WORKFLOW_STATUS.OUT_FOR_DELIVERY,
-        status: legacyStatusFromWorkflow(WORKFLOW_STATUS.OUT_FOR_DELIVERY),
-        pickupConfirmedAt: now,
-        outForDeliveryAt: now,
-        deliveryRiderStep: 3,
+  let updated;
+
+  if (isRequest) {
+    updated = await SellerProductRequest.findOneAndUpdate(
+      {
+        requestNumber: orderId,
+        deliveryWorkflowStatus: { $in: ["DELIVERY_ASSIGNED", "PICKUP_READY"] },
+        deliveryBoy: deliveryId,
       },
-    },
-    { new: true },
-  );
+      {
+        $set: {
+          deliveryWorkflowStatus: "OUT_FOR_DELIVERY",
+        },
+      },
+      { new: true }
+    );
+  } else {
+    updated = await Order.findOneAndUpdate(
+      {
+        orderId,
+        workflowStatus: { $in: [WORKFLOW_STATUS.DELIVERY_ASSIGNED, WORKFLOW_STATUS.PICKUP_READY] },
+        deliveryBoy: deliveryId,
+      },
+      {
+        $set: {
+          workflowStatus: WORKFLOW_STATUS.OUT_FOR_DELIVERY,
+          status: legacyStatusFromWorkflow(WORKFLOW_STATUS.OUT_FOR_DELIVERY),
+          pickupConfirmedAt: now,
+          outForDeliveryAt: now,
+          deliveryRiderStep: 3,
+        },
+      },
+      { new: true },
+    );
+  }
 
   if (!updated) {
-    const err = new Error("Pickup confirm failed");
+    const err = new Error("Could not confirm pickup");
     err.statusCode = 409;
     throw err;
+  }
+
+  if (isRequest) {
+    emitOrderStatusUpdate(
+      orderId,
+      { workflowStatus: "OUT_FOR_DELIVERY" },
+      updated.sellerId
+    );
+    return updated;
   }
 
   emitOrderStatusUpdate(
@@ -1075,42 +1196,71 @@ async function resolveRiderLocation(deliveryId, bodyLat, bodyLng) {
 }
 
 export async function requestHandoffOtpAtomic(deliveryId, orderId, lat, lng) {
-  const order = await Order.findOne({
-    orderId,
-    deliveryBoy: deliveryId,
-  });
+  let order;
+  let isRequest = false;
 
-  if (!order) {
-    const err = new Error("Order not found or not assigned to you");
-    err.statusCode = 404;
-    err.code = "UNAUTHORIZED_DELIVERY";
-    throw err;
-  }
+  if (orderId && orderId.toUpperCase().startsWith("REQ-")) {
+    isRequest = true;
+    order = await SellerProductRequest.findOne({
+      requestNumber: orderId,
+      deliveryBoy: deliveryId,
+    });
+    if (!order) {
+      const err = new Error("Order not found or not assigned to you");
+      err.statusCode = 404;
+      err.code = "UNAUTHORIZED_DELIVERY";
+      throw err;
+    }
+    if (order.deliveryWorkflowStatus !== "OUT_FOR_DELIVERY") {
+      const err = new Error("Order not ready for OTP");
+      err.statusCode = 409;
+      err.code = "ORDER_NOT_READY";
+      throw err;
+    }
+  } else {
+    order = await Order.findOne({
+      orderId,
+      deliveryBoy: deliveryId,
+    });
 
-  // Accept either v2 workflow state OUT_FOR_DELIVERY *or* legacy v1
-  // status "out_for_delivery" — the legacy controller didn't gate on
-  // state at all, so this is the strictest backward-compatible guard.
-  const isV2Out = order.workflowStatus === WORKFLOW_STATUS.OUT_FOR_DELIVERY;
-  const isV1Out =
-    (order.workflowVersion || 1) < 2 &&
-    String(order.status || "").toLowerCase() === "out_for_delivery";
-  if (!isV2Out && !isV1Out) {
-    const err = new Error("Order not ready for OTP");
-    err.statusCode = 409;
-    err.code = "ORDER_NOT_READY";
-    throw err;
+    if (!order) {
+      const err = new Error("Order not found or not assigned to you");
+      err.statusCode = 404;
+      err.code = "UNAUTHORIZED_DELIVERY";
+      throw err;
+    }
+
+    const isV2Out = order.workflowStatus === WORKFLOW_STATUS.OUT_FOR_DELIVERY;
+    const isV1Out =
+      (order.workflowVersion || 1) < 2 &&
+      String(order.status || "").toLowerCase() === "out_for_delivery";
+    if (!isV2Out && !isV1Out) {
+      const err = new Error("Order not ready for OTP");
+      err.statusCode = 409;
+      err.code = "ORDER_NOT_READY";
+      throw err;
+    }
   }
 
   const rider = await resolveRiderLocation(deliveryId, lat, lng);
 
-  const cust = order.address?.location;
+  let cust;
+  if (isRequest) {
+    const seller = await Seller.findById(order.sellerId).select("location").lean();
+    if (seller?.location?.coordinates && seller.location.coordinates.length >= 2) {
+      cust = { lng: seller.location.coordinates[0], lat: seller.location.coordinates[1] };
+    }
+  } else {
+    cust = order.address?.location;
+  }
+
   if (
     typeof cust?.lat !== "number" ||
     typeof cust?.lng !== "number" ||
     !Number.isFinite(cust.lat) ||
     !Number.isFinite(cust.lng)
   ) {
-    const err = new Error("Customer address coordinates missing");
+    const err = new Error("Destination address coordinates missing");
     err.statusCode = 400;
     err.code = "ORDER_LOCATION_REQUIRED";
     throw err;
@@ -1157,6 +1307,8 @@ export async function requestHandoffOtpAtomic(deliveryId, orderId, lat, lng) {
   await OrderOtp.create({
     orderId,
     orderMongoId: order._id,
+    sourceId: order._id,
+    sourceType: "ORDER",
     type: "delivery",
     codeHash,
     code,
@@ -1166,10 +1318,11 @@ export async function requestHandoffOtpAtomic(deliveryId, orderId, lat, lng) {
     lastGeneratedAt: new Date(),
   });
 
-  const customerId =
-    order.customer && typeof order.customer.toString === "function"
-      ? order.customer.toString()
-      : order.customer;
+  const customerId = isRequest
+    ? String(order.sellerId)
+    : (order.customer && typeof order.customer.toString === "function"
+        ? order.customer.toString()
+        : order.customer);
 
   const otpPayload = {
     orderId,
@@ -1178,6 +1331,21 @@ export async function requestHandoffOtpAtomic(deliveryId, orderId, lat, lng) {
     expiresAt,
     deliveryPersonNearby: true,
   };
+
+  if (isRequest) {
+    emitToSeller(customerId, { event: "order:otp", payload: otpPayload });
+    emitToSeller(customerId, {
+      event: "delivery:otp:generated",
+      payload: otpPayload,
+    });
+    emitToOrder(orderId, { event: "order:otp", payload: otpPayload });
+    emitToOrder(orderId, {
+      event: "delivery:otp:generated",
+      payload: otpPayload,
+    });
+    emitOrderStatusUpdate(orderId, { otpSent: true }, customerId);
+    return { expiresAt, attemptsRemaining: 3, message: "OTP sent to seller" };
+  }
 
   emitToCustomer(customerId, { event: "order:otp", payload: otpPayload });
   emitToCustomer(customerId, {
@@ -1238,27 +1406,53 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
   }
 
   orderId = await requireCanonicalOrderId(orderId);
-  const order = await Order.findOne({
-    orderId,
-    deliveryBoy: deliveryId,
-  }).populate("customer", "name phone");
+  let order;
+  let isRequest = false;
+  let isV2Out = false;
+  let isV1Out = false;
 
-  if (!order) {
-    const err = new Error("Order not found or not assigned to you");
-    err.statusCode = 404;
-    err.code = "UNAUTHORIZED_DELIVERY";
-    throw err;
-  }
+  if (orderId && orderId.toUpperCase().startsWith("REQ-")) {
+    isRequest = true;
+    order = await SellerProductRequest.findOne({
+      requestNumber: orderId,
+      deliveryBoy: deliveryId,
+    }).populate("sellerId", "name phone");
 
-  const isV2Out = order.workflowStatus === WORKFLOW_STATUS.OUT_FOR_DELIVERY;
-  const isV1Out =
-    (order.workflowVersion || 1) < 2 &&
-    String(order.status || "").toLowerCase() === "out_for_delivery";
-  if (!isV2Out && !isV1Out) {
-    const err = new Error("Invalid state for delivery completion");
-    err.statusCode = 409;
-    err.code = "ORDER_NOT_READY";
-    throw err;
+    if (!order) {
+      const err = new Error("Order not found or not assigned to you");
+      err.statusCode = 404;
+      err.code = "UNAUTHORIZED_DELIVERY";
+      throw err;
+    }
+    if (order.deliveryWorkflowStatus !== "OUT_FOR_DELIVERY") {
+      const err = new Error("Invalid state for delivery completion");
+      err.statusCode = 409;
+      err.code = "ORDER_NOT_READY";
+      throw err;
+    }
+  } else {
+    order = await Order.findOne({
+      orderId,
+      deliveryBoy: deliveryId,
+    }).populate("customer", "name phone");
+
+    if (!order) {
+      const err = new Error("Order not found or not assigned to you");
+      err.statusCode = 404;
+      err.code = "UNAUTHORIZED_DELIVERY";
+      throw err;
+    }
+
+    isV2Out = order.workflowStatus === WORKFLOW_STATUS.OUT_FOR_DELIVERY;
+    isV1Out =
+      (order.workflowVersion || 1) < 2 &&
+      String(order.status || "").toLowerCase() === "out_for_delivery";
+    if (!isV2Out && !isV1Out) {
+      const err = new Error("Invalid state for delivery completion");
+      err.statusCode = 409;
+      err.code = "ORDER_NOT_READY";
+      throw err;
+    }
   }
 
   // Load the most recent OTP record; do NOT filter on consumedAt so we
@@ -1339,41 +1533,182 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
   // For v2 orders we move the workflow state; for legacy v1 we just
   // flip the legacy `status`. The atomic guard prevents double-delivery
   // by including the expected pre-state in the filter.
-  const updateFilter = isV2Out
+  const updateFilter = isRequest
     ? {
-        orderId,
-        workflowStatus: WORKFLOW_STATUS.OUT_FOR_DELIVERY,
+        requestNumber: orderId,
+        deliveryWorkflowStatus: "OUT_FOR_DELIVERY",
         deliveryBoy: deliveryId,
       }
+    : (isV2Out
+      ? {
+          orderId,
+          workflowStatus: WORKFLOW_STATUS.OUT_FOR_DELIVERY,
+          deliveryBoy: deliveryId,
+        }
+      : {
+          orderId,
+          status: "out_for_delivery",
+          deliveryBoy: deliveryId,
+        });
+
+  const updateSet = isRequest
+    ? {
+        status: "DELIVERED",
+        deliveryWorkflowStatus: "DELIVERED",
+        deliveredAt: now,
+      }
     : {
-        orderId,
-        status: "out_for_delivery",
-        deliveryBoy: deliveryId,
+        status: "delivered",
+        deliveredAt: now,
+        otpValidatedAt: now,
       };
 
-  const updateSet = {
-    status: "delivered",
-    deliveredAt: now,
-    otpValidatedAt: now,
-  };
-  if (isV2Out) {
+  if (!isRequest && isV2Out) {
     updateSet.workflowStatus = WORKFLOW_STATUS.DELIVERED;
   }
   if (validationLocation) {
     updateSet.otpValidationLocation = validationLocation;
   }
 
-  const updated = await Order.findOneAndUpdate(
-    updateFilter,
-    { $set: updateSet },
-    { new: true },
-  );
+  let updated;
+  if (isRequest) {
+    updated = await SellerProductRequest.findOneAndUpdate(
+      updateFilter,
+      { $set: updateSet },
+      { new: true }
+    );
+  } else {
+    updated = await Order.findOneAndUpdate(
+      updateFilter,
+      { $set: updateSet },
+      { new: true }
+    );
+  }
 
   if (!updated) {
     const err = new Error("Could not finalize delivery");
     err.statusCode = 409;
     err.code = "ORDER_NOT_READY";
     throw err;
+  }
+
+  if (isRequest) {
+    clearOrderTracking(orderId).catch(() => {});
+    clearRiderPresence(deliveryId).catch(() => {});
+    
+    emitOrderStatusUpdate(
+      orderId,
+      { workflowStatus: "DELIVERED" },
+      updated.sellerId
+    );
+
+    const validatedPayload = {
+      orderId,
+      status: "delivered",
+      deliveredAt: now.toISOString(),
+    };
+    emitToSeller(String(updated.sellerId), {
+      event: "delivery:otp:validated",
+      payload: validatedPayload,
+    });
+    emitToOrder(orderId, {
+      event: "delivery:otp:validated",
+      payload: validatedPayload,
+    });
+    
+    // -----------------------------------------------------
+    // Move delivered items into SellerInventory
+    // -----------------------------------------------------
+    try {
+      if (updated.items && Array.isArray(updated.items)) {
+        const sellerId = updated.sellerId;
+        const sellerName = updated.sellerName || "Unknown Seller";
+        
+        for (const item of updated.items) {
+          const productId = item.productId;
+          const quantity = item.quantity || 0;
+          
+          if (!productId || quantity <= 0) continue;
+          
+          const adminProduct = await Product.findById(productId);
+          if (adminProduct) {
+            await SellerInventory.updateOne(
+              {
+                sellerId,
+                productId,
+                requestId: updated._id
+              },
+              {
+                $setOnInsert: {
+                  sellerId,
+                  sellerName,
+                  productId: adminProduct._id,
+                  productName: adminProduct.name,
+                  productImage: adminProduct.mainImage || adminProduct.images?.[0] || "",
+                  productSku: adminProduct.sku || "",
+                  category: adminProduct.category || "General",
+                  subCategory: adminProduct.subCategory || "",
+                  description: adminProduct.description || "",
+                  originalPrice: adminProduct.price,
+                  sellerPrice: adminProduct.salePrice || adminProduct.price,
+                  totalStock: quantity,
+                  availableStock: quantity,
+                  soldStock: 0,
+                  requestId: updated._id,
+                  requestNumber: updated.requestNumber,
+                  paymentType: updated.paymentType || "PAY_NOW",
+                  paymentStatus: updated.paymentStatus || "PENDING",
+                  status: "ACTIVE",
+                  approvedAt: now
+                }
+              },
+              { upsert: true }
+            );
+
+            // Clone product to Seller's catalog
+            let clonedProduct = await Product.findOne({ adminProductId: adminProduct._id, sellerId });
+            
+            if (clonedProduct) {
+              await Product.updateOne(
+                { _id: clonedProduct._id },
+                { $inc: { stock: quantity } }
+              );
+            } else {
+              const uniqueSuffix = `-${sellerId.toString().slice(-6)}-${Date.now().toString().slice(-4)}`;
+              const clonedData = {
+                ...adminProduct.toObject(),
+                _id: new mongoose.Types.ObjectId(),
+                sellerId,
+                adminProductId: adminProduct._id,
+                stock: quantity,
+                slug: `${adminProduct.slug}${uniqueSuffix}`,
+                sku: `${adminProduct.sku || 'SKU'}${uniqueSuffix}`,
+                lastSubmittedByRole: "admin",
+                approvalStatus: "approved",
+                approvalNote: "Automatically approved from admin warehouse delivery.",
+                createdAt: now,
+                updatedAt: now
+              };
+              
+              delete clonedData.__v;
+              await Product.create(clonedData);
+            }
+          }
+        }
+      }
+    } catch (invError) {
+      logger.error("Failed to update SellerInventory after delivery", {
+        orderId,
+        error: invError.message
+      });
+    }
+
+    return {
+      order: updated,
+      orderId: updated.requestNumber,
+      deliveredAt: now.toISOString(),
+      warning: null,
+    };
   }
 
   if (!updated.customer) {
@@ -1450,4 +1785,66 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
     deliveredAt: now.toISOString(),
     warning: settlementWarning,
   };
+}
+
+
+
+
+// --- SELLER REQUEST DELIVERY SEARCH ---
+
+export async function startRequestDeliverySearch(requestId) {
+  const request = await SellerProductRequest.findById(requestId).populate('sellerId');
+  if (!request) throw new Error("Request not found");
+
+  const now = new Date();
+  const deliveryMs = DEFAULT_DELIVERY_TIMEOUT_MS();
+
+  request.deliveryWorkflowStatus = WORKFLOW_STATUS.DELIVERY_SEARCH;
+  request.deliverySearchExpiresAt = new Date(now.getTime() + deliveryMs);
+  
+  await request.save();
+
+  // For Admin to Seller delivery, pickup is Admin warehouse, drop is Seller shop
+  const admin = await Admin.findOne({ role: 'Admin' }); // Or pick the admin who approved
+  const radius = admin?.serviceRadius ? admin.serviceRadius * 1000 : INITIAL_DELIVERY_RADIUS_M();
+
+  await DeliveryAssignment.create({
+    orderMongoId: request._id,
+    sourceId: request._id,
+    sourceType: "SELLER_REQUEST",
+    orderId: request.requestNumber,
+    status: "broadcasting",
+    radiusMeters: radius,
+    attempt: 1,
+    expiresAt: request.deliverySearchExpiresAt,
+  });
+
+  const payload = {
+    orderId: request.requestNumber,
+    sourceType: "SELLER_REQUEST",
+    workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
+    radiusMeters: radius,
+    preview: {
+      pickup: "Veenolex Wholesale Warehouse",
+      drop: request.sellerName || "Seller Store",
+      total: request.totalAmount || 0,
+    },
+    deliverySearchExpiresAt: request.deliverySearchExpiresAt,
+  };
+
+  // Note: For actual admin-to-seller delivery broadcasts, we might want to emit to drivers near Admin warehouse.
+  // We can reuse emitDeliveryBroadcastForSeller but use admin's location if available.
+  // For now, let's assume emitDeliveryBroadcastForSeller finds nearby riders.
+  if (admin && admin.location && admin.location.coordinates) {
+    await emitDeliveryBroadcastForLocation(
+      { lng: admin.location.coordinates[0], lat: admin.location.coordinates[1] },
+      admin.serviceRadius || 5,
+      payload
+    );
+  } else {
+    console.warn("[startRequestDeliverySearch] Admin location not found. Broadcast might fail or use dev fallback.");
+    await emitDeliveryBroadcastForSeller(admin ? admin._id : null, payload); // Fallback
+  }
+
+  return request;
 }

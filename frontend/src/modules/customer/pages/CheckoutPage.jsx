@@ -742,7 +742,7 @@ const CheckoutPage = () => {
       setOutOfZoneShippingCost(cost);
       setShowOutOfZoneConfirm(true);
     } else {
-      executeProcessOrder();
+      handlePlaceOrder();
     }
   };
 

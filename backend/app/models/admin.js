@@ -39,10 +39,32 @@ const adminSchema = new mongoose.Schema(
       default: true, // Internal admins might be verified by default or via admin code
     },
 
+    location: {
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        default: [0, 0]
+      }
+    },
+    serviceRadius: { 
+      type: Number, 
+      default: 5 
+    },
+    address: {
+      type: String,
+      default: ""
+    },
+
     lastLogin: Date,
   },
   { timestamps: true },
 );
+
+adminSchema.index({ location: "2dsphere" });
 
 // Hash password before saving
 adminSchema.pre("save", async function (next) {

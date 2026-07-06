@@ -3,15 +3,26 @@ import crypto from "crypto";
 
 const orderOtpSchema = new mongoose.Schema(
   {
+    sourceType: {
+      type: String,
+      enum: ["ORDER", "SELLER_REQUEST"],
+      required: true,
+      default: "ORDER",
+    },
+    sourceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      refPath: "sourceType",
+      index: true,
+    },
+    // Legacy fields for backward compatibility
     orderId: {
       type: String,
-      required: true,
       index: true,
     },
     orderMongoId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Order",
-      required: true,
     },
     type: {
       type: String,

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from "react-router-dom";
 import Card from '@shared/components/ui/Card';
 import Badge from '@shared/components/ui/Badge';
 import { adminApi } from '../services/adminApi';
@@ -28,6 +29,7 @@ import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const ProductManagement = () => {
+    const navigate = useNavigate();
     const [products, setProducts] = useState([]);
     const [categories, setCategories] = useState([]); // All categories for dropdowns
     const [page, setPage] = useState(1);
@@ -153,7 +155,12 @@ const ProductManagement = () => {
             return toast.error('Only product editing is allowed for admins');
         }
 
-        if (!formData.name || !formData.price || !formData.stock || !formData.header || !formData.categoryId || !formData.subcategoryId) {
+        const activeVariants = formData.variants || [];
+        const topPrice = activeVariants.length > 0 ? Number(activeVariants[0].price) : Number(formData.price);
+        const topSalePrice = activeVariants.length > 0 ? Number(activeVariants[0].salePrice) : Number(formData.salePrice);
+        const topStock = activeVariants.length > 0 ? Number(activeVariants[0].stock) : Number(formData.stock);
+
+        if (!formData.name || !topPrice || topStock === undefined || topStock === null || !formData.header || !formData.categoryId || !formData.subcategoryId) {
             return toast.error('Please fill all required fields, including categories');
         }
 
@@ -164,9 +171,9 @@ const ProductManagement = () => {
             data.append('slug', formData.slug);
             data.append('sku', formData.sku);
             data.append('description', formData.description);
-            data.append('price', Number(formData.price));
-            data.append('salePrice', Number(formData.salePrice) || 0);
-            data.append('stock', Number(formData.stock));
+            data.append('price', topPrice);
+            data.append('salePrice', topSalePrice || 0);
+            data.append('stock', topStock);
             data.append('lowStockAlert', Number(formData.lowStockAlert) || 5);
             data.append('unit', formData.unit);
             data.append('headerId', formData.header);
@@ -444,6 +451,13 @@ const ProductManagement = () => {
                     </h1>
                     <p className="ds-description mt-0.5">Track your items, prices, and how many are left in stock.</p>
                 </div>
+                <button
+                    onClick={() => navigate("/admin/products/add")}
+                    className="ds-h1 flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
+                >
+                    <HiOutlinePlus className="h-5 w-5" />
+                    Add New Product
+                </button>
             </div>
 
             {/* Quick Stats */}

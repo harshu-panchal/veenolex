@@ -34,6 +34,7 @@ import {
   markArrivedAtStore,
   advanceDeliveryRiderUi,
   requestDeliveryOtp,
+  getActiveDeliveryOtp,
   verifyDeliveryOtp,
   requestReturnPickupOtp,
   verifyReturnPickupOtp,
@@ -213,6 +214,12 @@ router.post(
   verifyToken,
   allowRoles("delivery", "admin"),
   requestDeliveryOtp,
+);
+router.get(
+  "/workflow/:orderId/otp/active",
+  verifyToken,
+  // allow roles seller or customer
+  getActiveDeliveryOtp,
 );
 router.post(
   "/workflow/:orderId/otp/verify",

@@ -10,6 +10,8 @@ import {
   validateSchema,
 } from "../validation/paymentValidation.js";
 import logger from "../services/logger.js";
+import SellerProductRequest from "../models/sellerProductRequest.js";
+import { getActivePaymentProvider } from "../services/payment/providerRegistry.js";
 
 function resolvePaymentErrorMessage(error) {
   const directMessage = String(error?.message || "").trim();
@@ -144,4 +146,49 @@ export const getPaymentStatus = async (req, res) => {
       } catch (error) {
         return handleResponse(res, error.statusCode || 500, error.message);
       }
+};
+
+export const handlePhonePeSellerWebhook = async (req, res) => {
+  try {
+    const authorization = req.headers["x-verify"] || req.headers["authorization"];
+    const rawBody = req.body;
+
+    if (!authorization) {
+      logger.warn("PhonePe seller webhook missing verification header");
+      return res.status(401).send("Unauthorized");
+    }
+
+    const provider = getActivePaymentProvider();
+    const isValid = await provider.validateWebhook({ rawBody, authorization });
+    if (!isValid) {
+      return res.status(401).send("Unauthorized");
+    }
+
+    const payload = await provider.decodeWebhookPayload({ rawBody });
+    const { merchantOrderId, state, transactionId } = payload;
+
+    const request = await SellerProductRequest.findOne({ requestNumber: merchantOrderId });
+    if (!request) {
+      logger.warn(`Seller request not found for webhook: ${merchantOrderId}`);
+      return res.status(200).send("OK"); // Acknowledge to stop retries
+    }
+
+    if (state === "COMPLETED") {
+      request.paymentStatus = "PAID";
+      request.paidAt = new Date();
+    } else if (state === "FAILED") {
+      request.paymentStatus = "FAILED";
+    }
+    
+    if (transactionId) {
+      request.transactionId = transactionId;
+    }
+
+    await request.save();
+    return res.status(200).send("OK");
+
+  } catch (error) {
+    logger.error("PhonePe seller webhook failed", { message: error.message });
+    return res.status(500).send("Internal Server Error");
+  }
 };

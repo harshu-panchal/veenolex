@@ -565,7 +565,9 @@ const ProductManagement = () => {
         </div>
         <button
           onClick={() => navigate("/seller/products/add")}
-          className="flex items-center gap-2 bg-black  text-primary-foreground px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors">
+          className="flex items-center gap-2 bg-black  text-primary-foreground px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors"
+          style={{ display: "none" }}
+        >
           <HiOutlinePlus className="h-5 w-5" />
           Add New Product
         </button>

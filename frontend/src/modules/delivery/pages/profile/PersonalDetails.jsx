@@ -5,13 +5,16 @@ import Button from "@/shared/components/ui/Button";
 import Input from "@/shared/components/ui/Input";
 import { toast } from "sonner";
 
+import { useAuth } from "@core/context/AuthContext";
+
 const PersonalDetails = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
-    fullName: "Rahul Kumar",
-    phone: "+91 98765 43210",
-    email: "rahul.kumar@example.com",
+    fullName: user?.name || "Delivery Partner",
+    phone: user?.phone || "+91 XXXXXXXXXX",
+    email: user?.email || "delivery@example.com",
     address: "Flat 302, Green Apts, MG Road, Bangalore - 560001",
     dob: "1995-08-15",
     bloodGroup: "O+",

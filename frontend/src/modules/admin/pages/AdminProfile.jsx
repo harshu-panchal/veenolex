@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Card from '@shared/components/ui/Card';
+import { MapPin } from 'lucide-react';
 import {
     Save,
     User,
@@ -16,16 +17,24 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuth } from '@core/context/AuthContext';
 import { adminApi } from '../services/adminApi';
+import LocationSettingsCard from '../../../shared/components/LocationSettingsCard';
+import MapPicker from '../../../shared/components/MapPicker';
 
 const AdminProfile = () => {
     const { user, logout } = useAuth();
     const [isSaving, setIsSaving] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('profile');
+    const [isLocationEditing, setIsLocationEditing] = useState(false);
+    const [isMapOpen, setIsMapOpen] = useState(false);
     const [profile, setProfile] = useState({
         name: '',
         email: '',
-        role: 'Admin'
+        role: 'Admin',
+        lat: null,
+        lng: null,
+        radius: 5,
+        address: ''
     });
 
     const [security, setSecurity] = useState({
@@ -45,7 +54,11 @@ const AdminProfile = () => {
             setProfile({
                 name: data.name,
                 email: data.email,
-                role: data.role || 'Admin'
+                role: data.role || 'Admin',
+                lat: data.location?.coordinates?.[1] || null,
+                lng: data.location?.coordinates?.[0] || null,
+                radius: data.serviceRadius || 5,
+                address: data.address || ''
             });
         } catch (error) {
             toast.error('Failed to fetch admin profile');
@@ -60,7 +73,11 @@ const AdminProfile = () => {
         try {
             await adminApi.updateProfile({
                 name: profile.name,
-                email: profile.email
+                email: profile.email,
+                lat: profile.lat,
+                lng: profile.lng,
+                radius: profile.radius,
+                address: profile.address
             });
             toast.success('Profile updated successfully');
             fetchProfile();
@@ -69,6 +86,16 @@ const AdminProfile = () => {
         } finally {
             setIsSaving(false);
         }
+    };
+
+    const handleLocationSelect = (location) => {
+        setProfile(prev => ({
+            ...prev,
+            lat: location.lat,
+            lng: location.lng,
+            radius: location.radius,
+            address: location.address
+        }));
     };
 
     const handlePasswordUpdate = async (e) => {
@@ -171,6 +198,18 @@ const AdminProfile = () => {
                             >
                                 <Lock className="h-4 w-4" />
                                 Security & Password
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('location')}
+                                className={cn(
+                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all mt-1",
+                                    activeTab === 'location'
+                                        ? "bg-white text-brand-600 shadow-sm ring-1 ring-slate-100"
+                                        : "text-slate-400 hover:text-slate-600 hover:bg-slate-100/50"
+                                )}
+                            >
+                                <MapPin className="h-4 w-4" />
+                                Warehouse Location
                             </button>
                         </div>
                     </Card>
@@ -298,6 +337,43 @@ const AdminProfile = () => {
                     )}
                 </div>
             </div>
+
+                    {/* Location Tab */}
+                    {activeTab === 'location' && (
+                        <div className="animate-in fade-in slide-in-from-right-4 duration-500">
+                            <LocationSettingsCard
+                                formData={profile}
+                                isEditing={isLocationEditing}
+                                setIsEditing={setIsLocationEditing}
+                                setIsMapOpen={setIsMapOpen}
+                                entityType="admin"
+                            />
+                            {isLocationEditing && (
+                                <div className="mt-4 flex justify-end">
+                                    <button
+                                        onClick={handleProfileUpdate}
+                                        disabled={isSaving}
+                                        className={cn(
+                                            "flex items-center gap-2 px-4 py-4 bg-black text-primary-foreground rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl shadow-brand-100 active:scale-95",
+                                            isSaving ? "opacity-70 cursor-wait" : "hover:bg-brand-700"
+                                        )}
+                                    >
+                                        {isSaving ? 'Saving...' : 'Save Location'}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+            {isMapOpen && (
+                <MapPicker
+                    isOpen={isMapOpen}
+                    onClose={() => setIsMapOpen(false)}
+                    onConfirm={handleLocationSelect}
+                    initialLocation={profile.lat ? { lat: profile.lat, lng: profile.lng } : null}
+                    initialRadius={profile.radius}
+                />
+            )}
         </div>
     );
 };

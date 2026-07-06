@@ -2,15 +2,26 @@ import mongoose from "mongoose";
 
 const deliveryAssignmentSchema = new mongoose.Schema(
   {
+    sourceType: {
+      type: String,
+      enum: ["ORDER", "SELLER_REQUEST"],
+      required: true,
+      default: "ORDER",
+    },
+    sourceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      refPath: "sourceType",
+      index: true,
+    },
+    // Legacy fields for backward compatibility
     orderMongoId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Order",
-      required: true,
       index: true,
     },
     orderId: {
       type: String,
-      required: true,
       index: true,
     },
     status: {

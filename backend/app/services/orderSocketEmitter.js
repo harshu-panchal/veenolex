@@ -6,7 +6,8 @@ import mongoose from "mongoose";
 import Notification from "../models/notification.js";
 import { 
   getDeliveryPartnerIdsWithinSellerRadius,
-  getDeliveryPartnerIdsWithinCustomerRadius
+  getDeliveryPartnerIdsWithinCustomerRadius,
+  getDeliveryPartnerIdsWithinRadius
 } from "./deliveryNearbyService.js";
 import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../modules/notifications/notification.constants.js";
@@ -306,5 +307,56 @@ export async function emitReturnBroadcastForCustomer(customerLocation, payload) 
     );
   } catch (err) {
     console.warn("[emitReturnBroadcastForCustomer] DB error", err.message);
+  }
+}
+
+
+export async function emitDeliveryBroadcastForLocation(location, radiusKm, payload) {
+  const s = getIo();
+  if (!location) return;
+
+  const ids = await getDeliveryPartnerIdsWithinRadius(location.lat, location.lng, radiusKm);
+  if (!ids.length) {
+    if (process.env.NODE_ENV !== "production" && s) {
+      s.to("delivery:online").emit("delivery:broadcast", {
+        ...payload,
+        at: new Date().toISOString(),
+        _devFallback: true,
+      });
+    }
+    return;
+  }
+
+  const body = { ...payload, at: new Date().toISOString() };
+
+  if (s) {
+    for (const id of ids) {
+      s.to(`delivery:${id}`).emit("delivery:broadcast", body);
+    }
+  }
+
+  // Push notifications
+  try {
+    const fcmTokens = await Delivery.find({ _id: { $in: ids } })
+      .select("fcmToken")
+      .lean();
+    
+    const tokens = fcmTokens.map((d) => d.fcmToken).filter(Boolean);
+    if (tokens.length > 0) {
+      const messages = tokens.map(token => ({
+        token,
+        notification: {
+          title: "New Delivery Request",
+          body: `Pickup from ${payload.preview?.pickup || "Store"}`,
+        },
+        data: {
+          event: "delivery:broadcast",
+          payload: JSON.stringify(body),
+        }
+      }));
+      emitNotificationEvent(NOTIFICATION_EVENTS.BULK_PUSH, { messages });
+    }
+  } catch (err) {
+    console.warn("[emitDeliveryBroadcastForLocation] DB error", err.message);
   }
 }

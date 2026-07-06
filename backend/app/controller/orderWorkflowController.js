@@ -96,6 +96,37 @@ export const requestDeliveryOtp = async (req, res) => {
   }
 };
 
+export const getActiveDeliveryOtp = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const OrderOtp = (await import("../models/orderOtp.js")).default;
+    const otp = await OrderOtp.findOne({ 
+      orderId, 
+      type: "delivery",
+      consumedAt: null 
+    }).sort({
+      lastGeneratedAt: -1,
+      createdAt: -1,
+    });
+
+    if (!otp) {
+      return handleResponse(res, 404, "No active OTP found");
+    }
+    
+    // Check if expired
+    if (otp.expiresAt && new Date(otp.expiresAt) < new Date()) {
+       return handleResponse(res, 410, "OTP has expired");
+    }
+
+    return handleResponse(res, 200, "Active OTP fetched", {
+      otp: otp.code,
+      expiresAt: otp.expiresAt
+    });
+  } catch (e) {
+    return handleResponse(res, e.statusCode || 500, e.message);
+  }
+};
+
 export const verifyDeliveryOtp = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -148,7 +179,20 @@ export const getOrderRoute = async (req, res) => {
       return handleResponse(res, 404, "Order not found");
     }
 
-    const order = await Order.findOne(orderKey).populate("seller").lean();
+    let order;
+    const isRequest = Boolean(orderId && orderId.toUpperCase().startsWith("REQ-"));
+    if (isRequest) {
+      order = await SellerProductRequest.findOne({ requestNumber: new RegExp(`^${orderId}$`, "i") })
+        .populate("sellerId")
+        .lean();
+      if (order) {
+        order.orderId = order.requestNumber;
+        order.seller = order.sellerId;
+        order.returnStatus = "none";
+      }
+    } else {
+      order = await Order.findOne(orderKey).populate("seller").lean();
+    }
 
     if (!order) {
       return handleResponse(res, 404, "Order not found");
@@ -198,6 +242,10 @@ export const getOrderRoute = async (req, res) => {
             `Customer delivery location missing for order ${order.orderId}.`,
           );
         }
+      } else if (isRequest) {
+        // Seller Request Pickup Phase: Admin/Warehouse
+        // Use a default coordinate if warehouse isn't configured in the request.
+        dest = { lat: 22.7196, lng: 75.8577 }; // Central Indore fallback
       } else {
         if (!hasSellerLoc) {
           return handleResponse(res, 400, "Seller location missing or invalid in database");
@@ -206,6 +254,12 @@ export const getOrderRoute = async (req, res) => {
       }
     } else {
       if (isReturn) {
+        if (!hasSellerLoc) {
+          return handleResponse(res, 400, "Seller location missing or invalid in database");
+        }
+        dest = { lat: coords[1], lng: coords[0] };
+      } else if (isRequest) {
+        // Seller Request Delivery Phase: Delivering to Seller
         if (!hasSellerLoc) {
           return handleResponse(res, 400, "Seller location missing or invalid in database");
         }
@@ -268,6 +322,7 @@ export const getOrderRoute = async (req, res) => {
     const route = await getCachedRoute(origin, dest, "driving", orderId, phase);
     return handleResponse(res, 200, "Route", { ...route, destination: dest });
   } catch (e) {
+    console.error(`[getOrderRoute] ERROR:`, e);
     return handleResponse(res, 500, e.message);
   }
 };

@@ -30,6 +30,7 @@ import ordersWithRoleFilterRoutes from "./ordersWithRoleFilter.js";
 import reportsWithRoleFilterRoutes from "./reportsWithRoleFilter.js";
 import franchiseReportWithRoleFilterRoutes from "./franchiseReportWithRoleFilter.js";
 import offlineSalesRoutes from "./offlineSalesRoutes.js";
+import sellerInventoryRoutes from "./sellerInventoryRoutes.js";
 
 import express from "express";
 
@@ -84,6 +85,7 @@ const setupRoutes = (app) => {
     router.use("/admin/faqs", faqRoute);
     router.use("/public/faqs", faqRoute); // For public access without admin prefix
     router.use("/offline-sales", offlineSalesRoutes);
+    router.use("/seller-inventory", sellerInventoryRoutes);
 
     app.use("/api", router);
 }

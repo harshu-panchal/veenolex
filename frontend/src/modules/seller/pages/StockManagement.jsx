@@ -44,53 +44,112 @@ const StockManagement = () => {
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
 
+    // --- PRICE EDIT STATE ---
+    const [editingPriceId, setEditingPriceId] = useState(null);
+    const [newPrice, setNewPrice] = useState("");
+    const [priceUpdateLoading, setPriceUpdateLoading] = useState(false);
+    const [priceUpdateError, setPriceUpdateError] = useState(null);
+    const [priceUpdateSuccess, setPriceUpdateSuccess] = useState(null);
+
+    const handlePriceUpdate = async (inventoryId, currentPrice) => {
+        // Validate
+        const parsedPrice = parseFloat(newPrice);
+        if (!newPrice || isNaN(parsedPrice) || parsedPrice <= 0) {
+            setPriceUpdateError("Please enter a valid price");
+            return;
+        }
+
+        if (parsedPrice === currentPrice) {
+            setEditingPriceId(null);
+            setNewPrice("");
+            return;
+        }
+
+        try {
+            setPriceUpdateLoading(true);
+            setPriceUpdateError(null);
+
+            console.log("💰 Updating price:", inventoryId, "→ ₹" + parsedPrice);
+
+            // Need to import axios at top, assuming it's available or we can use sellerApi
+            // Let's use fetch or axios since the user's snippet explicitly uses axios.patch
+            const response = await fetch(`/api/seller-inventory/${inventoryId}/price`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem("token")}`
+                },
+                body: JSON.stringify({ sellerPrice: parsedPrice })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                // Update local state
+                setInventory((prev) =>
+                    prev.map((item) =>
+                        item._id === inventoryId || item.id === inventoryId
+                            ? { ...item, sellerPrice: parsedPrice, price: parsedPrice }
+                            : item
+                    )
+                );
+
+                setPriceUpdateSuccess(`✅ Price updated to ₹${parsedPrice}`);
+                setEditingPriceId(null);
+                setNewPrice("");
+
+                console.log("✅ Price updated successfully:", data.data);
+
+                // Clear success after 3 seconds
+                setTimeout(() => setPriceUpdateSuccess(null), 3000);
+            } else {
+                 setPriceUpdateError(data.message || "Failed to update price");
+            }
+        } catch (err) {
+            console.error("❌ Price update error:", err);
+            setPriceUpdateError(err.message || "Failed to update price");
+        } finally {
+            setPriceUpdateLoading(false);
+        }
+    };
+
+    const formatPrice = (price) => {
+        if (!price) return "0.00";
+        return Number(price).toLocaleString('en-IN', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    };
+
     const fetchInventory = async (silent = false, stockStatus) => {
         if (!silent) setIsLoading(true);
         try {
-            const requestLimit = 100;
-            const maxPages = 50;
-            let requestedPage = 1;
-            let totalPages = 1;
-            const collected = [];
-
-            while (requestedPage <= totalPages && requestedPage <= maxPages) {
-                const params = { page: requestedPage, limit: requestLimit };
-                if (stockStatus === 'in') params.stockStatus = 'in';
-                if (stockStatus === 'out') params.stockStatus = 'out';
-
-                const res = await sellerApi.getProducts(params);
-                if (!res.data.success) break;
-
-                // Backend returns handleResponse(..., { items, page, limit, total, totalPages })
-                const payload = res.data.result || {};
-                const rawProducts = Array.isArray(payload.items)
-                    ? payload.items
-                    : (res.data.results || []);
-
-                collected.push(...rawProducts);
-                totalPages = Number(payload.totalPages || 1);
-
-                if (!rawProducts.length || requestedPage >= totalPages) {
-                    break;
+            const response = await fetch(`/api/seller-inventory/my-products?status=${stockStatus || 'ALL'}`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem("token")}`
                 }
-                requestedPage += 1;
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                const safeProducts = Array.isArray(data.data) ? data.data : [];
+                setInventory(
+                    safeProducts.map(p => ({
+                        ...p,
+                        id: p._id,
+                        threshold: p.lowStockAlert || 5,
+                        // Ensure compatibility with existing table fields if needed
+                        name: p.productName,
+                        sku: p.productSku,
+                        stock: p.availableStock,
+                        mainImage: p.productImage,
+                        price: p.sellerPrice,
+                        status: p.status === 'OUT_OF_STOCK' ? 'Out of Stock' : 'In Stock'
+                    }))
+                );
             }
-
-            const safeProducts = Array.isArray(collected) ? collected : [];
-
-            setInventory(
-                safeProducts.map(p => ({
-                    ...p,
-                    id: p._id,
-                    threshold: p.lowStockAlert || 5,
-                    status:
-                        p.stock === 0
-                            ? 'Out of Stock'
-                            : (p.stock <= (p.lowStockAlert || 5) ? 'Low Stock' : 'In Stock')
-                }))
-            );
         } catch (error) {
-            toast.error("Failed to load inventory");
+            console.error("Fetch inventory error:", error);
+            // toast.error("Failed to load inventory");
         } finally {
             if (!silent) setIsLoading(false);
         }
@@ -272,9 +331,7 @@ const StockManagement = () => {
                                     <thead>
                                         <tr className="bg-slate-50/50 border-b border-slate-100">
                                             <th className="px-6 py-4 text-xs font-black text-slate-600 uppercase tracking-widest">Product Information</th>
-                                            <th className="px-6 py-4 text-xs font-black text-slate-600 uppercase tracking-widest">Inventory Capacity</th>
-                                            <th className="px-6 py-4 text-xs font-black text-slate-600 uppercase tracking-widest">Stock Health</th>
-                                            <th className="px-6 py-4 text-xs font-black text-slate-600 uppercase tracking-widest">Price</th>
+                                            <th className="px-6 py-4 text-xs font-black text-slate-600 uppercase tracking-widest">Stock & Price</th>
                                             <th className="px-6 py-4 text-xs font-black text-slate-600 uppercase tracking-widest text-right whitespace-nowrap">Actions</th>
                                         </tr>
                                     </thead>
@@ -320,34 +377,280 @@ const StockManagement = () => {
                                                                 </div>
                                                             </td>
                                                             <td className="px-6 py-5">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="flex flex-col">
-                                                                        <span
-                                                                            className={cn(
-                                                                                "text-sm font-black",
-                                                                                item.stock <= item.threshold ? "text-rose-600" : "text-slate-900"
-                                                                            )}
-                                                                        >
-                                                                            {item.stock} units
-                                                                        </span>
-                                                                        {item.stock <= item.threshold && (
-                                                                            <span className="text-[9px] font-bold text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded w-fit mt-0.5">
-                                                                                Low Stock
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-6 py-5">
-                                                                <Badge
-                                                                    variant={item.status === 'In Stock' ? 'success' : 'destructive'}
-                                                                    className="text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg"
-                                                                >
-                                                                    {item.status}
-                                                                </Badge>
-                                                            </td>
-                                                            <td className="px-6 py-5">
-                                                                <p className="text-sm font-black text-slate-900">₹{item.price}</p>
+{/* ─────── PRICE + STOCK SECTION ─────── */}
+<div style={{
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: "10px",
+  marginTop: "12px"
+}}>
+
+  {/* AVAILABLE STOCK (READ ONLY) */}
+  <div style={{
+    backgroundColor: "#f9f9f9",
+    padding: "10px",
+    borderRadius: "8px",
+    textAlign: "center"
+  }}>
+    <p style={{
+      fontSize: "10px",
+      color: "#999",
+      margin: "0 0 2px",
+      textTransform: "uppercase",
+      fontWeight: "600"
+    }}>
+      Available Stock
+    </p>
+    <p style={{
+      fontSize: "22px",
+      fontWeight: "800",
+      color: item.stock === 0
+        ? "#E74C3C"
+        : "#27AE60",
+      margin: "0"
+    }}>
+      {item.stock}
+    </p>
+    <p style={{
+      fontSize: "10px",
+      color: "#999",
+      margin: "0"
+    }}>
+      units
+    </p>
+  </div>
+
+  {/* ORIGINAL PRICE (READ ONLY - Admin set) */}
+  <div style={{
+    backgroundColor: "#f9f9f9",
+    padding: "10px",
+    borderRadius: "8px",
+    textAlign: "center"
+  }}>
+    <p style={{
+      fontSize: "10px",
+      color: "#999",
+      margin: "0 0 2px",
+      textTransform: "uppercase",
+      fontWeight: "600"
+    }}>
+      Admin Price
+    </p>
+    <p style={{
+      fontSize: "15px",
+      fontWeight: "700",
+      color: "#999",
+      margin: "0",
+      textDecoration: "line-through"
+    }}>
+      {formatPrice(item.originalPrice)}
+    </p>
+    <p style={{
+      fontSize: "10px",
+      color: "#999",
+      margin: "0"
+    }}>
+      base price
+    </p>
+  </div>
+
+</div>
+
+{/* ─────── YOUR SELLING PRICE (EDITABLE) ─────── */}
+<div style={{
+  marginTop: "10px",
+  backgroundColor: "#F0F7FF",
+  borderRadius: "8px",
+  padding: "12px",
+  border: "2px solid #3B9FD9"
+}}>
+
+  <div style={{
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: editingPriceId === (item._id || item.id) ? "10px" : "0"
+  }}>
+    <div>
+      <p style={{
+        fontSize: "10px",
+        color: "#3B9FD9",
+        margin: "0 0 2px",
+        textTransform: "uppercase",
+        fontWeight: "700",
+        letterSpacing: "0.5px"
+      }}>
+        ✏️ Your Selling Price
+      </p>
+      {editingPriceId !== (item._id || item.id) && (
+        <p style={{
+          fontSize: "22px",
+          fontWeight: "800",
+          color: "#1565C0",
+          margin: "0"
+        }}>
+          {formatPrice(item.price)}
+        </p>
+      )}
+    </div>
+
+    {/* EDIT / CANCEL BUTTON */}
+    <button
+      onClick={() => {
+        const id = item._id || item.id;
+        if (editingPriceId === id) {
+          setEditingPriceId(null);
+          setNewPrice("");
+          setPriceUpdateError(null);
+        } else {
+          setEditingPriceId(id);
+          setNewPrice(item.price.toString());
+          setPriceUpdateError(null);
+        }
+      }}
+      style={{
+        padding: "6px 12px",
+        borderRadius: "6px",
+        border: `1px solid ${
+          editingPriceId === (item._id || item.id)
+            ? "#E74C3C"
+            : "#3B9FD9"
+        }`,
+        backgroundColor: editingPriceId === (item._id || item.id)
+          ? "#FFEBEE"
+          : "white",
+        color: editingPriceId === (item._id || item.id)
+          ? "#E74C3C"
+          : "#3B9FD9",
+        cursor: "pointer",
+        fontSize: "12px",
+        fontWeight: "600"
+      }}
+    >
+      {editingPriceId === (item._id || item.id)
+        ? "✕ Cancel"
+        : "✏️ Edit Price"}
+    </button>
+  </div>
+
+  {/* PRICE INPUT - Only shows when editing */}
+  {editingPriceId === (item._id || item.id) && (
+    <div>
+      <div style={{
+        display: "flex",
+        gap: "8px",
+        alignItems: "center"
+      }}>
+        {/* RUPEE SYMBOL */}
+        <span style={{
+          fontSize: "16px",
+          fontWeight: "700",
+          color: "#333"
+        }}>
+          ₹
+        </span>
+
+        {/* PRICE INPUT */}
+        <input
+          type="number"
+          value={newPrice}
+          onChange={(e) => {
+            setNewPrice(e.target.value);
+            setPriceUpdateError(null);
+          }}
+          placeholder="Enter new price"
+          min="1"
+          step="0.01"
+          autoFocus
+          style={{
+            flex: 1,
+            padding: "8px 10px",
+            border: "2px solid #3B9FD9",
+            borderRadius: "6px",
+            fontSize: "16px",
+            fontWeight: "700",
+            outline: "none",
+            fontFamily: "inherit"
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              handlePriceUpdate(
+                item._id || item.id,
+                item.price
+              );
+            }
+            if (e.key === "Escape") {
+              setEditingPriceId(null);
+              setNewPrice("");
+            }
+          }}
+        />
+
+        {/* SAVE BUTTON */}
+        <button
+          onClick={() =>
+            handlePriceUpdate(item._id || item.id, item.price)
+          }
+          disabled={priceUpdateLoading}
+          style={{
+            padding: "8px 14px",
+            backgroundColor: priceUpdateLoading
+              ? "#ccc"
+              : "#27AE60",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            cursor: priceUpdateLoading
+              ? "not-allowed"
+              : "pointer",
+            fontSize: "13px",
+            fontWeight: "700"
+          }}
+        >
+          {priceUpdateLoading ? "⏳" : "✅ Save"}
+        </button>
+      </div>
+
+      {/* PRICE ERROR */}
+      {priceUpdateError && (
+        <p style={{
+          fontSize: "12px",
+          color: "#E74C3C",
+          margin: "6px 0 0",
+          fontWeight: "500"
+        }}>
+          ❌ {priceUpdateError}
+        </p>
+      )}
+
+      {/* HINT */}
+      <p style={{
+        fontSize: "11px",
+        color: "#666",
+        margin: "6px 0 0"
+      }}>
+        Admin base price: {formatPrice(item.originalPrice)}
+        &nbsp;• Press Enter to save, Esc to cancel
+      </p>
+    </div>
+  )}
+
+</div>
+
+{/* ─────── SUCCESS MESSAGE ─────── */}
+{priceUpdateSuccess && (
+  <div style={{
+    marginTop: "8px",
+    padding: "8px 10px",
+    backgroundColor: "#E8F5E9",
+    borderRadius: "6px",
+    fontSize: "12px",
+    color: "#27AE60",
+    fontWeight: "600"
+  }}>
+    {priceUpdateSuccess}
+  </div>
+)}
                                                             </td>
                                                             <td className="px-6 py-5 text-right">
                                                                 <button

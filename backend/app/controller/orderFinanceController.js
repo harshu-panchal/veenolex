@@ -70,6 +70,7 @@ export const previewCheckoutFinance = async (req, res) => {
       ...(distanceDebug ? { distanceDebug } : {}),
     });
   } catch (error) {
+    console.error("Preview checkout error:", error);
     return handleResponse(res, error.statusCode || 500, error.message);
   }
 };

@@ -43,6 +43,9 @@ const CategoryHierarchy = React.lazy(
 const ProductManagement = React.lazy(
   () => import("../pages/ProductManagement"),
 );
+const AddProduct = React.lazy(
+  () => import("../../seller/pages/AddProduct"),
+);
 const ActiveSellers = React.lazy(() => import("../pages/ActiveSellers"));
 const PendingSellers = React.lazy(() => import("../pages/PendingSellers"));
 const SellerLocations = React.lazy(() => import("../pages/SellerLocations"));
@@ -96,6 +99,7 @@ const EnvSettings = React.lazy(() => import("../pages/EnvSettings"));
 const AdminProfile = React.lazy(() => import("../pages/AdminProfile"));
 const PopupManagement = React.lazy(() => import("../pages/PopupManagement"));
 const ReportsPage = React.lazy(() => import("../pages/ReportsPage"));
+const SellerProductRequests = React.lazy(() => import("../pages/SellerProductRequests"));
 
 const navItems = [
   {
@@ -147,6 +151,7 @@ const navItems = [
     color: "blue",
     children: [
       { label: "Active Sellers", path: "/admin/sellers/active" },
+      { label: "Seller Product Requests", path: "/admin/seller-requests" },
       { label: "Waiting for Review", path: "/admin/sellers/pending" },
       { label: "Seller Locations", path: "/admin/seller-locations" },
     ],
@@ -249,7 +254,9 @@ const AdminRoutes = () => {
         <Route path="/categories/sub" element={<SubCategories />} />
         <Route path="/categories/hierarchy" element={<CategoryHierarchy />} />
         <Route path="/products" element={<ProductManagement />} />
+        <Route path="/products/add" element={<AddProduct />} />
         <Route path="/sellers/active" element={<ActiveSellers />} />
+        <Route path="/seller-requests" element={<SellerProductRequests />} />
         <Route path="/sellers/active/:id" element={<SellerDetail />} />
         <Route path="/support-tickets" element={<SupportTickets />} />
         <Route path="/moderation" element={<ReviewModeration />} />

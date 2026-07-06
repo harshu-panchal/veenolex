@@ -49,7 +49,14 @@ export function orderMatchQueryFlexible(routeParam) {
   };
 }
 
+import SellerProductRequest from "../models/sellerProductRequest.js";
+
 export async function resolveCanonicalOrderId(routeParam) {
+  const raw = normalizeOrderRouteParam(routeParam);
+  if (raw && raw.toUpperCase().startsWith("REQ-")) {
+    const doc = await SellerProductRequest.findOne({ requestNumber: new RegExp(`^${escapeRegex(raw)}$`, "i") }).select("requestNumber").lean();
+    return doc?.requestNumber ?? null;
+  }
   const q = orderMatchQueryFromRouteParam(routeParam);
   if (!q) return null;
   const doc = await Order.findOne(q).select("orderId").lean();

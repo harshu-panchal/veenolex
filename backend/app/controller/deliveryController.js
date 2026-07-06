@@ -1,4 +1,5 @@
-﻿import Order from "../models/order.js";
+import Order from "../models/order.js";
+import SellerProductRequest from "../models/sellerProductRequest.js";
 import { orderMatchQueryFromRouteParam } from "../utils/orderLookup.js";
 import Transaction from "../models/transaction.js";
 import Delivery from "../models/delivery.js";
@@ -400,9 +401,17 @@ export const updateDeliveryLocation = async (req, res) => {
                 return handleResponse(res, 400, "Invalid orderId");
             }
 
-            const order = await Order.findOne(orderMatch)
-                .select("orderId deliveryBoy")
-                .lean();
+            let order;
+            if (orderId && orderId.toUpperCase().startsWith("REQ-")) {
+                order = await SellerProductRequest.findOne({ requestNumber: new RegExp(`^${orderId}$`, "i") })
+                    .select("requestNumber deliveryBoy")
+                    .lean();
+                if (order) order.orderId = order.requestNumber;
+            } else {
+                order = await Order.findOne(orderMatch)
+                    .select("orderId deliveryBoy")
+                    .lean();
+            }
 
             if (!order) {
                 return handleResponse(res, 404, "Order not found");

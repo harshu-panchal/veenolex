@@ -11,6 +11,7 @@ import {
   getOrderSocket,
   onDeliveryBroadcast,
   onDeliveryBroadcastWithdrawn,
+  onDeliveryAssigned,
 } from "@/core/services/orderSocket";
 import {
   loadHandledIncomingOrderIds,
@@ -36,6 +37,7 @@ const DeliveryLayout = () => {
   const { user } = useAuth();
 
   const [activeOrder, setActiveOrder] = useState(null);
+  const [assignedOrder, setAssignedOrder] = useState(null);
   const [timeLeft, setTimeLeft] = useState(60);
   const [acceptWindowTotal, setAcceptWindowTotal] = useState(60);
   const shownOrderIdsRef = useRef(new Set());
@@ -60,6 +62,8 @@ const DeliveryLayout = () => {
     }
     return orderRingtoneRef.current;
   };
+
+
 
   const startOrderRingtone = () => {
     const audio = getOrderRingtone();
@@ -534,6 +538,17 @@ const DeliveryLayout = () => {
     suppressIncomingModal,
     fetchAvailableOrders,
   ]);
+  useEffect(() => {
+    if (!user?.isOnline) return undefined;
+    const getToken = getDeliveryToken;
+    return onDeliveryAssigned(getToken, (payload) => {
+      setAssignedOrder({
+        requestNumber: payload.orderId,
+        sellerName: payload.preview?.drop
+      });
+      startOrderRingtone();
+    });
+  }, [user?.isOnline]);
 
   useEffect(() => {
     if (!user?.isOnline) return undefined;
@@ -905,6 +920,85 @@ const DeliveryLayout = () => {
           </AnimatePresence>,
           document.body,
         )}
+
+      {/* MANUAL ASSIGNMENT MODAL */}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {assignedOrder && (
+              <div className="fixed inset-0 z-[100] flex flex-col items-center justify-end sm:justify-center p-4 bg-slate-900/60 backdrop-blur-sm pwa-safe-bottom">
+                <motion.div
+                  initial={{ opacity: 0, y: 100, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 100, scale: 0.95 }}
+                  transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                  className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+                >
+                  <div className="bg-primary p-6 flex flex-col items-center justify-center relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />
+                    <div className="absolute bottom-0 left-0 w-24 h-24 bg-black/10 rounded-full blur-xl -ml-8 -mb-8 pointer-events-none" />
+                    
+                    <motion.div
+                      animate={{ scale: [1, 1.1, 1], rotate: [0, -5, 5, 0] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                      className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-xl mb-4 relative z-10"
+                    >
+                      <BellRing className="w-8 h-8 text-primary" />
+                    </motion.div>
+                    
+                    <h2 className="text-xl font-black text-white text-center tracking-tight relative z-10">
+                      New Assignment!
+                    </h2>
+                  </div>
+
+                  <div className="p-6 flex flex-col items-center bg-white">
+                    <p className="text-sm font-medium text-slate-600 text-center mb-6">
+                      You have been manually assigned to an order by the admin.
+                    </p>
+                    
+                    <div className="w-full bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Order #</p>
+                      <p className="font-black text-slate-800 text-lg">{assignedOrder.requestNumber || "New Order"}</p>
+                      {assignedOrder.sellerName && (
+                        <>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mt-3 mb-1">Seller</p>
+                          <p className="font-bold text-slate-700">{assignedOrder.sellerName}</p>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 w-full">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          stopOrderRingtone();
+                          setAssignedOrder(null);
+                        }}
+                        className="py-4 rounded-2xl bg-slate-100 text-slate-700 font-black text-sm uppercase tracking-wider hover:bg-slate-200/80 active:scale-95"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          stopOrderRingtone();
+                          const orderId = assignedOrder.requestNumber;
+                          setAssignedOrder(null);
+                          navigate(`/delivery/order-details/${orderId}`);
+                        }}
+                        className="py-4 rounded-2xl bg-primary text-primary-foreground font-black text-sm uppercase tracking-wider shadow-lg shadow-primary/30 active:scale-95"
+                      >
+                        Pick Up
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
+
 
       <main
         className={`h-full min-h-screen overflow-y-auto ${shouldShowBottomNav ? "pb-24" : ""} no-scrollbar`}>

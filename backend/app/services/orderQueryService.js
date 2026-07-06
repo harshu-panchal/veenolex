@@ -2,6 +2,7 @@ import Order from "../models/order.js";
 import Delivery from "../models/delivery.js";
 import Seller from "../models/seller.js";
 import CheckoutGroup from "../models/checkoutGroup.js";
+import SellerProductRequest from "../models/sellerProductRequest.js";
 import { WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import {
@@ -474,7 +475,60 @@ export async function getOrderWithAccess(orderId, userId, role) {
     .lean();
 
   if (!order) {
-    if (orderId && orderId.startsWith("CHK-")) {
+    if (orderId && orderId.toUpperCase().startsWith("REQ-")) {
+      const request = await SellerProductRequest.findOne({ requestNumber: new RegExp(`^${orderId}$`, "i") })
+        .populate("sellerId", "shopName name address phone location")
+        .populate("deliveryBoy", "name phone")
+        .lean();
+        
+      if (request) {
+        return {
+          isGroupSummary: false,
+          payload: {
+            orderId: request.requestNumber,
+            status: request.status?.toLowerCase() || "pending",
+            workflowStatus: request.deliveryWorkflowStatus || request.status || "CREATED",
+            paymentStatus: request.paymentStatus === "PAID" ? "PAID" : "PENDING",
+            deliveryType: "STANDARD",
+            address: {
+              fullName: request.sellerName,
+              phone: request.sellerPhone,
+              addressLine1: "Seller Store",
+              city: "Indore",
+              state: "MP",
+              pincode: "452001",
+              location: request.sellerId?.location || { type: "Point", coordinates: [75.8577, 22.7196] },
+            },
+            customer: null,
+            seller: {
+              ...request.sellerId,
+              name: request.sellerName,
+              phone: request.sellerPhone,
+              shopName: request.sellerId?.shopName || request.sellerName,
+              location: request.sellerId?.location || { type: "Point", coordinates: [75.8577, 22.7196] },
+            },
+            deliveryBoy: request.deliveryBoy,
+            deliveryRiderStep: request.deliveryWorkflowStatus === "DELIVERED" ? 4 : request.deliveryWorkflowStatus === "OUT_FOR_DELIVERY" ? 3 : request.deliveryWorkflowStatus === "PICKUP_READY" ? 2 : 1,
+            pricing: {
+              subtotal: request.subtotal || 0,
+              deliveryFee: 0,
+              platformFee: request.tax || 0,
+              total: request.totalAmount || 0,
+            },
+            items: request.items.map(item => ({
+              product: { name: item.productName, mainImage: item.productImage },
+              quantity: item.quantity,
+              price: item.pricePerUnit,
+              totalPrice: item.totalPrice,
+            })),
+            createdAt: request.createdAt,
+            otpValidationLocation: request.otpValidationLocation,
+          }
+        };
+      }
+    }
+
+    if (orderId && orderId.toUpperCase().startsWith("CHK-")) {
       const group = await CheckoutGroup.findOne({
         checkoutGroupId: orderId,
       }).lean();

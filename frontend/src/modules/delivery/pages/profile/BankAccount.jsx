@@ -4,12 +4,14 @@ import { ArrowLeft, Landmark, CreditCard, AlertTriangle, CheckCircle2 } from "lu
 import Button from "@/shared/components/ui/Button";
 import Card from "@/shared/components/ui/Card";
 import Input from "@/shared/components/ui/Input";
+import { useAuth } from "@core/context/AuthContext";
 
 const BankAccount = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const bankDetails = {
-    accountHolder: "RAHUL KUMAR",
+    accountHolder: user?.name ? user.name.toUpperCase() : "DELIVERY PARTNER",
     accountNumber: "XXXXXXXX8921",
     ifsc: "HDFC0001234",
     bankName: "HDFC Bank",

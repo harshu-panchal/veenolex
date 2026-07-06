@@ -30,20 +30,25 @@ export const getAdminProfile = async (req, res) => {
 
 export const updateAdminProfile = async (req, res) => {
   try {
-    const { name, email } = req.body;
+    const { name, email, lat, lng, radius, address } = req.body;
 
     const admin = await Admin.findById(req.user.id);
     if (!admin) {
       return handleResponse(res, 404, "Admin not found");
     }
 
-    if (name) {
-      admin.name = name;
+    if (name) admin.name = name;
+    if (email) admin.email = email;
+
+    if (lat !== undefined && lng !== undefined) {
+      admin.location = {
+        type: "Point",
+        coordinates: [Number(lng), Number(lat)],
+      };
     }
 
-    if (email) {
-      admin.email = email;
-    }
+    if (radius !== undefined) admin.serviceRadius = Number(radius);
+    if (address !== undefined) admin.address = address;
 
     const updatedAdmin = await admin.save();
 

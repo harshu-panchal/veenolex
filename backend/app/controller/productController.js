@@ -1,4 +1,5 @@
 import Product from "../models/product.js";
+import SellerInventory from "../models/sellerInventory.js";
 import { handleResponse } from "../utils/helper.js";
 import { slugify } from "../utils/slugify.js";
 import getPagination from "../utils/pagination.js";
@@ -614,9 +615,7 @@ export const createProduct = async (req, res) => {
     stripRestrictedModerationFields(productData);
 
     if (role === "admin") {
-      if (!productData.sellerId) {
-        return handleResponse(res, 400, "sellerId is required for admin-created products");
-      }
+      // Admin products are master catalog items, no sellerId needed
     } else {
       productData.sellerId = req.user.id;
     }

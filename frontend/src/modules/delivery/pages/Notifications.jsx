@@ -60,7 +60,7 @@ const Notifications = () => {
   const handleMarkAsRead = async (id) => {
     try {
       await deliveryApi.markNotificationRead(id);
-      setNotifications(notifications.map(n => n._id === id ? { ...n, isRead: true } : n));
+      setNotifications(notifications.map(n => (n._id || n.id) === id ? { ...n, isRead: true } : n));
     } catch (error) {
       toast.error("Failed to update status");
     }
@@ -128,12 +128,12 @@ const Notifications = () => {
             initial="hidden"
             animate="visible">
             <AnimatePresence mode="popLayout">
-              {notifications.map((notification) => (
+              {notifications.map((notification, index) => (
                 <motion.div
-                  key={notification._id}
+                  key={notification._id || notification.id || `notif-${index}`}
                   variants={itemVariants}
                   layout
-                  onClick={() => !notification.isRead && handleMarkAsRead(notification._id)}>
+                  onClick={() => !notification.isRead && handleMarkAsRead(notification._id || notification.id)}>
                   <Card
                     className={`p-4 border-none shadow-sm relative overflow-hidden transition-all duration-300 cursor-pointer ${!notification.isRead
                       ? "bg-brand-50/50 border-l-4 border-l-brand-500 shadow-brand-500/5 scale-[1.02]"

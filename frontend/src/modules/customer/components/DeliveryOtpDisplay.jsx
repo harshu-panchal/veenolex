@@ -8,6 +8,7 @@ import {
 } from "@/core/services/orderSocket";
 import { createSocketTokenReader } from "@core/utils/authStorage";
 import { STORAGE_KEYS } from "@core/utils/storage";
+import axiosInstance from "@core/api/axios";
 
 /**
  * DeliveryOtpDisplay Component
@@ -33,7 +34,7 @@ const matchesOrderIdentifier = (payloadOrderId, identifiers = []) => {
     .includes(normalizedPayloadId);
 };
 
-const DeliveryOtpDisplay = ({ orderId, checkoutGroupId = null }) => {
+const DeliveryOtpDisplay = ({ orderId, checkoutGroupId = null, tokenKey = STORAGE_KEYS.AUTH_CUSTOMER }) => {
   const [otpData, setOtpData] = useState(null);
   const [isDelivered, setIsDelivered] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
@@ -68,13 +69,33 @@ const DeliveryOtpDisplay = ({ orderId, checkoutGroupId = null }) => {
     };
   }, []);
 
-  // Set up Socket.IO listeners for OTP events
+  // Set up Socket.IO listeners and fetch active OTP
   useEffect(() => {
     if (!orderId) return;
 
+    // Fetch active OTP in case it was already generated
+    const fetchActiveOtp = async () => {
+      try {
+        const response = await axiosInstance.get(`/orders/workflow/${orderId}/otp/active`);
+        if (response.data?.result?.otp) {
+          setOtpData({
+            otp: response.data.result.otp,
+            expiresAt: response.data.result.expiresAt,
+            deliveryPersonNearby: true,
+          });
+          setIsDelivered(false);
+          setRemainingSeconds(calculateRemainingTime(response.data.result.expiresAt));
+        }
+      } catch (error) {
+        console.log("[DeliveryOtpDisplay] No active OTP found on mount");
+      }
+    };
+    
+    fetchActiveOtp();
+
     console.log(`[DeliveryOtpDisplay] Setting up Socket.IO listeners for order ${orderId}`);
 
-    const getToken = createSocketTokenReader(STORAGE_KEYS.AUTH_CUSTOMER);
+    const getToken = createSocketTokenReader(tokenKey);
     const socket = getOrderSocket(getToken);
     
     console.log(`[DeliveryOtpDisplay] Socket connection status:`, socket?.connected);
@@ -272,7 +293,29 @@ const DeliveryOtpDisplay = ({ orderId, checkoutGroupId = null }) => {
     );
   }
 
-  // Don't render anything if no OTP or app is backgrounded
+  // Don't render anything if app is backgrounded
+  if (!isVisible) return null;
+
+  // Show waiting state if no OTP yet
+  if (!otpData) {
+    return (
+      <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="flex justify-center mb-3">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
+            <Clock className="w-8 h-8 text-gray-400" />
+          </div>
+        </div>
+        <h3 className="text-sm font-bold text-gray-700 mb-1">
+          Waiting for Delivery Partner
+        </h3>
+        <p className="text-xs text-gray-500">
+          The OTP will appear here once the delivery partner arrives and requests it.
+        </p>
+      </div>
+    );
+  }
+
+  // Fallback (should not reach here)
   return null;
 };
 

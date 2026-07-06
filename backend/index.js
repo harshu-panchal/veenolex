@@ -48,6 +48,8 @@ import {
 import logger from "./app/services/logger.js";
 import { stopScheduledJobs } from "./app/services/distributedScheduler.js";
 import mapsRouter from "./routes/maps.js";
+import sellerProductRequestRoutes from "./app/routes/sellerProductRequestRoutes.js";
+import sellerInventoryRoutes from "./app/routes/sellerInventoryRoutes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -214,6 +216,8 @@ function createApp() {
   });
 
   app.use("/api/maps", mapsRouter);
+  app.use("/api/seller-requests", sellerProductRequestRoutes);
+  app.use("/api/seller-inventory", sellerInventoryRoutes);
 
   // Setup all routes (includes /health, /metrics, /api/*)
   setupRoutes(app);

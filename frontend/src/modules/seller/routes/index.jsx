@@ -14,6 +14,7 @@ import {
   HiOutlineCreditCard,
   HiOutlineMapPin,
   HiOutlineShoppingCart,
+  HiOutlineShoppingBag,
 } from "react-icons/hi2";
 
 const Dashboard = React.lazy(() => import("../pages/Dashboard"));
@@ -31,12 +32,17 @@ const Transactions = React.lazy(() => import("../pages/Transactions"));
 const DeliveryTracking = React.lazy(() => import("../pages/DeliveryTracking"));
 const Profile = React.lazy(() => import("../pages/Profile"));
 const Withdrawals = React.lazy(() => import("../pages/Withdrawals"));
+const RequestProduct = React.lazy(() => import("../pages/RequestProduct"));
+const RequestedOrdersList = React.lazy(() => import("../pages/RequestedOrdersList"));
+const RequestedOrderDetails = React.lazy(() => import("../pages/RequestedOrderDetails"));
 
 const navItems = [
   { label: "Dashboard", path: "/seller", icon: HiOutlineSquares2X2, end: true },
   { label: "Products", path: "/seller/products", icon: HiOutlineCube },
   { label: "Stock", path: "/seller/inventory", icon: HiOutlineArchiveBox },
   { label: "Orders", path: "/seller/orders", icon: HiOutlineTruck },
+  { label: "Request Product", path: "/seller/request-product", icon: HiOutlineShoppingBag },
+  { label: "Requested Orders", path: "/seller/requested-orders", icon: HiOutlineShoppingBag },
   { label: "Offline Sales", path: "/seller/offline-sales", icon: HiOutlineShoppingCart },
   { label: "Returns", path: "/seller/returns", icon: HiOutlineArchiveBox },
   { label: "Track Orders", path: "/seller/tracking", icon: HiOutlineMapPin },
@@ -76,6 +82,9 @@ const SellerRoutes = () => {
         <Route path="/products/add" element={<AddProduct />} />
         <Route path="/inventory" element={<StockManagement />} />
         <Route path="/orders" element={<Orders />} />
+        <Route path="/request-product" element={<RequestProduct />} />
+        <Route path="/requested-orders" element={<RequestedOrdersList />} />
+        <Route path="/requested-orders/:requestId" element={<RequestedOrderDetails />} />
         <Route path="/offline-sales" element={<OfflineSales />} />
         <Route path="/returns" element={<Returns />} />
         <Route path="/tracking" element={<DeliveryTracking />} />
