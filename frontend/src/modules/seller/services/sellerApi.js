@@ -47,4 +47,24 @@ export const sellerApi = {
     // Requested Orders (SellerProductRequest)
     getSellerRequests: (params) => axiosInstance.get('/seller-requests/my-requests', { params }),
     getSellerRequestById: (id) => axiosInstance.get(`/seller-requests/my-requests/${id}`),
+
+    // POS Aggregate
+    sellerPos: {
+      createOrder: (data) => axiosInstance.post("/seller/pos/orders", data),
+      getInvoiceReport: (params) => axiosInstance.get("/seller/pos/orders/pos-report", { params }),
+      getState: () => axiosInstance.get("/seller/pos/state"),
+      updateState: (data) => axiosInstance.put("/seller/pos/state", data),
+      getBillSettings: () => axiosInstance.get("/seller/pos/bill-settings"),
+      updateBillSettings: (data) => axiosInstance.put("/seller/pos/bill-settings", data),
+      getPOSCustomers: (params) => axiosInstance.get("/seller/pos/customers", { params }),
+      createPOSCustomer: (data) => axiosInstance.post("/seller/pos/customers", data),
+      getPOSProducts: (params) => axiosInstance.get("/seller/pos/products", { params }),
+      getOwnCategories: () => axiosInstance.get("/seller/pos/own-categories"),
+      createOwnCategory: (data) => axiosInstance.post("/seller/pos/own-categories", data),
+      deleteOwnCategory: (id) => axiosInstance.delete(`/seller/pos/own-categories/${id}`),
+      getOwnSubCategories: (params) => axiosInstance.get("/seller/pos/own-subcategories", { params }),
+      createOwnSubCategory: (data) => axiosInstance.post("/seller/pos/own-subcategories", data),
+      initiateOnlineCreditPayment: (data) => axiosInstance.post("/seller/pos/credit/payment/initiate", data),
+      verifyOnlineCreditPayment: (merchantOrderId) => axiosInstance.post("/seller/pos/credit/payment/verify", { merchantOrderId }),
+    }
 };

@@ -58,6 +58,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import useAddressAutocomplete from "@/hooks/useAddressAutocomplete";
+import ReschedulePicker from "@/components/ReschedulePicker";
 
 
 // Sub-components
@@ -130,6 +131,10 @@ const CheckoutPage = () => {
   const navigate = useNavigate();
 
   // State management
+  const [deliveryType, setDeliveryType] = useState("now"); // "now" or "later"
+  const [scheduledDate, setScheduledDate] = useState(null);
+  const [isReschedulePickerOpen, setIsReschedulePickerOpen] = useState(false);
+  
   const [selectedTimeSlot, setSelectedTimeSlot] = useState("now");
   const [selectedPayment, setSelectedPayment] = useState("cash");
   const [selectedTip, setSelectedTip] = useState(0);
@@ -680,6 +685,8 @@ const CheckoutPage = () => {
       tipAmount: selectedTip,
       paymentMode: selectedPayment === "online" ? "ONLINE" : "COD",
       timeSlot: selectedTimeSlot,
+      deliveryType,
+      ...(deliveryType === "later" && scheduledDate ? { scheduledFor: scheduledDate } : {})
     });
 
     const fetchPreview = async () => {
@@ -812,6 +819,8 @@ const CheckoutPage = () => {
         taxTotal: taxAmount,
         tipAmount: selectedTip,
         timeSlot: selectedTimeSlot,
+        deliveryType,
+        ...(deliveryType === "later" && scheduledDate ? { scheduledFor: scheduledDate } : {}),
         walletAmount: walletAmountToUse,
         items: cart.map((item) => ({
           product: item.id || item._id,
@@ -1037,13 +1046,50 @@ const CheckoutPage = () => {
           <div className="lg:col-span-7 xl:col-span-8 space-y-6 pb-8">
             {/* Delivery Time Banner */}
             <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 mt-3">
-              <div className="flex items-center gap-3">
-                <div className="h-12 w-12 rounded-full bg-brand-50 flex items-center justify-center flex-shrink-0">
-                  <Clock size={24} className="text-primary" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 rounded-full bg-brand-50 flex items-center justify-center flex-shrink-0">
+                    <Clock size={24} className="text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-slate-800 text-lg">
+                      {deliveryType === "now" ? "Delivery in 12-15 mins" : "Scheduled Delivery"}
+                    </h3>
+                    <p className="text-sm text-slate-500">
+                      {deliveryType === "now" 
+                        ? `Shipment of ${cartCount} items`
+                        : (scheduledDate ? scheduledDate.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : "Select a time slot")
+                      }
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-black text-slate-800 text-lg">Delivery in 12-15 mins</h3>
-                  <p className="text-sm text-slate-500">Shipment of {cartCount} items</p>
+                <div className="flex flex-col items-end gap-2">
+                  <div className="flex bg-gray-100 rounded-lg p-1">
+                    <button
+                      onClick={() => setDeliveryType("now")}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                        deliveryType === "now" ? "bg-white text-brand-600 shadow-sm" : "text-gray-500"
+                      }`}
+                    >
+                      Now
+                    </button>
+                    <button
+                      onClick={() => { setDeliveryType("later"); setIsReschedulePickerOpen(true); }}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                        deliveryType === "later" ? "bg-white text-brand-600 shadow-sm" : "text-gray-500"
+                      }`}
+                    >
+                      Later
+                    </button>
+                  </div>
+                  {deliveryType === "later" && (
+                    <button 
+                      onClick={() => setIsReschedulePickerOpen(true)}
+                      className="text-xs text-brand-600 underline font-medium"
+                    >
+                      {scheduledDate ? "Change Time" : "Pick Time"}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1134,13 +1180,14 @@ const CheckoutPage = () => {
               walletAmountToUse={walletAmountToUse}
             />
 
-            {/* Desktop Slide to Pay */}
-            <div className="hidden lg:block">
-              <SlideToPay
-                amount={finalAmountToPay}
+            {/* Desktop Place Order Button */}
+            <div className="hidden lg:block mt-6">
+              <SlideToPay 
                 onSuccess={handlePrePlaceOrderCheck}
+                amount={finalAmountToPay}
                 isLoading={isPlacingOrder || isPreviewLoading || !pricingPreview}
-                text={finalAmountToPay === 0 ? "Place Free Order" : "Order Now"}
+                disabled={isPlacingOrder || isPreviewLoading || !pricingPreview}
+                text={finalAmountToPay === 0 ? "SLIDE TO PLACE FREE ORDER" : "SLIDE TO PAY & ORDER"}
               />
               <p className="text-center text-[10px] text-slate-400 font-bold mt-4 uppercase tracking-[0.1em]">
                 🔒 SSL encrypted secure checkout
@@ -1153,11 +1200,12 @@ const CheckoutPage = () => {
       {/* Sticky Footer — Mobile Only */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-4 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-50 rounded-t-3xl">
         <div className="max-w-4xl mx-auto">
-          <SlideToPay
-            amount={finalAmountToPay}
+          <SlideToPay 
             onSuccess={handlePrePlaceOrderCheck}
+            amount={finalAmountToPay}
             isLoading={isPlacingOrder || isPreviewLoading || !pricingPreview}
-            text={finalAmountToPay === 0 ? "Place Free Order" : "Slide to Pay"}
+            disabled={isPlacingOrder || isPreviewLoading || !pricingPreview}
+            text={finalAmountToPay === 0 ? "SLIDE TO PLACE FREE ORDER" : "SLIDE TO PAY & ORDER"}
           />
         </div>
       </div>
@@ -1364,6 +1412,18 @@ const CheckoutPage = () => {
             .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
           `,
         }}
+      />
+      <ReschedulePicker
+        isOpen={isReschedulePickerOpen}
+        onClose={() => {
+          if (!scheduledDate) setDeliveryType("now");
+          setIsReschedulePickerOpen(false);
+        }}
+        onSchedule={(date) => {
+          setScheduledDate(date);
+          setDeliveryType("later");
+        }}
+        title="Schedule Delivery"
       />
     </div>
   );

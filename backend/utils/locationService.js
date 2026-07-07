@@ -32,8 +32,8 @@ export const isUserInServiceZone = (userLocation, seller) => {
     slng
   );
 
-  // Default to 5km if serviceRadius isn't defined on the seller document
-  const serviceRadius = seller.serviceRadius || 5; 
+  // Default to 5km if serviceRadius isn't defined on the seller document; add +5km buffer
+  const serviceRadius = (seller.serviceRadius || 5) + 5; 
   
   return distance <= serviceRadius;
 };

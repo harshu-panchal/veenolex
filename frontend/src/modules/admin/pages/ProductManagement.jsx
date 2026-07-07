@@ -4,6 +4,8 @@ import Card from '@shared/components/ui/Card';
 import Badge from '@shared/components/ui/Badge';
 import { adminApi } from '../services/adminApi';
 import { toast } from 'sonner';
+import axiosInstance from '@core/api/axios';
+import QRScannerModal from '../../../components/QRScannerModal';
 import {
     HiOutlinePlus,
     HiOutlineCube,
@@ -37,6 +39,46 @@ const ProductManagement = () => {
     const [total, setTotal] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const [activeScanIndex, setActiveScanIndex] = useState(null);
+
+    const handleBarcodeScan = async (code) => {
+        if (activeScanIndex === null) return;
+        try {
+            const res = await axiosInstance.get(`/products/barcode/check?code=${code}`);
+            if (res.data?.success && res.data.result?.exists) {
+                toast.error(`Barcode already exists! Product: ${res.data.result.productName}`);
+            } else {
+                const newVariants = [...formData.variants];
+                newVariants[activeScanIndex].barcode = code;
+                setFormData({ ...formData, variants: newVariants });
+                toast.success("Barcode scanned successfully");
+            }
+        } catch {
+            toast.error("Failed to verify barcode");
+        } finally {
+            setIsScannerOpen(false);
+            setActiveScanIndex(null);
+        }
+    };
+
+    const handleGenerateBarcode = async (index) => {
+        try {
+            const res = await axiosInstance.get("/products/barcode/generate");
+            if (res.data?.success && res.data.result?.barcode) {
+                const generatedCode = res.data.result.barcode;
+                const newVariants = [...formData.variants];
+                newVariants[index].barcode = generatedCode;
+                setFormData({ ...formData, variants: newVariants });
+                toast.success(`Unique Barcode Generated: ${generatedCode}`);
+            } else {
+                toast.error("Failed to generate unique barcode");
+            }
+        } catch {
+            toast.error("Failed to generate unique barcode");
+        }
+    };
 
     const [searchTerm, setSearchTerm] = useState('');
     const [filterCategory, setFilterCategory] = useState('all');
@@ -90,7 +132,7 @@ const ProductManagement = () => {
         resultFiles: [],
         tabbedSections: [],
         variants: [
-            { id: Date.now(), name: 'Default', price: '', salePrice: '', stock: '', sku: '' }
+            { id: Date.now(), name: 'Default', price: '', salePrice: '', stock: '', sku: '', barcode: '' }
         ]
     });
 
@@ -383,14 +425,19 @@ const ProductManagement = () => {
                 galleryImages: item.galleryImages || item.images || [],
                 resultImages: item.resultImages || [],
                 tabbedSections: item.tabbedSections || [],
-                variants: (item.variants && item.variants.length > 0) ? item.variants.map(v => ({ ...v, id: v._id || Date.now() })) : [
+                variants: (item.variants && item.variants.length > 0) ? item.variants.map(v => ({
+                    ...v,
+                    id: v._id || Date.now(),
+                    barcode: Array.isArray(v.barcode) ? v.barcode[0] || "" : (v.barcode || "")
+                })) : [
                     {
                         id: Date.now(),
                         name: 'Default',
                         price: item.price || '',
                         salePrice: item.salePrice || item.discountPrice || '',
                         stock: item.stock || '',
-                        sku: item.sku || ''
+                        sku: item.sku || '',
+                        barcode: ''
                     }
                 ]
             });
@@ -405,7 +452,7 @@ const ProductManagement = () => {
                 mainImage: null, galleryImages: [], resultImages: [],
                 tabbedSections: [],
                 variants: [
-                    { id: Date.now(), name: 'Default', price: '', salePrice: '', stock: '', sku: '' }
+                    { id: Date.now(), name: 'Default', price: '', salePrice: '', stock: '', sku: '', barcode: '' }
                 ]
             });
             setEditingItem(null);
@@ -1014,7 +1061,7 @@ const ProductManagement = () => {
                                                 <h4 className="text-sm font-bold text-slate-900">Product Variants</h4>
                                                 <button
                                                     type="button"
-                                                    onClick={() => setFormData({ ...formData, variants: [...formData.variants, { id: Date.now(), name: '', price: '', salePrice: '', stock: '', sku: '' }] })}
+                                                    onClick={() => setFormData({ ...formData, variants: [...formData.variants, { id: Date.now(), name: '', price: '', salePrice: '', stock: '', sku: '', barcode: '' }] })}
                                                     className="rounded-xl bg-rose-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-rose-600 transition-colors hover:bg-rose-100"
                                                 >
                                                     + ADD
@@ -1101,6 +1148,42 @@ const ProductManagement = () => {
                                                                         <HiOutlineTrash className="h-4 w-4" />
                                                                     </button>
                                                                 </div>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Barcode Scanner & Generator Row */}
+                                                        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end mt-4 pt-4 border-t border-slate-200/50">
+                                                            <div className="col-span-12 md:col-span-6 space-y-1.5">
+                                                                <label className="ml-1 text-[8px] font-bold uppercase tracking-widest text-slate-400">Barcode Number</label>
+                                                                <input
+                                                                    value={v.barcode || ""}
+                                                                    onChange={e => {
+                                                                        const news = [...formData.variants];
+                                                                        news[i].barcode = e.target.value;
+                                                                        setFormData({ ...formData, variants: news });
+                                                                    }}
+                                                                    placeholder="Scan or type barcode..."
+                                                                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none ring-0 focus:border-primary/40 focus:ring-2 focus:ring-primary/10"
+                                                                />
+                                                            </div>
+                                                            <div className="col-span-12 md:col-span-6 flex gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setActiveScanIndex(i);
+                                                                        setIsScannerOpen(true);
+                                                                    }}
+                                                                    className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-emerald-700 flex items-center justify-center gap-1.5"
+                                                                >
+                                                                    Scan Barcode
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleGenerateBarcode(i)}
+                                                                    className="flex-1 rounded-xl bg-slate-200 px-4 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-300 flex items-center justify-center gap-1.5"
+                                                                >
+                                                                    Generate
+                                                                </button>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -1530,7 +1613,14 @@ const ProductManagement = () => {
                     </div>
                 </div>
             </Modal>
-
+            <QRScannerModal
+                isOpen={isScannerOpen}
+                onClose={() => {
+                    setIsScannerOpen(false);
+                    setActiveScanIndex(null);
+                }}
+                onScan={handleBarcodeScan}
+            />
         </div>
     );
 };

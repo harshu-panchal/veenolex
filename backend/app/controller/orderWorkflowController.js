@@ -5,6 +5,7 @@ import {
   advanceDeliveryRiderUiAtomic,
   requestHandoffOtpAtomic,
   verifyHandoffOtpAndDeliver,
+  rescheduleOrderAtomic,
 } from "../services/orderWorkflowService.js";
 import { getCachedRoute } from "../services/mapsRouteService.js";
 import { geocodeAddress } from "../services/mapsGeocodeService.js";
@@ -587,6 +588,31 @@ export const verifyReturnDropOtp = async (req, res) => {
     ]);
 
     return handleResponse(res, 200, "Return delivery complete! Admin will review the product.", order);
+  } catch (e) {
+    return handleResponse(res, e.statusCode || 500, e.message);
+  }
+};
+
+export const rescheduleOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { rescheduledFor } = req.body;
+    if (!rescheduledFor) {
+      return handleResponse(res, 400, "rescheduledFor is required");
+    }
+
+    const rescheduledForDate = new Date(rescheduledFor);
+    if (isNaN(rescheduledForDate.getTime())) {
+      return handleResponse(res, 400, "Invalid rescheduledFor date");
+    }
+
+    let initiator = "customer";
+    if (req.user && req.user.role === "delivery") {
+      initiator = "delivery_partner";
+    }
+
+    const result = await rescheduleOrderAtomic(orderId, initiator, rescheduledForDate);
+    return handleResponse(res, 200, "Order rescheduled successfully", result);
   } catch (e) {
     return handleResponse(res, e.statusCode || 500, e.message);
   }

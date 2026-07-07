@@ -163,6 +163,7 @@ export const placeOrder = async (req, res) => {
         "COD",
       timeSlot: timeSlot || "now",
       tipAmount: Number(req.body?.tipAmount || 0),
+      scheduledFor: req.body?.scheduledFor ? new Date(req.body.scheduledFor) : undefined,
     });
 
     const idempotencyKey = String(req.headers?.["idempotency-key"] || "").trim() || null;
@@ -1234,7 +1235,7 @@ export const updateReturnStatus = async (req, res) => {
 export const getSellerOrders = async (req, res) => {
   try {
     const { id: userId, role } = req.user;
-    const { startDate, endDate, status: statusParam } = req.query;
+    const { startDate, endDate, status: statusParam, sellerId } = req.query;
 
     const { page, limit, skip } = getPagination(req, {
       defaultLimit: 25,
@@ -1249,6 +1250,7 @@ export const getSellerOrders = async (req, res) => {
       endDate,
       skip,
       limit,
+      sellerId,
     });
 
 

@@ -12,6 +12,7 @@ import EarningsPage from "../pages/EarningsPage";
 import CodCash from "../pages/CodCash";
 import OrderHistory from "../pages/OrderHistory";
 import Profile from "../pages/Profile";
+import RescheduleDeliveryPage from "../pages/RescheduleDeliveryPage";
 import PersonalDetails from "../pages/profile/PersonalDetails";
 import VehicleInfo from "../pages/profile/VehicleInfo";
 import BankAccount from "../pages/profile/BankAccount";
@@ -35,6 +36,7 @@ const DeliveryRoutes = () => {
         <Route path="auth" element={<DeliveryAuth />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="order-details/:orderId" element={<OrderDetails />} />
+        <Route path="reschedule/:orderId" element={<RescheduleDeliveryPage />} />
         <Route path="navigation" element={<Navigation />} />
         <Route path="confirm-delivery/:orderId" element={<DeliveryConfirmation />} />
         <Route path="earnings" element={<EarningsPage />} />

@@ -83,15 +83,23 @@ const Topbar = ({ onMenuClick }) => {
         let scheduled = null;
         const refresh = () => {
             if (scheduled) return;
-            // Debounce: bursts of notifications (e.g. bulk order accept)
-            // shouldn't trigger N concurrent refetches.
             scheduled = setTimeout(() => {
                 scheduled = null;
                 fetchNotifications();
             }, 200);
         };
 
-        const offNotification = token ? onNotificationNew(getToken, refresh) : null;
+        const handleNewNotification = (payload) => {
+            if (payload && payload.title) {
+                toast.info(payload.title, {
+                    description: payload.body,
+                    duration: 6000,
+                });
+            }
+            refresh();
+        };
+
+        const offNotification = token ? onNotificationNew(getToken, handleNewNotification) : null;
 
         // Degraded fallback: 60s poll. The socket is the primary
         // path, this just covers offline-recovery / dropped connections.

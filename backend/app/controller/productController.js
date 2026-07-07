@@ -1309,3 +1309,60 @@ export const rejectProduct = async (req, res) => {
     return handleResponse(res, 500, error.message);
   }
 };
+
+export const checkBarcodeUnique = async (req, res) => {
+  try {
+    const { code } = req.query;
+    if (!code) {
+      return handleResponse(res, 400, "Barcode code is required");
+    }
+    const cleanCode = String(code).trim();
+    const product = await Product.findOne({
+      $or: [
+        { barcode: cleanCode },
+        { "variants.barcode": cleanCode }
+      ]
+    }).select("name").lean();
+
+    if (product) {
+      return handleResponse(res, 200, "Barcode matches an existing product", {
+        exists: true,
+        productName: product.name
+      });
+    }
+    return handleResponse(res, 200, "Barcode is unique", {
+      exists: false
+    });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+export const generateUniqueBarcode = async (req, res) => {
+  try {
+    let unique = false;
+    let barcode = "";
+    let attempts = 0;
+    while (!unique && attempts < 10) {
+      attempts++;
+      // Generate standard 12-digit numeric barcode
+      barcode = Math.floor(100000000000 + Math.random() * 900000000000).toString();
+      const exists = await Product.findOne({
+        $or: [
+          { barcode },
+          { "variants.barcode": barcode }
+        ]
+      }).lean();
+      if (!exists) {
+        unique = true;
+      }
+    }
+    if (!unique) {
+      return handleResponse(res, 500, "Failed to generate unique barcode after multiple attempts");
+    }
+    return handleResponse(res, 200, "Unique barcode generated successfully", { barcode });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+

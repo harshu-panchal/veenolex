@@ -9,6 +9,8 @@ import {
     getModerationProducts,
     approveProduct,
     rejectProduct,
+    checkBarcodeUnique,
+    generateUniqueBarcode,
 } from "../controller/productController.js";
 import { adjustStock, getStockHistory } from "../controller/stockController.js";
 import {
@@ -26,6 +28,10 @@ const router = express.Router();
 
 // Public routes with optional auth (to detect admin/seller vs customer)
 router.get("/", optionalVerifyToken, getProducts);
+
+// Barcode verification & generation
+router.get("/barcode/check", optionalVerifyToken, checkBarcodeUnique);
+router.get("/barcode/generate", optionalVerifyToken, generateUniqueBarcode);
 
 // Seller protected routes
 router.get("/seller/me", verifyToken, allowRoles("seller"), requireApprovedSeller, getSellerProducts);

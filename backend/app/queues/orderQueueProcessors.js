@@ -2,12 +2,14 @@ import {
   sellerTimeoutQueue,
   deliveryTimeoutQueue,
   returnPickupTimeoutQueue,
+  rescheduleQueue,
   JOB_NAMES,
 } from "./orderQueues.js";
 import {
   processSellerTimeoutJob,
   processDeliveryTimeoutJob,
   processReturnPickupTimeoutJob,
+  processOrderRescheduleJob,
 } from "../services/orderWorkflowService.js";
 import { isRedisEnabled } from "../config/redis.js";
 import logger from "../services/logger.js";
@@ -230,11 +232,68 @@ export function registerOrderQueueProcessors() {
     });
   });
 
+  // Reschedule queue processor
+  rescheduleQueue.process(JOB_NAMES.ORDER_RESCHEDULE, async (job) => {
+    const startTime = Date.now();
+    try {
+      logger.info('Processing order reschedule job', {
+        jobId: job.id,
+        jobType: JOB_NAMES.ORDER_RESCHEDULE,
+        orderId: job.data.orderId,
+        attempt: job.attemptsMade + 1
+      });
+      
+      await processOrderRescheduleJob(job.data);
+      
+      const duration = Date.now() - startTime;
+      logger.info('Order reschedule job completed', {
+        jobId: job.id,
+        jobType: JOB_NAMES.ORDER_RESCHEDULE,
+        orderId: job.data.orderId,
+        duration
+      });
+      
+      incrementCounter('queue_jobs_total', { queue: 'order-reschedule', status: 'completed' });
+      recordHistogram('queue_job_duration_seconds', duration / 1000, { queue: 'order-reschedule' });
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logger.error('Order reschedule job failed', {
+        jobId: job.id,
+        jobType: JOB_NAMES.ORDER_RESCHEDULE,
+        orderId: job.data.orderId,
+        attempt: job.attemptsMade + 1,
+        duration,
+        error: error.message,
+        stack: error.stack
+      });
+      
+      incrementCounter('queue_jobs_total', { queue: 'order-reschedule', status: 'failed' });
+      throw error;
+    }
+  });
+
+  rescheduleQueue.on("failed", (job, err) => {
+    logger.error('Order reschedule queue job failed', {
+      jobId: job?.id,
+      jobType: JOB_NAMES.ORDER_RESCHEDULE,
+      orderId: job?.data?.orderId,
+      error: err?.message,
+    });
+  });
+
+  rescheduleQueue.on("completed", (job) => {
+    logger.debug('Order reschedule queue job completed', {
+      jobId: job?.id,
+      orderId: job?.data?.orderId,
+    });
+  });
+
   logger.info('Order queue processors registered', {
     queues: [
       JOB_NAMES.SELLER_TIMEOUT,
       JOB_NAMES.DELIVERY_TIMEOUT,
       JOB_NAMES.RETURN_PICKUP_TIMEOUT,
+      JOB_NAMES.ORDER_RESCHEDULE,
     ]
   });
 }

@@ -49,6 +49,7 @@ const AddProduct = React.lazy(
 const ActiveSellers = React.lazy(() => import("../pages/ActiveSellers"));
 const PendingSellers = React.lazy(() => import("../pages/PendingSellers"));
 const SellerLocations = React.lazy(() => import("../pages/SellerLocations"));
+const SellerInvoices = React.lazy(() => import("../pages/SellerInvoices"));
 const ActiveDeliveryBoys = React.lazy(
   () => import("../pages/ActiveDeliveryBoys"),
 );
@@ -100,6 +101,21 @@ const AdminProfile = React.lazy(() => import("../pages/AdminProfile"));
 const PopupManagement = React.lazy(() => import("../pages/PopupManagement"));
 const ReportsPage = React.lazy(() => import("../pages/ReportsPage"));
 const SellerProductRequests = React.lazy(() => import("../pages/SellerProductRequests"));
+
+// ── POS Lazy Pages ───────────────────────────────────────────────────
+const AdminPOSOrders = React.lazy(() => import("../pages/pos/AdminPOSOrders"));
+const AdminPOSReport = React.lazy(() => import("../pages/pos/AdminPOSReport"));
+const AdminPOSCustomers = React.lazy(() => import("../pages/pos/AdminPOSCustomers"));
+const AdminPOSCustomerDetail = React.lazy(() => import("../pages/pos/AdminPOSCustomerDetail"));
+const AdminPOSCustomerOrders = React.lazy(() => import("../pages/pos/AdminPOSCustomerOrders"));
+const AdminPOSSuppliers = React.lazy(() => import("../pages/pos/AdminPOSSuppliers"));
+const AdminPOSSupplierDetail = React.lazy(() => import("../pages/pos/AdminPOSSupplierDetail"));
+const AdminPOSQuotations = React.lazy(() => import("../pages/pos/AdminPOSQuotations"));
+const AdminPOSBillSettings = React.lazy(() => import("../pages/pos/AdminPOSBillSettings"));
+const AdminPOSInvoiceReport = React.lazy(() => import("../pages/pos/AdminPOSInvoiceReport"));
+const AdminPurchaseReport = React.lazy(() => import("../pages/pos/AdminPurchaseReport"));
+const AdminBarcodeSettings = React.lazy(() => import("../pages/pos/AdminBarcodeSettings"));
+const AdminPOSPaymentSuccess = React.lazy(() => import("../pages/pos/AdminPOSPaymentSuccess"));
 
 const navItems = [
   {
@@ -154,6 +170,7 @@ const navItems = [
       { label: "Seller Product Requests", path: "/admin/seller-requests" },
       { label: "Waiting for Review", path: "/admin/sellers/pending" },
       { label: "Seller Locations", path: "/admin/seller-locations" },
+      { label: "Invoices", path: "/admin/sellers/invoices" },
     ],
   },
   {
@@ -216,6 +233,22 @@ const navItems = [
     color: "slate",
   },
   { label: "Reports", path: "/admin/reports", icon: FileSpreadsheet, color: "teal" },
+  {
+    label: "POS billing",
+    icon: Terminal,
+    color: "emerald",
+    children: [
+      { label: "Billing Terminal", path: "/admin/pos/orders" },
+      { label: "Invoice History", path: "/admin/reports/invoice" },
+      { label: "POS Report", path: "/admin/pos/report" },
+      { label: "Credit Customers", path: "/admin/pos/customers" },
+      { label: "Supplier Ledgers", path: "/admin/pos/suppliers" },
+      { label: "Quotation Estimates", path: "/admin/pos/quotations" },
+      { label: "Purchase Reports", path: "/admin/purchase/report" },
+      { label: "Receipt Printer", path: "/admin/pos/bill-settings" },
+      { label: "Barcode settings", path: "/admin/barcode-settings" },
+    ],
+  },
   { label: "My Profile", path: "/admin/profile", icon: User, color: "indigo" },
   { label: "System Settings", path: "/admin/env", icon: Terminal, color: "dark" },
 ];
@@ -270,6 +303,7 @@ const AdminRoutes = () => {
         <Route path="/shop-by-store" element={<ShopByStoreManagement />} />
         <Route path="/coupons" element={<CouponManagement />} />
         <Route path="/sellers/pending" element={<PendingSellers />} />
+        <Route path="/sellers/invoices" element={<SellerInvoices />} />
         <Route path="/seller-locations" element={<SellerLocations />} />
         <Route path="/delivery-boys/active" element={<ActiveDeliveryBoys />} />
         <Route
@@ -292,6 +326,21 @@ const AdminRoutes = () => {
         <Route path="/settings" element={<AdminSettings />} />
         <Route path="/env" element={<EnvSettings />} />
         <Route path="/reports" element={<ReportsPage />} />
+
+        {/* ── POS Route Entries ────────────────────────────────────────── */}
+        <Route path="/pos/orders" element={<AdminPOSOrders />} />
+        <Route path="/pos/report" element={<AdminPOSReport />} />
+        <Route path="/pos/customers" element={<AdminPOSCustomers />} />
+        <Route path="/pos/customers/:id" element={<AdminPOSCustomerDetail />} />
+        <Route path="/pos/customers/:id/orders" element={<AdminPOSCustomerOrders />} />
+        <Route path="/pos/suppliers" element={<AdminPOSSuppliers />} />
+        <Route path="/pos/suppliers/:id" element={<AdminPOSSupplierDetail />} />
+        <Route path="/pos/quotations" element={<AdminPOSQuotations />} />
+        <Route path="/pos/bill-settings" element={<AdminPOSBillSettings />} />
+        <Route path="/reports/invoice" element={<AdminPOSInvoiceReport />} />
+        <Route path="/purchase/report" element={<AdminPurchaseReport />} />
+        <Route path="/barcode-settings" element={<AdminBarcodeSettings />} />
+        <Route path="/pos/success" element={<AdminPOSPaymentSuccess />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </DashboardLayout>

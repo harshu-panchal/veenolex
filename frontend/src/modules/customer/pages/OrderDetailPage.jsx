@@ -7,6 +7,7 @@ import LiveTrackingMap from "../components/order/LiveTrackingMap";
 import DeliveryOtpDisplay from "../components/DeliveryOtpDisplay";
 import OrderProgressTracker from "../components/order/OrderProgressTracker";
 import ReturnProgressTracker from "../components/order/ReturnProgressTracker";
+import ReschedulePicker from "@/components/ReschedulePicker";
 import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
 import {
   ChevronLeft,
@@ -177,6 +178,9 @@ const OrderDetailPage = () => {
   const [handoffOtp, setHandoffOtp] = useState(null);
   const [clockTick, setClockTick] = useState(Date.now());
   const [headerColor, setHeaderColor] = useState("#2E7D32");
+  
+  const [isReschedulePickerOpen, setIsReschedulePickerOpen] = useState(false);
+  const [isRescheduling, setIsRescheduling] = useState(false);
 
   useEffect(() => {
     const fetchHeaderColor = async () => {
@@ -323,25 +327,41 @@ const OrderDetailPage = () => {
         });
     };
 
-    const offStatus = onOrderStatusUpdate(getToken, (payload) => {
-      // Immediately update order state from socket payload — no waiting for API re-fetch
-      const ws = String(payload?.workflowStatus || "").toUpperCase();
-      if (ws) {
+    const handleStatusUpdate = (update) => {
+      console.log("[OrderDetailPage] Status update:", update);
+      if (matchesOrderIdentifier(update.orderId, identifiersRef.current)) {
         setOrder((prev) => {
           if (!prev) return prev;
+          if (update.workflowStatus === "RESCHEDULED") {
+            toast.info(`Order rescheduled to ${new Date(update.rescheduledFor).toLocaleString()}`);
+          }
           return {
             ...prev,
-            workflowStatus: ws,
-            // Keep legacy status in sync for components that read order.status
-            ...(ws === "DELIVERED" && { status: "delivered" }),
-            ...(ws === "DELIVERY_SEARCH" && { status: "confirmed" }),
-            ...(ws === "OUT_FOR_DELIVERY" && { status: "out_for_delivery" }),
-            ...(ws === "CANCELLED" && { status: "cancelled" }),
+            status:
+              update.legacyStatus ||
+              update.status ||
+              getLegacyStatusFromOrder({ workflowStatus: update.workflowStatus }) ||
+              prev.status,
+            workflowStatus: update.workflowStatus || prev.workflowStatus,
+            pickupConfirmedAt:
+              update.pickupConfirmedAt || prev.pickupConfirmedAt,
+            deliveryRiderStep:
+              update.deliveryRiderStep || prev.deliveryRiderStep,
+            rescheduledFor: update.rescheduledFor || prev.rescheduledFor,
           };
         });
+        if (
+          update.workflowStatus === "DELIVERED" ||
+          update.legacyStatus === "delivered" ||
+          update.status === "delivered"
+        ) {
+          setLiveLocation(null);
+          setRoutePolyline(null);
+        }
       }
-      refresh();
-    });
+    };
+
+    const offStatus = onOrderStatusUpdate(getToken, handleStatusUpdate);
     const offOtp = onCustomerOtp(getToken, (payload) => {
       if (matchesOrderIdentifier(payload?.orderId, identifiersRef.current) && (payload?.code || payload?.otp)) {
         setHandoffOtp(payload.code || payload.otp);
@@ -862,6 +882,20 @@ const OrderDetailPage = () => {
           </motion.div>
         )}
 
+        {/* Reschedule Button */}
+        {!isAwaitingOnlinePayment && status !== "delivered" && status !== "cancelled" && status !== "returned" && (
+          <div className="flex justify-center mt-2 mb-4">
+            <button
+              onClick={() => setIsReschedulePickerOpen(true)}
+              disabled={isRescheduling}
+              className="bg-white border-2 border-brand-200 text-brand-700 px-6 py-2.5 rounded-full text-sm font-bold shadow-sm transition-all hover:bg-brand-50 active:scale-95 disabled:opacity-50 flex items-center gap-2"
+            >
+              <Clock size={16} />
+              {isRescheduling ? "Rescheduling..." : "Reschedule Delivery"}
+            </button>
+          </div>
+        )}
+
         {/* Enhanced Map with Cleaner Design - Hide when delivered or cancelled */}
         {!isAwaitingOnlinePayment && status !== "delivered" && status !== "cancelled" && (
           <motion.div
@@ -1223,6 +1257,25 @@ const OrderDetailPage = () => {
         order={order}
       />
       <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
+      <ReschedulePicker
+        isOpen={isReschedulePickerOpen}
+        onClose={() => setIsReschedulePickerOpen(false)}
+        onSchedule={async (date) => {
+          try {
+            setIsRescheduling(true);
+            const res = await customerApi.rescheduleOrder(order?.orderId || orderId, date.toISOString());
+            if (res.data?.success) {
+              toast.success("Delivery rescheduled successfully");
+            } else {
+              toast.error(res.data?.message || "Failed to reschedule");
+            }
+          } catch (e) {
+            toast.error(e.response?.data?.message || "Failed to reschedule");
+          } finally {
+            setIsRescheduling(false);
+          }
+        }}
+      />
 
       {/* Return Request Modal */}
       {showReturnModal && (

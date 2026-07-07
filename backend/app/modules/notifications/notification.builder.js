@@ -153,6 +153,30 @@ function eventDefinition(eventType) {
           },
         ],
       };
+    case NOTIFICATION_EVENTS.ORDER_RESCHEDULED:
+      return {
+        multi: true,
+        definitions: [
+          {
+            role: NOTIFICATION_ROLES.CUSTOMER,
+            recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+            title: () => "Order Rescheduled ⏰",
+            body: (payload) =>
+              `Your order #${payload.orderId || ""} has been rescheduled to ${
+                payload.rescheduledFor ? new Date(payload.rescheduledFor).toLocaleString() : "a later date"
+              }.`,
+            data: (payload) => ({ orderId: payload.orderId }),
+          },
+          {
+            role: NOTIFICATION_ROLES.SELLER,
+            recipientIds: (payload) => normalizeIdList(payload.sellerId),
+            title: () => "Order Rescheduled ⏰",
+            body: (payload) =>
+              `Order #${payload.orderId || ""} has been rescheduled. Please return the items to stock until the new delivery time.`,
+            data: (payload) => ({ orderId: payload.orderId }),
+          },
+        ],
+      };
     case NOTIFICATION_EVENTS.REFUND_INITIATED:
       return {
         role: NOTIFICATION_ROLES.CUSTOMER,

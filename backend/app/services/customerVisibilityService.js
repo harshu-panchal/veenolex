@@ -55,7 +55,7 @@ export async function getNearbySellerIdsForCustomer(lat, lng) {
           return false;
         }
         const distanceKm = calculateDistance(lat, lng, sellerLat, sellerLng);
-        return distanceKm <= (seller.serviceRadius || 5);
+        return distanceKm <= ((seller.serviceRadius || 5) + 5); // Configured radius + 5km buffer
       })
       .map((seller) => String(seller._id));
   };

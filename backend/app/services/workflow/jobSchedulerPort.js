@@ -42,4 +42,10 @@ export const scheduleReturnPickupTimeout = (orderId, attempt = 1) =>
 export const removeReturnPickupTimeout = (orderId, attempt = 1) =>
   jobScheduler.removeReturnPickupTimeout(orderId, attempt);
 
+export const scheduleOrderReschedule = (orderId, delayMs) =>
+  jobScheduler.scheduleOrderReschedule(orderId, delayMs);
+
+export const removeOrderReschedule = (orderId) =>
+  jobScheduler.removeOrderReschedule(orderId);
+
 export default jobScheduler;

@@ -78,8 +78,11 @@ export function buildSellerOrdersQuery({
   statusParam,
   startDate,
   endDate,
+  sellerId,
 }) {
-  const base = role === "admin" ? {} : { seller: userId };
+  const base = role === "admin"
+    ? (sellerId ? { seller: sellerId } : {})
+    : { seller: userId };
   const withStatus = {
     ...base,
     ...normalizeSellerStatusFilter(statusParam),
@@ -114,6 +117,7 @@ export async function fetchSellerOrdersPage({
   endDate,
   skip,
   limit,
+  sellerId,
 }) {
   const query = buildSellerOrdersQuery({
     role,
@@ -121,6 +125,7 @@ export async function fetchSellerOrdersPage({
     statusParam,
     startDate,
     endDate,
+    sellerId,
   });
 
   const [orders, total, summaryRows] = await Promise.all([
@@ -611,9 +616,10 @@ export async function getOrderWithAccess(orderId, userId, role) {
   const isOwnerSeller = role === "seller" && sellerIdStr === uid;
   const primaryRiderId = refToIdString(order.deliveryBoy);
   const returnRiderId = refToIdString(order.returnDeliveryBoy);
+  const previousRiderId = refToIdString(order.previousDeliveryBoy);
   const isAssignedDeliveryBoy =
     role === "delivery" &&
-    (primaryRiderId === uid || returnRiderId === uid);
+    (primaryRiderId === uid || returnRiderId === uid || previousRiderId === uid);
 
   const isBroadcastedOrder =
     role === "delivery" &&

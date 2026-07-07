@@ -169,6 +169,25 @@ const settingSchema = new mongoose.Schema(
                 default: false,
             },
         },
+
+        // ── POS settings ──────────────────────────────────────────────
+        barcodeSettings: {
+            width:         { type: Number, default: 38 },
+            height:        { type: Number, default: 25 },
+            fontSize:      { type: Number, default: 8 },
+            barcodeHeight: { type: Number, default: 30 },
+            barcodeWidth:  { type: Number, default: 1.5 },
+            showPrice:     { type: Boolean, default: true },
+            showName:      { type: Boolean, default: true },
+            mrpLabel:      { type: String, default: "MRP" },
+            spLabel:       { type: String, default: "SP" },
+        },
+        invoiceSettings: {
+            notes: { text: { type: String, default: "" }, enabled: { type: Boolean, default: false } },
+            terms: { text: { type: String, default: "" }, enabled: { type: Boolean, default: false } },
+            gst:   { text: { type: String, default: "" }, enabled: { type: Boolean, default: false } },
+            fssai: { text: { type: String, default: "" }, enabled: { type: Boolean, default: false } },
+        },
     },
     {
         timestamps: true,

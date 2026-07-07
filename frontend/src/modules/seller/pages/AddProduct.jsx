@@ -20,6 +20,8 @@ import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { sellerApi } from "../services/sellerApi";
+import axiosInstance from "@core/api/axios";
+import QRScannerModal from "../../../components/QRScannerModal";
 
 
 const AddProduct = () => {
@@ -74,9 +76,50 @@ const AddProduct = () => {
         salePrice: "",
         stock: "",
         sku: "",
+        barcode: "",
       },
     ],
   });
+
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [activeScanIndex, setActiveScanIndex] = useState(null);
+
+  const handleBarcodeScan = async (code) => {
+    if (activeScanIndex === null) return;
+    try {
+      const res = await axiosInstance.get(`/products/barcode/check?code=${code}`);
+      if (res.data?.success && res.data.result?.exists) {
+        toast.error(`Barcode already exists! Product: ${res.data.result.productName}`);
+      } else {
+        const newVariants = [...formData.variants];
+        newVariants[activeScanIndex].barcode = code;
+        setFormData({ ...formData, variants: newVariants });
+        toast.success("Barcode scanned successfully");
+      }
+    } catch {
+      toast.error("Failed to verify barcode");
+    } finally {
+      setIsScannerOpen(false);
+      setActiveScanIndex(null);
+    }
+  };
+
+  const handleGenerateBarcode = async (index) => {
+    try {
+      const res = await axiosInstance.get("/products/barcode/generate");
+      if (res.data?.success && res.data.result?.barcode) {
+        const generatedCode = res.data.result.barcode;
+        const newVariants = [...formData.variants];
+        newVariants[index].barcode = generatedCode;
+        setFormData({ ...formData, variants: newVariants });
+        toast.success(`Unique Barcode Generated: ${generatedCode}`);
+      } else {
+        toast.error("Failed to generate unique barcode");
+      }
+    } catch {
+      toast.error("Failed to generate unique barcode");
+    }
+  };
 
   const [dbCategories, setDbCategories] = useState([]);
   const [isLoadingCats, setIsLoadingCats] = useState(true);
@@ -515,6 +558,7 @@ const AddProduct = () => {
                           salePrice: "",
                           stock: "",
                           sku: makeSku(prev.name, prev.variants.length + 1),
+                          barcode: "",
                         },
                       ],
                     }))
@@ -639,6 +683,43 @@ const AddProduct = () => {
                         className="p-2 text-slate-300 hover:text-rose-500 transition-colors">
                         <HiOutlineTrash className="h-4 w-4" />
                       </button>
+                    </div>
+
+                    <div className="col-span-12 grid grid-cols-1 md:grid-cols-12 gap-4 items-end mt-2 pt-2 border-t border-slate-200/50">
+                      <div className="col-span-12 md:col-span-6 space-y-1">
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
+                          Barcode Number
+                        </label>
+                        <input
+                          value={variant.barcode || ""}
+                          onChange={(e) => {
+                            const newVariants = [...formData.variants];
+                            newVariants[index].barcode = e.target.value;
+                            setFormData({ ...formData, variants: newVariants });
+                          }}
+                          placeholder="Scan or type barcode number..."
+                          className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
+                        />
+                      </div>
+                      <div className="col-span-12 md:col-span-6 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveScanIndex(index);
+                            setIsScannerOpen(true);
+                          }}
+                          className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-1.5"
+                        >
+                          Scan Barcode
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleGenerateBarcode(index)}
+                          className="flex-1 px-4 py-2 bg-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-300 transition-all flex items-center justify-center gap-1.5"
+                        >
+                          Generate
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -966,6 +1047,14 @@ const AddProduct = () => {
           
         </div>
       </div>
+      <QRScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => {
+          setIsScannerOpen(false);
+          setActiveScanIndex(null);
+        }}
+        onScan={handleBarcodeScan}
+      />
     </div>
   );
 };

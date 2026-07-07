@@ -130,6 +130,25 @@ const userSchema = new mongoose.Schema(
             default: 0,
         },
 
+        // ── POS credit / seller scope ─────────────────────────────────
+        /**
+         * POS credit (udhaar) balance. Positive = customer owes money.
+         * Completely separate from `walletBalance` (prepaid e-commerce wallet).
+         */
+        creditBalance: {
+            type: Number,
+            default: 0,
+        },
+        /**
+         * When set, this customer belongs to a specific seller's POS scope.
+         * `null` = admin / online customer (the default for existing users).
+         */
+        sellerId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Seller",
+            default: null,
+        },
+
         isActive: {
             type: Boolean,
             default: true,

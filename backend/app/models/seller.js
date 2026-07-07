@@ -135,6 +135,21 @@ const sellerSchema = new mongoose.Schema(
       default: 5, // Default 5km
     },
     lastLogin: Date,
+
+    // ── POS fields ────────────────────────────────────────────────────
+    billSettings: {
+      shopName:  { text: { type: String, default: "" }, enabled: { type: Boolean, default: false } },
+      address:   { text: { type: String, default: "" }, enabled: { type: Boolean, default: false } },
+      phone:     { text: { type: String, default: "" }, enabled: { type: Boolean, default: false } },
+      notes:     { text: { type: String, default: "" }, enabled: { type: Boolean, default: false } },
+      terms:     { text: { type: String, default: "" }, enabled: { type: Boolean, default: false } },
+      gst:       { text: { type: String, default: "" }, enabled: { type: Boolean, default: false } },
+      fssai:     { text: { type: String, default: "" }, enabled: { type: Boolean, default: false } },
+    },
+    canCreateCategories: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true },
 );

@@ -31,6 +31,8 @@ import reportsWithRoleFilterRoutes from "./reportsWithRoleFilter.js";
 import franchiseReportWithRoleFilterRoutes from "./franchiseReportWithRoleFilter.js";
 import offlineSalesRoutes from "./offlineSalesRoutes.js";
 import sellerInventoryRoutes from "./sellerInventoryRoutes.js";
+import adminPosRoutes from "./adminPosRoutes.js";
+import sellerPosRoutes from "./sellerPosRoutes.js";
 
 import express from "express";
 
@@ -52,7 +54,9 @@ const setupRoutes = (app) => {
     router.use("/admin/categories", categoryRoute);
     router.use("/admin/reports", franchiseRoute);
     router.use("/admin", adminRoute);
+    router.use("/admin", adminPosRoutes);
     router.use("/seller", sellerRoute);
+    router.use("/seller/pos", sellerPosRoutes);
     router.use("/settings", settingsRoute);
     router.use("/popups", popupRoute);
     router.use("/categories", categoryRoute);

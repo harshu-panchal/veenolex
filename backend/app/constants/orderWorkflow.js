@@ -12,6 +12,8 @@ export const WORKFLOW_STATUS = {
   OUT_FOR_DELIVERY: "OUT_FOR_DELIVERY",
   DELIVERED: "DELIVERED",
   CANCELLED: "CANCELLED",
+  SCHEDULED: "SCHEDULED",
+  RESCHEDULED: "RESCHEDULED",
 };
 
 /** Milliseconds — override via env in services */
@@ -57,6 +59,10 @@ export function legacyStatusFromWorkflow(workflowStatus) {
       return "delivered";
     case WORKFLOW_STATUS.CANCELLED:
       return "cancelled";
+    case WORKFLOW_STATUS.SCHEDULED:
+      return "scheduled";
+    case WORKFLOW_STATUS.RESCHEDULED:
+      return "rescheduled";
     default:
       return "pending";
   }

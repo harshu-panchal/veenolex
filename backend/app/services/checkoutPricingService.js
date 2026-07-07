@@ -63,13 +63,13 @@ async function computeDistanceKmForSeller({ sellerId, addressLocation, items = [
   );
   const distanceKm = Number((distanceInMeters / 1000).toFixed(3));
   
-  const radius = Number(seller.serviceRadius || 5);
+  const radius = Number(seller.serviceRadius || 5) + 5; // Configured radius + 5km buffer
   if (distanceKm > radius) {
     const hasOutZoneEnabled = items.length > 0 && items.every(item => item.zoneOutDeliveryEnabled);
     if (hasOutZoneEnabled) {
       return { distanceKm, isOutOfZone: true };
     }
-    const err = new Error(`${seller.shopName || "Store"} does not deliver to your current location (Distance: ${distanceKm}km, Service Radius: ${radius}km)`);
+    const err = new Error(`${seller.shopName || "Store"} does not deliver to your current location (Distance: ${distanceKm}km, Service Radius: ${radius - 5}km + 5km buffer)`);
     err.statusCode = 400;
     throw err;
   }

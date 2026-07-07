@@ -236,6 +236,7 @@ const DeliveryLayout = () => {
     "/delivery/navigation",
     "/delivery/confirm-delivery",
     "/delivery/order-details",
+    "/delivery/reschedule",
   ];
 
   const shouldShowBottomNav = !hideBottomNavRoutes.some((route) =>
@@ -782,10 +783,21 @@ const DeliveryLayout = () => {
     }
   };
 
+  const portalContainer = useMemo(() => {
+    if (typeof document === 'undefined') return null;
+    let el = document.getElementById('delivery-portal-root');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'delivery-portal-root';
+      document.body.appendChild(el);
+    }
+    return el;
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-gray-100">
       {/* Full-screen order alert — portaled so it always stacks above nav/content */}
-      {typeof document !== "undefined" &&
+      {portalContainer &&
         createPortal(
           <AnimatePresence>
             {activeOrder && (
@@ -918,7 +930,7 @@ const DeliveryLayout = () => {
               </div>
             )}
           </AnimatePresence>,
-          document.body,
+          portalContainer,
         )}
 
       {/* MANUAL ASSIGNMENT MODAL */}
@@ -996,7 +1008,7 @@ const DeliveryLayout = () => {
               </div>
             )}
           </AnimatePresence>,
-          document.body,
+          portalContainer,
         )}
 
 

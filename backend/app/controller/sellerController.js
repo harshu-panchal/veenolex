@@ -49,7 +49,7 @@ export const getNearbySellers = async (req, res) => {
       // Add distance to seller object for frontend
       seller.distance = distance;
 
-      return distance <= (seller.serviceRadius || 5);
+      return distance <= ((seller.serviceRadius || 5) + 5); // Configured radius + 5km buffer
     });
 
     return handleResponse(

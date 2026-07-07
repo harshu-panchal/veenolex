@@ -355,6 +355,15 @@ body {
   font-weight: 600;
 }
 
+/* Supplier Layout Styles */
+.admin-supplier-card {
+  @apply bg-white rounded-lg border border-slate-200 shadow-sm p-6;
+}
+
+.admin-supplier-grid {
+  @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4;
+}
+
 .admin-body {
   font-size: 0.875rem;
   line-height: 1.25rem;
@@ -392,6 +401,27 @@ body {
     -ms-user-select: none;
     user-select: none;
     /* Disable long-press context menu on iOS */
-    -webkit-touch-callout: none;
+  }
+}
+
+/* ── POS Thermal Receipt Print Isolation ───────────────────────────── */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  .pos-receipt-print-area,
+  .pos-receipt-print-area * {
+    visibility: visible !important;
+  }
+  .pos-receipt-print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 80mm !important;
+    background: white !important;
+    color: black !important;
+    display: block !important;
+    padding: 4mm !important;
+    font-family: monospace !important;
   }
 }

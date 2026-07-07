@@ -7,6 +7,9 @@ import DeliveryAssignment from "../models/deliveryAssignment.js";
 import Wallet from "../models/wallet.js";
 import handleResponse from "../utils/helper.js";
 import mongoose from "mongoose";
+import { distanceMeters } from "../utils/geoUtils.js";
+import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
+import { NOTIFICATION_EVENTS } from "../modules/notifications/notification.constants.js";
 import { WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
 import {
   writeDeliveryLocation,
@@ -404,12 +407,14 @@ export const updateDeliveryLocation = async (req, res) => {
             let order;
             if (orderId && orderId.toUpperCase().startsWith("REQ-")) {
                 order = await SellerProductRequest.findOne({ requestNumber: new RegExp(`^${orderId}$`, "i") })
-                    .select("requestNumber deliveryBoy")
+                    .select("requestNumber deliveryBoy customer address etaPushNotifiedAt")
+                    .populate("address")
                     .lean();
                 if (order) order.orderId = order.requestNumber;
             } else {
                 order = await Order.findOne(orderMatch)
-                    .select("orderId deliveryBoy")
+                    .select("orderId deliveryBoy customer address etaPushNotifiedAt")
+                    .populate("address")
                     .lean();
             }
 
@@ -448,6 +453,39 @@ export const updateDeliveryLocation = async (req, res) => {
         writeDeliveryLocation(deliveryId, activeOrderId, snapshot).catch(() => {});
         if (activeOrderId) {
             appendTrailPoint(activeOrderId, { lat, lng, t: Date.now() }).catch(() => {});
+            
+            // ETA check for reschedule notification
+            if (order && order.address?.location?.coordinates && !order.etaPushNotifiedAt) {
+                const [cLng, cLat] = order.address.location.coordinates;
+                const distMeters = distanceMeters(lat, lng, cLat, cLng);
+                
+                // Assuming average city speed of 20km/h = 333m/min
+                // 10 minutes = 3.33km (3333 meters)
+                if (distMeters <= 3333) {
+                    // Mark as notified in DB immediately to prevent duplicate sends
+                    await Order.updateOne(
+                        { orderId: activeOrderId },
+                        { $set: { etaPushNotifiedAt: new Date() } }
+                    ).catch(() => {});
+                    
+                    try {
+                        emitNotificationEvent(NOTIFICATION_EVENTS.NEW_NOTIFICATION, {
+                            userId: order.customer,
+                            orderId: activeOrderId,
+                            title: "Your delivery is arriving soon! (< 10 min)",
+                            message: "Not available? You can now reschedule the delivery in the app.",
+                            type: "ORDER_TRACKING",
+                            data: {
+                                action: "VIEW_ORDER",
+                                orderId: activeOrderId,
+                                canReschedule: true
+                            }
+                        });
+                    } catch (e) {
+                        // ignore
+                    }
+                }
+            }
         }
 
         return handleResponse(res, 200, "Location updated", {

@@ -20,6 +20,8 @@ jest.unstable_mockModule("../app/controller/productController.js", () => ({
   getModerationProducts: jest.fn((req, res) => res.status(200).json({})),
   approveProduct: jest.fn((req, res) => res.status(200).json({})),
   rejectProduct: jest.fn((req, res) => res.status(200).json({})),
+  checkBarcodeUnique: jest.fn((req, res) => res.status(200).json({})),
+  generateUniqueBarcode: jest.fn((req, res) => res.status(200).json({})),
 }));
 
 jest.unstable_mockModule("../app/controller/stockController.js", () => ({

@@ -14,6 +14,7 @@ import {
   sellerTimeoutQueue,
   deliveryTimeoutQueue,
   returnPickupTimeoutQueue,
+  rescheduleQueue,
   JOB_NAMES,
 } from "../../queues/orderQueues.js";
 import {
@@ -36,6 +37,10 @@ function deliveryJobId(orderId, attempt) {
 
 function returnPickupJobId(orderId, attempt) {
   return `order:${orderId}:return-pickup:${attempt}`;
+}
+
+function rescheduleJobId(orderId) {
+  return `order:${orderId}:reschedule`;
 }
 
 async function raceWithTimeout(promise, timeoutMs, timeoutMessage) {
@@ -237,6 +242,67 @@ async function removeReturnPickupTimeout(orderId, attempt = 1) {
   }
 }
 
+async function scheduleOrderReschedule(orderId, delayMs) {
+  const addPromise = rescheduleQueue
+    .add(
+      JOB_NAMES.ORDER_RESCHEDULE,
+      { orderId },
+      {
+        delay: delayMs,
+        jobId: rescheduleJobId(orderId),
+        removeOnComplete: true,
+      },
+    )
+    .catch((err) => {
+      logger.warn("scheduleOrderReschedule add failed", {
+        scope: "scheduleOrderReschedule",
+        orderId,
+        error: err.message,
+      });
+    });
+  const timeoutMs = BULL_ADD_TIMEOUT_MS();
+  try {
+    await raceWithTimeout(
+      addPromise,
+      timeoutMs,
+      `reschedule queue add exceeded ${timeoutMs}ms`,
+    );
+  } catch (e) {
+    logger.warn("scheduleOrderReschedule timed out", {
+      scope: "scheduleOrderReschedule",
+      orderId,
+      error: e.message,
+    });
+  }
+}
+
+async function removeOrderReschedule(orderId) {
+  const timeoutMs = BULL_ADD_TIMEOUT_MS();
+  const work = (async () => {
+    const job = await rescheduleQueue.getJob(rescheduleJobId(orderId));
+    if (job) await job.remove();
+  })().catch((err) => {
+    logger.warn("removeOrderReschedule get/remove failed", {
+      scope: "removeOrderReschedule",
+      orderId,
+      error: err.message,
+    });
+  });
+  try {
+    await raceWithTimeout(
+      work,
+      timeoutMs,
+      `removeOrderReschedule exceeded ${timeoutMs}ms`,
+    );
+  } catch (e) {
+    logger.warn("removeOrderReschedule timed out", {
+      scope: "removeOrderReschedule",
+      orderId,
+      error: e.message,
+    });
+  }
+}
+
 export const bullJobScheduler = {
   scheduleSellerTimeout,
   removeSellerTimeout,
@@ -244,6 +310,8 @@ export const bullJobScheduler = {
   removeDeliveryTimeout,
   scheduleReturnPickupTimeout,
   removeReturnPickupTimeout,
+  scheduleOrderReschedule,
+  removeOrderReschedule,
 };
 
 export default bullJobScheduler;

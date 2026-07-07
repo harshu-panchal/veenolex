@@ -32,6 +32,7 @@ import {
   removeDeliveryTimeout,
   scheduleReturnPickupTimeout,
   removeReturnPickupTimeout,
+  scheduleOrderReschedule,
 } from "./workflow/jobSchedulerPort.js";
 import {
   emitOrderStatusUpdate,
@@ -40,6 +41,7 @@ import {
   emitReturnBroadcastForCustomer,
   emitToCustomer,
   emitToOrder,
+  emitToDelivery,
   retractDeliveryBroadcastForOrder,
 } from "./orderSocketEmitter.js";
 import { distanceMeters } from "../utils/geoUtils.js";
@@ -1665,34 +1667,7 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
               { upsert: true }
             );
 
-            // Clone product to Seller's catalog
-            let clonedProduct = await Product.findOne({ adminProductId: adminProduct._id, sellerId });
-            
-            if (clonedProduct) {
-              await Product.updateOne(
-                { _id: clonedProduct._id },
-                { $inc: { stock: quantity } }
-              );
-            } else {
-              const uniqueSuffix = `-${sellerId.toString().slice(-6)}-${Date.now().toString().slice(-4)}`;
-              const clonedData = {
-                ...adminProduct.toObject(),
-                _id: new mongoose.Types.ObjectId(),
-                sellerId,
-                adminProductId: adminProduct._id,
-                stock: quantity,
-                slug: `${adminProduct.slug}${uniqueSuffix}`,
-                sku: `${adminProduct.sku || 'SKU'}${uniqueSuffix}`,
-                lastSubmittedByRole: "admin",
-                approvalStatus: "approved",
-                approvalNote: "Automatically approved from admin warehouse delivery.",
-                createdAt: now,
-                updatedAt: now
-              };
-              
-              delete clonedData.__v;
-              await Product.create(clonedData);
-            }
+
           }
         }
       }
@@ -1847,4 +1822,144 @@ export async function startRequestDeliverySearch(requestId) {
   }
 
   return request;
+}
+
+/**
+ * Reschedule an order.
+ * - Called when either Customer or Delivery Partner reschedules.
+ * - Sets status to rescheduled, scheduledFor to the future date.
+ * - Emits order:rescheduled to connected clients.
+ * - Enqueues a delayed job that will transition to confirmed and auto-assign delivery.
+ */
+export async function rescheduleOrderAtomic(orderId, initiator, rescheduledForDate) {
+  const oid = await requireCanonicalOrderId(orderId);
+  if (!oid) {
+    const error = new Error("Order not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const order = await Order.findOne({ orderId: oid })
+    .select("status workflowStatus deliveryBoy seller")
+    .populate("customer", "_id socketId");
+
+  if (!order) {
+    const error = new Error("Order not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const ws = resolveWorkflowStatus(order);
+  if (
+    ws === WORKFLOW_STATUS.DELIVERED ||
+    ws === WORKFLOW_STATUS.CANCELLED
+  ) {
+    const error = new Error("Cannot reschedule a delivered or cancelled order");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const oldDeliveryBoy = order.deliveryBoy;
+
+  order.status = legacyStatusFromWorkflow(WORKFLOW_STATUS.RESCHEDULED);
+  order.workflowStatus = WORKFLOW_STATUS.RESCHEDULED;
+  order.rescheduledFor = rescheduledForDate;
+  order.rescheduleInitiatedBy = initiator;
+  order.returnedToSellerAt = new Date();
+  order.previousDeliveryBoy = oldDeliveryBoy; // Preserve for access checks
+  order.deliveryBoy = null; // Unassign current rider
+  await order.save();
+
+  // Clear rider presence and tracking
+  if (oldDeliveryBoy) {
+    clearOrderTracking(order.orderId).catch(() => {});
+  }
+
+  // Calculate delay
+  const delayMs = rescheduledForDate.getTime() - Date.now();
+  if (delayMs > 0) {
+    await scheduleOrderReschedule(order.orderId, delayMs);
+  } else {
+    await scheduleOrderReschedule(order.orderId, 1000); // Trigger almost immediately if in past
+  }
+
+  // Notify parties
+  if (oldDeliveryBoy) {
+    emitToDelivery(oldDeliveryBoy, {
+      event: "order:rescheduled",
+      payload: {
+        orderId: order.orderId,
+        rescheduledFor: rescheduledForDate,
+        initiator
+      }
+    });
+  }
+
+  emitOrderStatusUpdate(order.orderId, {
+    workflowStatus: WORKFLOW_STATUS.RESCHEDULED,
+    rescheduledFor: rescheduledForDate,
+    initiator
+  }, order.customer);
+
+  emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_RESCHEDULED, {
+    orderId: order.orderId,
+    customerId: order.customer?._id || order.customer,
+    userId: order.customer?._id || order.customer,
+    sellerId: order.seller?._id || order.seller,
+    rescheduledFor: rescheduledForDate.toISOString(),
+  });
+
+  return { order };
+}
+
+/**
+ * Bull processor for order-reschedule jobs. On fire:
+ *   - Emits `order:seller-redelivery-due`
+ *   - Transitions to SELLER_PENDING or DELIVERY_SEARCH (confirmed)
+ *   - Re-triggers delivery partner assignment (if going to DELIVERY_SEARCH)
+ */
+export async function processOrderRescheduleJob({ orderId }) {
+  const oid = await requireCanonicalOrderId(orderId);
+  if (!oid) return;
+
+  const order = await Order.findOne({ orderId: oid })
+    .populate("customer", "_id socketId");
+  if (!order) return;
+
+  const ws = resolveWorkflowStatus(order);
+  if (ws !== WORKFLOW_STATUS.RESCHEDULED && ws !== WORKFLOW_STATUS.SCHEDULED) {
+    // If it moved out of these states, ignore.
+    return;
+  }
+
+  const now = new Date();
+  const sellerMs = DEFAULT_SELLER_TIMEOUT_MS();
+
+  order.status = legacyStatusFromWorkflow(WORKFLOW_STATUS.SELLER_PENDING);
+  order.workflowStatus = WORKFLOW_STATUS.SELLER_PENDING;
+  order.sellerPendingExpiresAt = new Date(now.getTime() + sellerMs);
+  order.sellerNotifiedAt = now;
+  await order.save();
+
+  // Schedule seller timeout job
+  await scheduleSellerTimeoutJob(order.orderId);
+
+  // Notify seller (plays ringtone and fetches order on dashboard)
+  if (order.seller) {
+    emitToSeller(order.seller.toString(), {
+      event: "order:new",
+      payload: {
+        orderId: order.orderId,
+        workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
+        sellerPendingExpiresAt: order.sellerPendingExpiresAt,
+      }
+    });
+  }
+
+  emitOrderStatusUpdate(order.orderId, {
+    workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
+    sellerPendingExpiresAt: order.sellerPendingExpiresAt,
+  }, order.customer);
+
+  return { order };
 }

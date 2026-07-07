@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   ShieldCheck,
   Truck,
+  Calendar,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Button from "@/shared/components/ui/Button";
@@ -218,6 +219,12 @@ const OrderDetails = () => {
       if (ws === "DELIVERED") {
         setStep(4);
         setOrder((prev) => prev ? { ...prev, status: "delivered", workflowStatus: "DELIVERED" } : prev);
+      } else if (ws === "RESCHEDULED") {
+        toast.error("Customer rescheduled this order. Please return the items to the seller.", {
+          duration: 10000,
+        });
+        setOrder((prev) => prev ? { ...prev, status: "rescheduled", workflowStatus: "RESCHEDULED" } : prev);
+        navigate("/delivery/dashboard");
       }
     });
 
@@ -1092,6 +1099,33 @@ const OrderDetails = () => {
                 />
               </Card>
             )}
+          </motion.div>
+        )}
+
+        {/* Reschedule Option for Delivery */}
+        {!isReturn && step === 3 && !showOtpInput && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="mb-4">
+            <Card className="p-4 rounded-3xl shadow-sm border border-brand-100 bg-brand-50/30">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <div className="bg-white p-2 rounded-full shadow-sm mr-3">
+                    <Calendar size={20} className="text-brand-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-gray-800 text-sm">Customer unavailable?</h4>
+                    <p className="text-xs text-gray-500">Reschedule this delivery for later</p>
+                  </div>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => navigate(`/delivery/reschedule/${orderId}`)}
+                  className="bg-white border-brand-200 text-brand-700 hover:bg-brand-50 rounded-xl"
+                >
+                  Reschedule
+                </Button>
+              </div>
+            </Card>
           </motion.div>
         )}
 

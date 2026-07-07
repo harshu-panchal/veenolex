@@ -23,6 +23,20 @@ const orderSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Seller",
     },
+    // ── POS-specific top-level fields ──────────────────────────────────
+    // `adminNotes` is the critical POS discriminator.  Values:
+    //   Admin POS:  "Created via POS System"
+    //   Seller POS: "POS Order - Seller: <sellerId>"
+    //   Online POS: "POS Online Order via PhonePe"
+    adminNotes: { type: String, default: null },
+    posPaymentMethod: {
+      type: String,
+      enum: ["Cash", "Credit", "Online", null],
+      default: null,
+    },
+    customerName: { type: String, default: null },
+    customerEmail: { type: String, default: null },
+    customerPhone: { type: String, default: null },
     items: [
       {
         product: {
@@ -42,6 +56,14 @@ const orderSchema = new mongoose.Schema(
         },
         variantSlot: String,
         image: String,
+        // ── POS item extensions (additive — safe for online orders) ──
+        sku: String,
+        hsnCode: String,
+        gst: Number,           // GST percentage (e.g. 18)
+        gstAmount: Number,     // Computed inclusive GST amount
+        unitPrice: Number,     // Alias for price in POS context
+        warrantyType: String,
+        warrantyDuration: String,
       },
     ],
     address: {
@@ -328,9 +350,22 @@ const orderSchema = new mongoose.Schema(
         "out_for_delivery",
         "delivered",
         "cancelled",
+        "scheduled",
+        "rescheduled",
       ],
       default: "pending",
     },
+    scheduledFor: { type: Date, default: null },
+    rescheduledFor: { type: Date, default: null },
+    rescheduleInitiatedBy: { 
+      type: String, 
+      enum: ["customer", "delivery_partner", null],
+      default: null 
+    },
+    returnedToSellerAt: { type: Date, default: null },
+    sellerNotifiedAt: { type: Date, default: null },
+    ackRescheduleAt: { type: Date, default: null },
+    etaPushNotifiedAt: { type: Date, default: null },
     workflowStatus: {
       type: String,
       enum: Object.values(WORKFLOW_STATUS),
@@ -365,6 +400,10 @@ const orderSchema = new mongoose.Schema(
       default: "now",
     },
     deliveryBoy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Delivery",
+    },
+    previousDeliveryBoy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Delivery",
     },

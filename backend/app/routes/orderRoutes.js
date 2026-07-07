@@ -41,6 +41,7 @@ import {
   requestReturnDropOtp,
   verifyReturnDropOtp,
   getOrderRoute,
+  rescheduleOrder,
 } from "../controller/orderWorkflowController.js";
 import {
   verifyToken,
@@ -214,6 +215,12 @@ router.post(
   verifyToken,
   allowRoles("delivery", "admin"),
   requestDeliveryOtp,
+);
+router.post(
+  "/workflow/:orderId/reschedule",
+  verifyToken,
+  allowRoles("customer", "user", "delivery", "admin"),
+  rescheduleOrder,
 );
 router.get(
   "/workflow/:orderId/otp/active",

@@ -4,6 +4,7 @@
 import { verifySocketToken } from "./socketAuth.js";
 import mongoose from "mongoose";
 import Ticket from "../models/ticket.js";
+import Order from "../models/order.js";
 
 let _io = null;
 
@@ -93,6 +94,18 @@ export const initSocket = (io) => {
     socket.on("register_delivery", (deliveryId) => {
       if (deliveryId && socket.user?.role === "delivery") {
         deliverySockets.set(deliveryId.toString(), socket.id);
+      }
+    });
+
+    socket.on("order:reschedule-ack", async (orderId) => {
+      if (!orderId || socket.user?.role !== "delivery") return;
+      try {
+        await Order.updateOne(
+          { orderId },
+          { $set: { ackRescheduleAt: new Date() } }
+        );
+      } catch (err) {
+        console.error("Error acknowledging reschedule:", err);
       }
     });
 

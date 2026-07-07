@@ -163,6 +163,11 @@ const productSchema = new mongoose.Schema(
             enum: ["seller", "admin"],
             default: null,
         },
+        // ── POS root-level fields ──────────────────────────────────────
+        barcode: [{ type: String, trim: true }],
+        hsnCode: { type: String, trim: true },
+        gst: { type: Number, default: 0 },
+        itemCode: { type: String, trim: true },
         variants: [
             {
                 name: String,
@@ -170,6 +175,13 @@ const productSchema = new mongoose.Schema(
                 salePrice: Number,
                 stock: Number,
                 sku: String,
+                // ── POS variant extensions ─────────────────────────────
+                purchasePrice: Number,
+                wholesalePrice: Number,
+                discPrice: Number,
+                compareAtPrice: Number,
+                barcode: [{ type: String }],
+                mainImage: String,
             }
         ],
         isFeatured: {

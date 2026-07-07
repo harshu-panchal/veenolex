@@ -18,7 +18,9 @@ router.get(
   attachRoleDateFilter,
   async (req, res) => {
     try {
-      const baseQuery = {};
+      const baseQuery = {
+        adminNotes: { $not: /POS/i }
+      };
       
       // For sellers, only their transactions
       if (req.user.role === "seller") {
@@ -73,7 +75,8 @@ router.get(
   async (req, res) => {
     try {
       const baseQuery = {
-        paymentStatus: { $in: ["PAID", "CASH_COLLECTED"] }
+        paymentStatus: { $in: ["PAID", "CASH_COLLECTED"] },
+        adminNotes: { $not: /POS/i }
       };
       
       if (req.user.role === "seller") {

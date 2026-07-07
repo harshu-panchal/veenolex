@@ -36,6 +36,12 @@ const RequestProduct = React.lazy(() => import("../pages/RequestProduct"));
 const RequestedOrdersList = React.lazy(() => import("../pages/RequestedOrdersList"));
 const RequestedOrderDetails = React.lazy(() => import("../pages/RequestedOrderDetails"));
 
+// ── POS Lazy Pages ───────────────────────────────────────────────────
+const SellerPOSOrders = React.lazy(() => import("../pages/pos/SellerPOSOrders"));
+const SellerPOSReport = React.lazy(() => import("../pages/pos/SellerPOSReport"));
+const SellerPOSBillSettings = React.lazy(() => import("../pages/pos/SellerPOSBillSettings"));
+const SellerPOSPaymentSuccess = React.lazy(() => import("../pages/pos/SellerPOSPaymentSuccess"));
+
 const navItems = [
   { label: "Dashboard", path: "/seller", icon: HiOutlineSquares2X2, end: true },
   { label: "Products", path: "/seller/products", icon: HiOutlineCube },
@@ -67,6 +73,9 @@ const navItems = [
     icon: HiOutlineCurrencyDollar,
   },
   { label: "Profile", path: "/seller/profile", icon: HiOutlineUser },
+  { label: "POS Billing", path: "/seller/pos/orders", icon: HiOutlineShoppingBag },
+  { label: "POS Invoice History", path: "/seller/pos/report", icon: HiOutlineChartBarSquare },
+  { label: "POS Receipt Settings", path: "/seller/pos/bill-settings", icon: HiOutlineCreditCard },
 ];
 
 const SellerRoutes = () => {
@@ -93,6 +102,11 @@ const SellerRoutes = () => {
         <Route path="/earnings" element={<Earnings />} />
         <Route path="/withdrawals" element={<Withdrawals />} />
         <Route path="/profile" element={<Profile />} />
+        {/* ── POS Route Entries ────────────────────────────────────────── */}
+        <Route path="/pos/orders" element={<SellerPOSOrders />} />
+        <Route path="/pos/report" element={<SellerPOSReport />} />
+        <Route path="/pos/bill-settings" element={<SellerPOSBillSettings />} />
+        <Route path="/pos/success" element={<SellerPOSPaymentSuccess />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </DashboardLayout>

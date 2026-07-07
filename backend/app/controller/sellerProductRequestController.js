@@ -270,6 +270,8 @@ export const getAllSellerRequests = async (req, res) => {
 // ═══════════════════════════════════════════════
 // ADMIN: APPROVE REQUEST
 // ═══════════════════════════════════════════════
+import mongoose from "mongoose";
+
 export const approveSellerRequest = async (req, res) => {
   try {
     const { requestId } = req.params;
@@ -339,6 +341,40 @@ export const approveSellerRequest = async (req, res) => {
           requestNumber: request.requestNumber,
           paymentType: request.paymentType || "PAY_NOW"
         });
+      }
+
+      // Clone product to Seller's catalog
+      const adminProduct = await Product.findById(item.productId);
+      if (adminProduct) {
+        let clonedProduct = await Product.findOne({ adminProductId: adminProduct._id, sellerId: request.sellerId });
+        const quantity = item.quantity || 0;
+        const now = new Date();
+        
+        if (clonedProduct) {
+          await Product.updateOne(
+            { _id: clonedProduct._id },
+            { $inc: { stock: quantity } }
+          );
+        } else {
+          const uniqueSuffix = `-${request.sellerId.toString().slice(-6)}-${Date.now().toString().slice(-4)}`;
+          const clonedData = {
+            ...adminProduct.toObject(),
+            _id: new mongoose.Types.ObjectId(),
+            sellerId: request.sellerId,
+            adminProductId: adminProduct._id,
+            stock: quantity,
+            slug: `${adminProduct.slug}${uniqueSuffix}`,
+            sku: `${adminProduct.sku || 'SKU'}${uniqueSuffix}`,
+            lastSubmittedByRole: "admin",
+            approvalStatus: "approved",
+            approvalNote: "Automatically approved from admin warehouse delivery.",
+            createdAt: now,
+            updatedAt: now
+          };
+          
+          delete clonedData.__v;
+          await Product.create(clonedData);
+        }
       }
     }
 

@@ -55,6 +55,7 @@ export const createFinanceOrderSchema = checkoutPreviewSchema.keys({
   items: Joi.array().items(orderItemSchema).min(1).optional(),
   paymentMode: Joi.string().valid("ONLINE", "COD").required(),
   walletAmount: Joi.number().min(0).default(0),
+  scheduledFor: Joi.date().iso().optional(),
 });
 
 export const verifyOnlinePaymentSchema = Joi.object({
