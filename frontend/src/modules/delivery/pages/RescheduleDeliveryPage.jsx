@@ -105,49 +105,55 @@ const RescheduleDeliveryPage = () => {
         </h3>
         
         <div className="flex overflow-x-auto pb-4 gap-3 hide-scrollbar -mx-4 px-4">
-          {dates.map((date, idx) => (
-            <button
-              key={idx}
-              onClick={() => { setSelectedDate(date); setSelectedSlot(null); }}
-              className={`flex-shrink-0 flex flex-col items-center justify-center w-[72px] h-[72px] rounded-2xl border-2 transition-all ${
-                selectedDate?.toDateString() === date.toDateString()
-                  ? 'border-brand-500 bg-brand-50 text-brand-700 shadow-sm shadow-brand-100'
-                  : 'border-gray-100 bg-white text-gray-500 hover:border-gray-200'
-              }`}
-            >
-              <span className="text-[10px] font-bold tracking-wider uppercase">{date.toLocaleDateString('en-US', { weekday: 'short' })}</span>
-              <span className={`text-2xl font-black ${selectedDate?.toDateString() === date.toDateString() ? 'text-brand-700' : 'text-gray-800'}`}>
-                {date.getDate()}
-              </span>
-            </button>
-          ))}
+          {dates.map((date, idx) => {
+            const isSelected = selectedDate?.toDateString() === date.toDateString();
+            return (
+              <button
+                key={idx}
+                onClick={() => { setSelectedDate(date); setSelectedSlot(null); }}
+                className={`flex-shrink-0 flex flex-col items-center justify-center w-[72px] h-[72px] rounded-2xl border-2 transition-all ${
+                  isSelected
+                    ? 'border-black bg-black text-white shadow-sm shadow-gray-250'
+                    : 'border-gray-150 bg-white text-gray-500 hover:border-gray-200'
+                }`}
+              >
+                <span className="text-[10px] font-bold tracking-wider uppercase">{date.toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                <span className={`text-2xl font-black ${isSelected ? 'text-white' : 'text-gray-800'}`}>
+                  {date.getDate()}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         <h3 className="font-bold text-gray-800 mt-4 mb-3 flex items-center gap-2">
-          <Clock size={18} className="text-brand-600" />
+          <Clock size={18} className="text-gray-900" />
           Select Time Slot
         </h3>
         
         <div className="grid grid-cols-1 gap-3">
           {slots.length > 0 ? (
-            slots.map((slot, idx) => (
-              <button
-                key={idx}
-                onClick={() => setSelectedSlot(slot)}
-                className={`p-4 rounded-xl border-2 text-left font-bold transition-all flex justify-between items-center ${
-                  selectedSlot?.start === slot.start
-                    ? 'border-brand-500 bg-brand-50 text-brand-700'
-                    : 'border-gray-100 bg-white text-gray-600 hover:border-gray-200'
-                }`}
-              >
-                {slot.label}
-                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                  selectedSlot?.start === slot.start ? 'border-brand-500 bg-brand-500' : 'border-gray-300'
-                }`}>
-                  {selectedSlot?.start === slot.start && <div className="w-2 h-2 rounded-full bg-white" />}
-                </div>
-              </button>
-            ))
+            slots.map((slot, idx) => {
+              const isSelected = selectedSlot?.start === slot.start;
+              return (
+                <button
+                  key={idx}
+                  onClick={() => setSelectedSlot(slot)}
+                  className={`p-4 rounded-xl border-2 text-left font-bold transition-all flex justify-between items-center ${
+                    isSelected
+                      ? 'border-black bg-gray-50 text-black'
+                      : 'border-gray-150 bg-white text-gray-600 hover:border-gray-200'
+                  }`}
+                >
+                  {slot.label}
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                    isSelected ? 'border-black bg-white' : 'border-gray-300'
+                  }`}>
+                    {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-black animate-scale-in" />}
+                  </div>
+                </button>
+              );
+            })
           ) : (
             <div className="text-center p-6 text-gray-500 bg-gray-100 rounded-2xl text-sm">
               No more slots available today.<br/>Please select another date.

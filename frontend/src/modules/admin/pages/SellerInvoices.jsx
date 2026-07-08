@@ -126,7 +126,7 @@ export default function SellerInvoices() {
     setLoadingProducts(true);
     try {
       const res = await adminApi.getProducts({ sellerId, limit: 100 });
-      setProducts(res.data?.data?.results || res.data?.results || res.data?.products || []);
+      setProducts(res.data?.result?.items || res.data?.data?.results || res.data?.results || res.data?.products || []);
     } catch (err) {
       toast.error("Failed to load seller products");
       console.error(err);
@@ -141,7 +141,7 @@ export default function SellerInvoices() {
     try {
       // Use the newly extended filter capability in backend order queries
       const res = await adminApi.getOrders({ sellerId, limit: 100 });
-      const orderList = res.data?.data?.items || res.data?.results?.items || res.data?.items || [];
+      const orderList = res.data?.result?.items || res.data?.data?.items || res.data?.results?.items || res.data?.items || [];
       setOrders(orderList);
       if (orderList.length > 0) {
         setSelectedOrderId(orderList[0].orderId);

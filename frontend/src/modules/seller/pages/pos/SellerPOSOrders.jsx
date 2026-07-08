@@ -775,6 +775,81 @@ export default function SellerPOSOrders() {
           </div>
         </div>
       )}
+
+      {/* ── THERMAL RECEIPT EMBEDDED DOCK FOR window.print() ────────── */}
+      {lastCreatedOrder && (
+        <div className="hidden print:block fixed inset-0 z-50 bg-white text-black p-4 text-[12px] font-mono w-[80mm] leading-tight pos-receipt-print-area">
+          <div className="text-center mb-4">
+            <h2 className="text-[16px] font-bold uppercase">
+              {billSettings?.shopName?.text || "VEENOLEX HERBS & SPICES"}
+            </h2>
+            <p>{billSettings?.address?.text || "123, Organic Market Lane, Sector 5"}</p>
+            <p>Phone: {billSettings?.phone?.text || "+91 98765 43210"}</p>
+            {billSettings?.gst?.enabled && billSettings?.gst?.text && (
+              <p>GSTIN: {billSettings.gst.text}</p>
+            )}
+            <p className="border-b border-dashed border-black my-2" />
+          </div>
+
+          <div className="mb-4">
+            <p><b>Order ID:</b> {lastCreatedOrder.orderId}</p>
+            <p><b>Date:</b> {lastCreatedOrder.createdAt ? new Date(lastCreatedOrder.createdAt).toLocaleString() : new Date().toLocaleString()}</p>
+            <p><b>Customer:</b> {lastCreatedOrder.customerName || "Walk-in Customer"}</p>
+            {lastCreatedOrder.customerPhone && <p><b>Phone:</b> {lastCreatedOrder.customerPhone}</p>}
+            <p className="border-b border-dashed border-black my-2" />
+          </div>
+
+          <table className="w-full text-left border-collapse text-[11px] mb-4">
+            <thead>
+              <tr className="border-b border-black">
+                <th className="py-1">Item</th>
+                <th className="py-1 text-center">Qty</th>
+                <th className="py-1 text-right">Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lastCreatedOrder.items?.map((item) => (
+                <tr key={item._id || item.productId || item.name} className="border-b border-dashed border-zinc-200">
+                  <td className="py-1">
+                    {item.name}
+                    {(item.variantSlot || item.variantName) && (
+                      <span className="block text-[9px] text-zinc-500">({item.variantSlot || item.variantName})</span>
+                    )}
+                  </td>
+                  <td className="py-1 text-center">{item.quantity}</td>
+                  <td className="py-1 text-right">₹{item.price * item.quantity}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="space-y-1 text-right text-[11px] mb-4">
+            <div className="flex justify-between">
+              <span>Subtotal:</span>
+              <span>
+                ₹{((lastCreatedOrder.pricing?.subtotal || 0) - (lastCreatedOrder.pricing?.gst || 0)).toFixed(2)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>GST Total:</span>
+              <span>₹{(lastCreatedOrder.pricing?.gst || 0).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between font-bold text-sm border-t border-black pt-1">
+              <span>Grand Total:</span>
+              <span>₹{(lastCreatedOrder.pricing?.total || 0).toFixed(2)}</span>
+            </div>
+            <p className="border-b border-dashed border-black my-2" />
+          </div>
+
+          <div className="text-center text-[10px] space-y-1">
+            {billSettings?.notes?.enabled && billSettings?.notes?.text && <p>{billSettings.notes.text}</p>}
+            {billSettings?.terms?.enabled && billSettings?.terms?.text && (
+              <p><b>Terms:</b> {billSettings.terms.text}</p>
+            )}
+            <p className="mt-2 font-bold">Thank You!</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

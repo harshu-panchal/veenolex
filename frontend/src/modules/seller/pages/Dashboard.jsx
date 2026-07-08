@@ -135,13 +135,6 @@ const Dashboard = () => {
 
   const quickActions = [
     {
-      title: "Add New Product",
-      description: "List a new item in your store",
-      icon: Plus,
-      path: "/seller/products/add",
-      variant: "primary", // dark bg, white text
-    },
-    {
       title: "Process Orders",
       description: "View and manage pending orders",
       icon: Truck,
@@ -275,7 +268,7 @@ const Dashboard = () => {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {quickActions.map((action) => {
           const isPrimary = action.variant === "primary";
           const isEmerald = action.variant === "outline-emerald";
