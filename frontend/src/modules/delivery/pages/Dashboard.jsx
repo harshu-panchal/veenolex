@@ -27,6 +27,7 @@ const Dashboard = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [activeTab, setActiveTab] = useState("delivery"); // 'delivery' or 'return'
   const [availableOrders, setAvailableOrders] = useState([]);
+  const [activeOrders, setActiveOrders] = useState([]);
   const [earnings, setEarnings] = useState({
     today: 0,
     deliveries: 0,
@@ -79,9 +80,29 @@ const Dashboard = () => {
     }
   };
 
+  const fetchActiveOrders = async () => {
+    try {
+      const response = await deliveryApi.getOrderHistory({ status: "all" });
+      if (response.data.success) {
+        const allOrders = response.data.results || response.data.result || [];
+        const active = allOrders.filter(
+          (o) =>
+            o.workflowStatus !== "DELIVERED" &&
+            o.workflowStatus !== "CANCELLED" &&
+            o.status !== "delivered" &&
+            o.status !== "cancelled"
+        );
+        setActiveOrders(active);
+      }
+    } catch (error) {
+      console.error("Failed to fetch active orders:", error);
+    }
+  };
+
   useEffect(() => {
     fetchStats();
     fetchNotifications();
+    fetchActiveOrders();
     if (isOnline) fetchAvailableOrders();
   }, [isOnline, activeTab]);
 
@@ -325,6 +346,51 @@ const Dashboard = () => {
             </div>
           </div>
         </Card>
+
+        {/* Active Tasks in progress */}
+        {activeOrders.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center mb-1">
+              <h3 className="text-sm font-bold text-gray-800 tracking-tight">Active Tasks</h3>
+              <span className="text-[10px] font-bold text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full uppercase italic animate-pulse">In Progress</span>
+            </div>
+            {activeOrders.map((order) => (
+              <Card key={order.orderId || order._id} className="p-4 border-2 border-brand-500/20 hover:border-brand-500/40 transition-all shadow-md bg-white">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <span className="text-[10px] font-black text-brand-600 uppercase tracking-widest mb-1 block">
+                      {order.isReturnPickup || order.returnStatus !== "none" ? "Return Task" : "Delivery Task"}
+                    </span>
+                    <h4 className="font-bold text-gray-900">#{order.orderId}</h4>
+                  </div>
+                  <span className="px-2 py-1 bg-amber-50 text-amber-600 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                    {order.workflowStatus || order.status}
+                  </span>
+                </div>
+                
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center text-xs text-gray-600">
+                    <MapPin size={12} className="mr-2 text-gray-400" />
+                    <span className="truncate">From: {order.seller?.shopName || "Seller Store"}</span>
+                  </div>
+                  <div className="flex items-center text-xs text-gray-600">
+                    <MapPin size={12} className="mr-2 text-primary" />
+                    <span className="truncate">To: {order.customer?.name || "Customer"}</span>
+                  </div>
+                </div>
+
+                <Button 
+                  variant="primary" 
+                  size="sm" 
+                  className="w-full font-black text-[10px] tracking-widest uppercase h-10 shadow-lg shadow-brand-500/20"
+                  onClick={() => navigate(`/delivery/order-details/${order.orderId}`)}
+                >
+                  View Details & Action
+                </Button>
+              </Card>
+            ))}
+          </div>
+        )}
 
         {/* Active Order / Status */}
         <AnimatePresence mode="wait">

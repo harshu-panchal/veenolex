@@ -59,8 +59,21 @@ export async function resolveCanonicalOrderId(routeParam) {
   }
   const q = orderMatchQueryFromRouteParam(routeParam);
   if (!q) return null;
-  const doc = await Order.findOne(q).select("orderId").lean();
-  return doc?.orderId ?? null;
+  const doc = await Order.findOne(q);
+  if (doc) {
+    if (!doc.workflowVersion || doc.workflowVersion < 2 || !doc.workflowStatus) {
+      doc.workflowVersion = 2;
+      const { workflowFromLegacyStatus, WORKFLOW_STATUS } = await import("../constants/orderWorkflow.js");
+      let targetStatus = workflowFromLegacyStatus(doc.status);
+      if (targetStatus === WORKFLOW_STATUS.DELIVERY_SEARCH && doc.deliveryBoy) {
+        targetStatus = WORKFLOW_STATUS.DELIVERY_ASSIGNED;
+      }
+      doc.workflowStatus = targetStatus;
+      await doc.save();
+    }
+    return doc.orderId;
+  }
+  return null;
 }
 
 export async function requireCanonicalOrderId(routeParam) {

@@ -12,6 +12,7 @@ import {
   onDeliveryBroadcast,
   onDeliveryBroadcastWithdrawn,
   onDeliveryAssigned,
+  onNotificationNew,
 } from "@/core/services/orderSocket";
 import {
   loadHandledIncomingOrderIds,
@@ -549,6 +550,34 @@ const DeliveryLayout = () => {
       });
       startOrderRingtone();
     });
+  }, [user?.isOnline]);
+
+  useEffect(() => {
+    if (!user?.isOnline) return undefined;
+    const getToken = getDeliveryToken;
+    
+    const handleNewNotification = (payload) => {
+      if (payload && payload.title) {
+        toast.info(payload.title, {
+          description: payload.body,
+          duration: 6000,
+        });
+      }
+      if (
+        payload &&
+        (payload.eventType === "DELIVERY_ASSIGNED" ||
+          payload.eventType === "RETURN_PICKUP_ASSIGNED") &&
+        payload.data?.orderId
+      ) {
+        setAssignedOrder({
+          requestNumber: payload.data.orderId,
+          sellerName: payload.title === "Delivery Assigned" ? "Store" : payload.body,
+        });
+        startOrderRingtone();
+      }
+    };
+
+    return onNotificationNew(getToken, handleNewNotification);
   }, [user?.isOnline]);
 
   useEffect(() => {

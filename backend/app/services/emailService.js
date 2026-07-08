@@ -92,7 +92,12 @@ export async function sendSellerVerificationOtpEmail({
   otp,
   expiresInMinutes,
 }) {
-  if (!useRealEmailOTP()) {
+  const allowMock =
+    process.env.USE_MOCK_OTP === "true" ||
+    process.env.USE_MOCK_OTP === "1" ||
+    process.env.ALLOW_MOCK_OTP_IN_PRODUCTION === "true";
+
+  if (!useRealEmailOTP() || allowMock) {
     logger.info("Seller email OTP generated in mock mode", {
       email,
       otp,

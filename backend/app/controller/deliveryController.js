@@ -398,13 +398,13 @@ export const updateDeliveryLocation = async (req, res) => {
         //                                 cannot be spoofed via case-drift or
         //                                 alternate ids.
         let activeOrderId = null;
+        let order = null;
         if (orderId) {
             const orderMatch = orderMatchQueryFromRouteParam(orderId);
             if (!orderMatch) {
                 return handleResponse(res, 400, "Invalid orderId");
             }
 
-            let order;
             if (orderId && orderId.toUpperCase().startsWith("REQ-")) {
                 order = await SellerProductRequest.findOne({ requestNumber: new RegExp(`^${orderId}$`, "i") })
                     .select("requestNumber deliveryBoy customer address etaPushNotifiedAt")
@@ -455,8 +455,18 @@ export const updateDeliveryLocation = async (req, res) => {
             appendTrailPoint(activeOrderId, { lat, lng, t: Date.now() }).catch(() => {});
             
             // ETA check for reschedule notification
-            if (order && order.address?.location?.coordinates && !order.etaPushNotifiedAt) {
-                const [cLng, cLat] = order.address.location.coordinates;
+            let cLat = null;
+            let cLng = null;
+            if (order && order.address?.location) {
+                if (Array.isArray(order.address.location.coordinates)) {
+                    [cLng, cLat] = order.address.location.coordinates;
+                } else if (typeof order.address.location.lat === "number" && typeof order.address.location.lng === "number") {
+                    cLat = order.address.location.lat;
+                    cLng = order.address.location.lng;
+                }
+            }
+
+            if (cLat !== null && cLng !== null && !order.etaPushNotifiedAt) {
                 const distMeters = distanceMeters(lat, lng, cLat, cLng);
                 
                 // Assuming average city speed of 20km/h = 333m/min

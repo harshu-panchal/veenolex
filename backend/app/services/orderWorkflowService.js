@@ -427,6 +427,29 @@ export async function deliveryAcceptAtomic(deliveryId, orderId, idempotencyKey) 
       customerId: updated.customer,
       sellerId: updated.seller,
     });
+
+    let sellerShopName = "Store";
+    try {
+      const sellerDoc = await Seller.findById(updated.seller).select("shopName").lean();
+      if (sellerDoc) {
+        sellerShopName = sellerDoc.shopName;
+      }
+    } catch (err) {
+      // ignore
+    }
+
+    emitToDelivery(deliveryOid, {
+      event: "delivery:assigned",
+      payload: {
+        orderId: updated.orderId,
+        workflowStatus: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
+        preview: {
+          pickup: "Store/Seller",
+          drop: sellerShopName,
+          total: updated.pricing?.total || 0,
+        },
+      },
+    });
   }
 
   await retractDeliveryBroadcastForOrder(orderId, deliveryOid);

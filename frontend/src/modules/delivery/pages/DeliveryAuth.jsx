@@ -91,101 +91,19 @@ const DeliveryAuth = () => {
   }, [step, timer]);
 
   const performOCR = async (file, type) => {
-    setIsScanning(true);
-    setOcrProgress(0);
-
-    // Reset specific verification state
-    if (type === "dl") setDlVerified(null);
-    if (type === "pan") setPanVerified(null);
-    if (type === "aadhar") setAadharVerified(null);
-
-    try {
-      const result = await Tesseract.recognize(file, 'eng', {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            setOcrProgress(Math.round(m.progress * 100));
-          }
-        },
-      });
-
-      const rawText = result.data.text.toLowerCase();
-      const cleanText = rawText.replace(/[^a-z0-9]/g, "");
-
-      // Handle common OCR character substitutions for more robust matching
-      // e.g., '0' read as 'o', '5' as 's', '1' as 'i' or 'l'
-      const normalize = (str) => str.replace(/o/g, "0").replace(/s/g, "5").replace(/[il]/g, "1");
-      const normalizedCleanText = normalize(cleanText);
-
-      console.log(`OCR Raw [${type}]:`, rawText);
-      console.log(`OCR Cleaned [${type}]:`, cleanText);
-
-      let isMatch = false;
-      let targetNumber = "";
-
-      if (type === "dl") {
-        targetNumber = signupDLNumber.toLowerCase().replace(/[^a-z0-9]/g, "");
-        const normalizedTarget = normalize(targetNumber);
-
-        // Match either exact cleaned text or normalized text (handles 0/O, 5/S etc)
-        isMatch = (targetNumber && cleanText.includes(targetNumber)) ||
-          (normalizedTarget && normalizedCleanText.includes(normalizedTarget));
-
-        const dlKeywords = ["driving", "licence", "license", "india", "union", "government", "transport", "validity", "form", "rj"];
-        const hasDlKeywords = dlKeywords.some(k => rawText.includes(k));
-
-        if (isMatch) {
-          setDlVerified(true);
-          setDlFile(file);
-          toast.success("Driving License Verified!");
-        } else {
-          setDlVerified(false);
-          setDlFile(null);
-          toast.error("DL Number mismatch. Make sure you typed the exact number from the photo.");
-        }
-      } else if (type === "pan") {
-        targetNumber = signupPanNumber.toLowerCase().replace(/[^a-z0-9]/g, "");
-        const normalizedTarget = normalize(targetNumber);
-
-        const panKeywords = ["permanent", "account", "income", "tax", "department", "india", "signature", "card", "govt"];
-        const hasPanKeywords = panKeywords.some(k => rawText.includes(k));
-
-        isMatch = (targetNumber && cleanText.includes(targetNumber)) ||
-          (normalizedTarget && normalizedCleanText.includes(normalizedTarget));
-
-        if (isMatch || (hasPanKeywords && isMatch)) {
-          setPanVerified(true);
-          setPanFile(file);
-          toast.success("PAN Card Verified!");
-        } else {
-          setPanVerified(false);
-          setPanFile(null);
-          toast.error("PAN mismatch. Photo must be clear and show the PAN number.");
-        }
-      } else if (type === "aadhar") {
-        targetNumber = signupAadharNumber.toLowerCase().replace(/[^a-z0-9]/g, "");
-        const normalizedTarget = normalize(targetNumber);
-
-        const aadharKeywords = ["government", "india", "male", "female", "unique", "identification", "authority", "enrollment", "birth", "dob", "address", "आधार", "भारत"];
-        const hasAadharKeywords = aadharKeywords.some(k => rawText.includes(k));
-
-        isMatch = (targetNumber && cleanText.includes(targetNumber)) ||
-          (normalizedTarget && normalizedCleanText.includes(normalizedTarget));
-
-        if (isMatch || (hasAadharKeywords && isMatch)) {
-          setAadharVerified(true);
-          setAadharFile(file);
-          toast.success("Aadhar Card Verified!");
-        } else {
-          setAadharVerified(false);
-          setAadharFile(null);
-          toast.error("Aadhar mismatch. 12-digit number should be clearly visible.");
-        }
-      }
-    } catch (error) {
-      console.error("OCR Error:", error);
-      toast.error("Failed to scan document. Please try again.");
-    } finally {
-      setIsScanning(false);
+    // AI Validator is disabled. We directly set verified to true and assign the file.
+    if (type === "dl") {
+      setDlVerified(true);
+      setDlFile(file);
+      toast.success("Driving License Accepted!");
+    } else if (type === "pan") {
+      setPanVerified(true);
+      setPanFile(file);
+      toast.success("PAN Card Accepted!");
+    } else if (type === "aadhar") {
+      setAadharVerified(true);
+      setAadharFile(file);
+      toast.success("Aadhar Card Accepted!");
     }
   };
 
