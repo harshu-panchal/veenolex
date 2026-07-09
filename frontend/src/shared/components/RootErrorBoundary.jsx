@@ -20,6 +20,17 @@ const RootErrorBoundary = () => {
         errorMessage = error.message;
     }
 
+    React.useEffect(() => {
+        const isChunkLoadFailed = /Failed to fetch dynamically imported module|Importing a module script failed/i.test(errorMessage);
+        if (isChunkLoadFailed) {
+            const chunkFailedKey = 'chunk_failed_reload';
+            if (!sessionStorage.getItem(chunkFailedKey)) {
+                sessionStorage.setItem(chunkFailedKey, 'true');
+                window.location.reload();
+            }
+        }
+    }, [errorMessage]);
+
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 font-sans">
             <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 text-center border border-gray-100">

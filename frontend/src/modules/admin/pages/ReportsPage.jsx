@@ -10,11 +10,71 @@ import { Download } from 'lucide-react';
 import { fetchTransactionReport, fetchFranchiseReport } from "../../../services/roleBasedReportService.js";
 import { DataRangeInfo } from "../../../components/DataRangeInfo.jsx";
 
-/** Convert an array of objects into an .xlsx file and trigger download. */
+/** Convert an array of objects into an .xlsx file and trigger download, splitting Online/Offline if applicable. */
 const exportToExcel = (data, filename) => {
-  const worksheet = XLSX.utils.json_to_sheet(data);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Report');
+
+  // If data has franchiseId, it's the aggregated franchise report (keep as single sheet, it has columns now)
+  const isAggregatedFranchiseReport = data.length > 0 && data[0].hasOwnProperty('franchiseId');
+
+  if (isAggregatedFranchiseReport) {
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Report');
+  } else {
+    // For Orders and Ledger Entries, split them into Online and Offline
+    const onlineData = [];
+    const offlineData = [];
+
+    data.forEach(row => {
+      // deep copy to add custom column
+      const newRow = { ...row };
+      let isOffline = false;
+
+      // Check Order fields for POS (Offline)
+      if (row.posPaymentMethod || (row.adminNotes && String(row.adminNotes).toUpperCase().includes('POS'))) {
+        isOffline = true;
+      } 
+      // Check Ledger/Transaction fields
+      else if (row.paymentMode === 'CASH' || row.paymentMethod === 'CASH' || row.paymentMethod === 'OFFLINE') {
+        isOffline = true;
+      }
+      else if (row.metadata && row.metadata.posPaymentMethod) {
+        isOffline = true;
+      }
+
+      newRow['Source'] = isOffline ? 'Offline (POS)' : 'Online (App)';
+      
+      if (isOffline) {
+        offlineData.push(newRow);
+      } else {
+        onlineData.push(newRow);
+      }
+    });
+
+    // We can provide "sections" via sheets.
+    // Let's add an "All Data" sheet.
+    const allData = [...onlineData, ...offlineData];
+    if (allData.length > 0) {
+      const wsAll = XLSX.utils.json_to_sheet(allData);
+      XLSX.utils.book_append_sheet(workbook, wsAll, 'All Data');
+    }
+    
+    if (onlineData.length > 0) {
+      const wsOnline = XLSX.utils.json_to_sheet(onlineData);
+      XLSX.utils.book_append_sheet(workbook, wsOnline, 'Online');
+    }
+
+    if (offlineData.length > 0) {
+      const wsOffline = XLSX.utils.json_to_sheet(offlineData);
+      XLSX.utils.book_append_sheet(workbook, wsOffline, 'Offline (POS)');
+    }
+
+    if (allData.length === 0) {
+      const worksheet = XLSX.utils.json_to_sheet([]);
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Report');
+    }
+  }
+
   XLSX.writeFile(workbook, filename);
 };
 

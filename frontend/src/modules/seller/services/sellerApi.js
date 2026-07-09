@@ -26,6 +26,8 @@ export const sellerApi = {
     updateProfile: (data) => axiosInstance.put('/seller/profile', data),
 
     // Stock
+    getSellerInventory: (params) => axiosInstance.get('/seller-inventory/my-products', { params }),
+    updateInventoryPrice: (inventoryId, data) => axiosInstance.patch(`/seller-inventory/${inventoryId}/price`, data),
     adjustStock: (data) => axiosInstance.post('/products/adjust-stock', data),
     getStockHistory: () => axiosInstance.get('/products/stock-history'),
 

@@ -1422,6 +1422,7 @@ const CheckoutPage = () => {
         onSchedule={(date) => {
           setScheduledDate(date);
           setDeliveryType("later");
+          setIsReschedulePickerOpen(false);
         }}
         title="Schedule Delivery"
       />

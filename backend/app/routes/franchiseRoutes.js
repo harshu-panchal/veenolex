@@ -50,10 +50,46 @@ router.get(
           $group: {
             _id: "$seller",
             totalOrders: { $sum: 1 },
+            onlineOrders: {
+              $sum: {
+                $cond: [
+                  { $or: [ { $ifNull: ["$posPaymentMethod", false] }, { $regexMatch: { input: { $ifNull: ["$adminNotes", ""] }, regex: /POS/i } } ] },
+                  0,
+                  1
+                ]
+              }
+            },
+            offlineOrders: {
+              $sum: {
+                $cond: [
+                  { $or: [ { $ifNull: ["$posPaymentMethod", false] }, { $regexMatch: { input: { $ifNull: ["$adminNotes", ""] }, regex: /POS/i } } ] },
+                  1,
+                  0
+                ]
+              }
+            },
             totalRevenue: {
               $sum: {
                 $ifNull: ["$paymentBreakdown.grandTotal", "$pricing.total"],
               },
+            },
+            onlineRevenue: {
+              $sum: {
+                $cond: [
+                  { $or: [ { $ifNull: ["$posPaymentMethod", false] }, { $regexMatch: { input: { $ifNull: ["$adminNotes", ""] }, regex: /POS/i } } ] },
+                  0,
+                  { $ifNull: ["$paymentBreakdown.grandTotal", "$pricing.total"] }
+                ]
+              }
+            },
+            offlineRevenue: {
+              $sum: {
+                $cond: [
+                  { $or: [ { $ifNull: ["$posPaymentMethod", false] }, { $regexMatch: { input: { $ifNull: ["$adminNotes", ""] }, regex: /POS/i } } ] },
+                  { $ifNull: ["$paymentBreakdown.grandTotal", "$pricing.total"] },
+                  0
+                ]
+              }
             },
             totalTransactions: {
               $sum: {
@@ -97,7 +133,11 @@ router.get(
               ],
             },
             totalOrders: 1,
+            onlineOrders: 1,
+            offlineOrders: 1,
             totalRevenue: { $round: ["$totalRevenue", 2] },
+            onlineRevenue: { $round: ["$onlineRevenue", 2] },
+            offlineRevenue: { $round: ["$offlineRevenue", 2] },
             totalTransactions: 1,
             status: {
               $ifNull: ["$sellerInfo.status", "unknown"],

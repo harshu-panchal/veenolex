@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { customerApi } from "../modules/customer/services/customerApi";
 
 const useAddressAutocomplete = (inputValue) => {
   const [suggestions, setSuggestions] = useState([]);
@@ -15,10 +16,8 @@ const useAddressAutocomplete = (inputValue) => {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(
-          `/api/maps/autocomplete?input=${encodeURIComponent(inputValue.trim())}`
-        );
-        const data = await res.json();
+        const res = await customerApi.autocomplete(inputValue.trim());
+        const data = res.data;
         console.log("🗺️ Suggestions received:", data);
         setSuggestions(data.predictions || []);
       } catch (err) {

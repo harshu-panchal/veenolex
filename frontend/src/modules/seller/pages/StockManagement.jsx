@@ -73,15 +73,8 @@ const StockManagement = () => {
 
             // Need to import axios at top, assuming it's available or we can use sellerApi
             // Let's use fetch or axios since the user's snippet explicitly uses axios.patch
-            const response = await fetch(`/api/seller-inventory/${inventoryId}/price`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem("token")}`
-                },
-                body: JSON.stringify({ sellerPrice: parsedPrice })
-            });
-            const data = await response.json();
+            const response = await sellerApi.updateInventoryPrice(inventoryId, { sellerPrice: parsedPrice });
+            const data = response.data;
 
             if (data.success) {
                 // Update local state
@@ -123,12 +116,8 @@ const StockManagement = () => {
     const fetchInventory = async (silent = false, stockStatus) => {
         if (!silent) setIsLoading(true);
         try {
-            const response = await fetch(`/api/seller-inventory/my-products?status=${stockStatus || 'ALL'}`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem("token")}`
-                }
-            });
-            const data = await response.json();
+            const response = await sellerApi.getSellerInventory({ status: stockStatus || 'ALL' });
+            const data = response.data;
             
             if (data.success) {
                 const safeProducts = Array.isArray(data.data) ? data.data : [];

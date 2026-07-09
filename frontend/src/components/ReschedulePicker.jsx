@@ -46,7 +46,6 @@ const ReschedulePicker = ({ isOpen, onClose, onSchedule, title = "Reschedule Del
     scheduledDate.setHours(selectedSlot.start, 0, 0, 0);
     
     onSchedule(scheduledDate);
-    onClose();
   };
 
   if (!isOpen) return null;

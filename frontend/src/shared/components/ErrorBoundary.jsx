@@ -13,6 +13,15 @@ class ErrorBoundary extends Component {
 
     componentDidCatch(error, errorInfo) {
         console.error("Uncaught error:", error, errorInfo);
+        
+        const isChunkLoadFailed = /Failed to fetch dynamically imported module|Importing a module script failed/i.test(error.message);
+        if (isChunkLoadFailed) {
+            const chunkFailedKey = 'chunk_failed_reload';
+            if (!sessionStorage.getItem(chunkFailedKey)) {
+                sessionStorage.setItem(chunkFailedKey, 'true');
+                window.location.reload();
+            }
+        }
     }
 
     render() {
