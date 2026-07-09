@@ -36,7 +36,7 @@ import { Loader2 } from 'lucide-react';
 import Pagination from '@shared/components/ui/Pagination';
 import { DatePicker } from "@/components/ui/date-picker";
 import { getOrderStatusVariant } from '../components/orders';
-
+import { generateDeliveryInvoice } from '@/utils/generateDeliveryInvoice';
 
 const Orders = () => {
     const [orders, setOrders] = useState([]);
@@ -883,7 +883,16 @@ const Orders = () => {
                                     </div>
 
                                     {/* Modal Footer */}
-                                    <div className="px-4 py-3 sm:px-6 sm:py-4 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row gap-3 sm:gap-0 sm:items-center justify-end">
+                                    <div className="px-4 py-3 sm:px-6 sm:py-4 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row gap-3 sm:gap-0 sm:items-center justify-between">
+                                        <div>
+                                            <button 
+                                                onClick={() => generateDeliveryInvoice(selectedOrder)} 
+                                                className="px-4 py-2.5 rounded-xl text-sm font-bold text-brand-600 bg-brand-50 hover:bg-brand-100 transition-all flex items-center gap-2"
+                                            >
+                                                <HiOutlinePrinter className="h-4 w-4" />
+                                                Delivery Invoice
+                                            </button>
+                                        </div>
                                         <div className="flex gap-2 items-center">
                                             <button onClick={() => setIsDetailsModalOpen(false)} className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100 transition-all">CLOSE</button>
                                             <div className="relative inline-block w-40">
