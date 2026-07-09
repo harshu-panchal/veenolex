@@ -19,7 +19,10 @@ class ErrorBoundary extends Component {
             const chunkFailedKey = 'chunk_failed_reload';
             if (!sessionStorage.getItem(chunkFailedKey)) {
                 sessionStorage.setItem(chunkFailedKey, 'true');
-                window.location.reload();
+                // Force a true hard reload by appending a query parameter
+                const url = new URL(window.location.href);
+                url.searchParams.set('v', Date.now().toString());
+                window.location.assign(url.toString());
             }
         }
     }
@@ -40,7 +43,11 @@ class ErrorBoundary extends Component {
 
                         <div className="space-y-3">
                             <button
-                                onClick={() => window.location.reload()}
+                                onClick={() => {
+                                    const url = new URL(window.location.href);
+                                    url.searchParams.set('v', Date.now().toString());
+                                    window.location.assign(url.toString());
+                                }}
                                 className="w-full bg-primary hover:bg-[#0a6d1a] text-white font-semibold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-brand-100"
                             >
                                 <RefreshCw className="w-5 h-5" />

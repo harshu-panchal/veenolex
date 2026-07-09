@@ -49,6 +49,13 @@ export const generateDeliveryInvoice = async (order) => {
     doc.setLineWidth(0.5);
     doc.rect(margin, margin, pageWidth - 2*margin, pageHeight - 2*margin);
 
+    // Helper to sanitize text for PDF (jsPDF default font doesn't support unicode like Hindi)
+    const sanitizeText = (txt) => {
+        if (!txt) return '';
+        // Remove non-ASCII characters to prevent garbage text like '*@% *A0'
+        return txt.replace(/[^\x00-\xFF]/g, '').replace(/,\s*,/g, ',').replace(/\s+/g, ' ').trim();
+    };
+
     // Header section: Ship To & Logo
     const headerHeight = 35;
     doc.line(margin, margin + headerHeight, pageWidth - margin, margin + headerHeight);
@@ -60,11 +67,11 @@ export const generateDeliveryInvoice = async (order) => {
     
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
-    doc.text((order.customer.name || 'Unknown').toUpperCase(), margin + 2, margin + 9);
+    doc.text(sanitizeText((order.customer.name || 'Unknown').toUpperCase()), margin + 2, margin + 9);
     
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    const addressLines = doc.splitTextToSize(order.address || 'Address not provided', 55);
+    const addressLines = doc.splitTextToSize(sanitizeText(order.address || 'Address not provided'), 55);
     doc.text(addressLines, margin + 2, margin + 14);
     
     doc.setFont("helvetica", "italic");
@@ -72,7 +79,8 @@ export const generateDeliveryInvoice = async (order) => {
 
     // Veenolex Logo on right
     if (logoBase64) {
-        doc.addImage(logoBase64, 'PNG', pageWidth - margin - 30, margin + 2, 28, 18);
+        // Reduced logo size slightly to fit better
+        doc.addImage(logoBase64, 'PNG', pageWidth - margin - 26, margin + 2, 24, 15);
     } else {
         // Fallback to text if logo fails to load
         doc.setFontSize(22);
@@ -160,8 +168,14 @@ export const generateDeliveryInvoice = async (order) => {
     doc.text("Phone No.: 9876543210", margin + 2, sellerY + 3.5);
     
     // Order Barcode & details
-    doc.setFontSize(7);
-    doc.text(`Order #: ${order.id}`, pageWidth - margin - 2, mid2Y + 6, { align: "right" });
+    doc.setFontSize(6);
+    // Split long order IDs into two lines to prevent overlapping
+    if (order.id.length > 20) {
+        doc.text(`Order #: ${order.id.substring(0, Math.floor(order.id.length / 2))}`, pageWidth - margin - 2, mid2Y + 4, { align: "right" });
+        doc.text(`${order.id.substring(Math.floor(order.id.length / 2))}`, pageWidth - margin - 2, mid2Y + 6.5, { align: "right" });
+    } else {
+        doc.text(`Order #: ${order.id}`, pageWidth - margin - 2, mid2Y + 6, { align: "right" });
+    }
     
     try {
         JsBarcode(canvas, order.id.substring(0, 15), {
@@ -210,13 +224,13 @@ export const generateDeliveryInvoice = async (order) => {
             halign: 'center'
         },
         columnStyles: {
-            0: { cellWidth: 38 },
-            1: { cellWidth: 8, halign: 'center' },
+            0: { cellWidth: 34 },
+            1: { cellWidth: 10, halign: 'center' },
             2: { cellWidth: 6, halign: 'center' },
-            3: { cellWidth: 9, halign: 'right' },
-            4: { cellWidth: 10, halign: 'right' },
-            5: { cellWidth: 8, halign: 'right' },
-            6: { cellWidth: 10, halign: 'right' }
+            3: { cellWidth: 11, halign: 'right' },
+            4: { cellWidth: 12, halign: 'right' },
+            5: { cellWidth: 8.6, halign: 'right' },
+            6: { cellWidth: 12, halign: 'right' }
         },
         margin: { left: margin, right: margin }
     });
