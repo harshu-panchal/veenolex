@@ -356,14 +356,14 @@ const Dashboard = () => {
             </div>
             {activeOrders.map((order) => (
               <Card key={order.orderId || order._id} className="p-4 border-2 border-brand-500/20 hover:border-brand-500/40 transition-all shadow-md bg-white">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
+                <div className="flex justify-between items-start mb-3 gap-3">
+                  <div className="flex-1 min-w-0">
                     <span className="text-[10px] font-black text-brand-600 uppercase tracking-widest mb-1 block">
                       {order.isReturnPickup || order.returnStatus !== "none" ? "Return Task" : "Delivery Task"}
                     </span>
-                    <h4 className="font-bold text-gray-900">#{order.orderId}</h4>
+                    <h4 className="font-bold text-gray-900 text-sm sm:text-base break-all">#{order.orderId}</h4>
                   </div>
-                  <span className="px-2 py-1 bg-amber-50 text-amber-600 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                  <span className="shrink-0 px-2 py-1 bg-amber-50 text-amber-600 rounded-full text-[10px] font-bold uppercase tracking-wider text-right">
                     {order.workflowStatus || order.status}
                   </span>
                 </div>
