@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo, useCallback, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { GoogleMap, useJsApiLoader, Marker, Polyline } from "@react-google-maps/api";
+import { GoogleMap, useJsApiLoader, MarkerF as Marker, PolylineF as Polyline } from "@react-google-maps/api";
 import {
   MapPin,
   Navigation,

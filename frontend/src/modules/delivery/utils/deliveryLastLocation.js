@@ -77,7 +77,7 @@ export function getCurrentPositionWithCache(onSuccess, onHardFail, options = {})
       onSuccess({ lat: c.lat, lng: c.lng, fromCache: true });
       return;
     }
-    onHardFail?.();
+    onHardFail?.(new Error("Unable to determine location. Please enable GPS and allow location access."));
   };
 
   if (typeof navigator === "undefined" || !navigator.geolocation) {

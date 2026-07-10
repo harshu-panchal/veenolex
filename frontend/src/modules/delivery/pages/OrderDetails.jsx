@@ -461,7 +461,7 @@ const OrderDetails = () => {
       }
     } catch (error) {
       console.error("Failed to update status", error);
-      const message = error.response?.data?.message || "Failed to update status";
+      const message = error?.response?.data?.message || error?.message || "Failed to update status";
       toast.error(message);
     }
   };
@@ -1103,7 +1103,7 @@ const OrderDetails = () => {
         )}
 
         {/* Reschedule Option for Delivery */}
-        {!isReturn && step === 3 && !showOtpInput && (
+        {!isReturn && step === 3 && !showOtpInput && !String(orderId).toUpperCase().startsWith("REQ-") && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="mb-4">
             <Card className="p-4 rounded-3xl shadow-sm border border-brand-100 bg-brand-50/30">
               <div className="flex items-center justify-between">
