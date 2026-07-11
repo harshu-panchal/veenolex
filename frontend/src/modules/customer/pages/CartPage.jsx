@@ -98,31 +98,36 @@ const CartPage = () => {
                                                 <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                                                     <div className="flex items-end gap-2">
                                                         <div className="text-2xl font-black tracking-tight text-slate-900">
-                                                            ₹{item.price * item.quantity}
+                                                            ₹{Number(item.stock || 0) <= 0 ? 0 : item.price * item.quantity}
                                                         </div>
                                                         <div className="pb-0.5 text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
                                                             total
                                                         </div>
                                                     </div>
-
-                                                    <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 shadow-sm">
-                                                        <button
-                                                            onClick={() => updateQuantity(item.id, -1, item.variantSku)}
-                                                            className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-all hover:bg-white hover:text-slate-900 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-30"
-                                                            disabled={item.quantity <= 1}
-                                                        >
-                                                            <Minus size={15} strokeWidth={3} />
-                                                        </button>
-                                                        <span className="min-w-[24px] text-center text-sm font-black text-slate-900">
-                                                            {item.quantity}
+                                                    {Number(item.stock || 0) <= 0 ? (
+                                                        <span className="inline-flex rounded-full bg-rose-50 border border-rose-200 px-3.5 py-2 text-xs font-black uppercase tracking-wider text-rose-600">
+                                                            Out of stock
                                                         </span>
-                                                        <button
-                                                            onClick={() => updateQuantity(item.id, 1, item.variantSku)}
-                                                            className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-all hover:bg-white hover:text-slate-900 hover:shadow-md"
-                                                        >
-                                                            <Plus size={15} strokeWidth={3} />
-                                                        </button>
-                                                    </div>
+                                                    ) : (
+                                                        <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 shadow-sm">
+                                                            <button
+                                                                onClick={() => updateQuantity(item.id, -1, item.variantSku)}
+                                                                className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-all hover:bg-white hover:text-slate-900 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-30"
+                                                                disabled={item.quantity <= 1}
+                                                            >
+                                                                <Minus size={15} strokeWidth={3} />
+                                                            </button>
+                                                            <span className="min-w-[24px] text-center text-sm font-black text-slate-900">
+                                                                {item.quantity}
+                                                            </span>
+                                                            <button
+                                                                onClick={() => updateQuantity(item.id, 1, item.variantSku)}
+                                                                className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 transition-all hover:bg-white hover:text-slate-900 hover:shadow-md"
+                                                            >
+                                                                <Plus size={15} strokeWidth={3} />
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -178,11 +183,17 @@ const CartPage = () => {
                                         </div>
                                     </div>
 
-                                    <Link to="/checkout" className="block">
-                                        <Button className="h-14 w-full rounded-full bg-brand-400 text-slate-950 hover:bg-brand-300 text-base font-black flex items-center justify-center gap-2 shadow-[0_18px_35px_rgba(16,185,129,0.3)] transition-all">
-                                            Place Order <ArrowRight size={18} />
+                                    {cart.some(item => Number(item.stock || 0) <= 0) ? (
+                                        <Button disabled className="h-14 w-full rounded-full bg-slate-800 text-slate-400 text-base font-black flex items-center justify-center gap-2 cursor-not-allowed opacity-60">
+                                            Remove Out of Stock Items <ArrowRight size={18} />
                                         </Button>
-                                    </Link>
+                                    ) : (
+                                        <Link to="/checkout" className="block">
+                                            <Button className="h-14 w-full rounded-full bg-brand-400 text-slate-950 hover:bg-brand-300 text-base font-black flex items-center justify-center gap-2 shadow-[0_18px_35px_rgba(16,185,129,0.3)] transition-all">
+                                                Place Order <ArrowRight size={18} />
+                                            </Button>
+                                        </Link>
+                                    )}
 
                                     <div className="grid grid-cols-2 gap-3 text-xs font-bold uppercase tracking-[0.16em] text-white/55">
                                         <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3">

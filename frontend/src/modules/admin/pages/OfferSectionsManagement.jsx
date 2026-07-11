@@ -36,6 +36,7 @@ const OfferSectionsManagement = () => {
     productIds: [],
     order: 0,
     status: "active",
+    isAutomatic: false,
   });
 
   const loadCategories = async () => {
@@ -136,6 +137,7 @@ const OfferSectionsManagement = () => {
       productIds: [],
       order: sections.length,
       status: "active",
+      isAutomatic: false,
     });
     setEditingSection(null);
   };
@@ -162,6 +164,7 @@ const OfferSectionsManagement = () => {
       productIds: section.productIds || [],
       order: section.order ?? 0,
       status: section.status || "active",
+      isAutomatic: section.isAutomatic || false,
     });
     loadProductsByCategoryAndSellers(catIds, selIds);
     setIsModalOpen(true);
@@ -173,7 +176,7 @@ const OfferSectionsManagement = () => {
       showToast("Section title is required", "warning");
       return;
     }
-    if (!formData.categoryIds?.length) {
+    if (!formData.isAutomatic && !formData.categoryIds?.length) {
       showToast("Please select at least one category", "warning");
       return;
     }
@@ -181,11 +184,12 @@ const OfferSectionsManagement = () => {
       title: formData.title.trim(),
       backgroundColor: formData.backgroundColor,
       sideImageKey: formData.sideImageKey,
-      categoryIds: formData.categoryIds,
+      categoryIds: formData.isAutomatic ? [] : formData.categoryIds,
       sellerIds: formData.sellerIds || [],
-      productIds: formData.productIds,
+      productIds: formData.isAutomatic ? [] : formData.productIds,
       order: Number(formData.order) || 0,
       status: formData.status,
+      isAutomatic: formData.isAutomatic,
     };
     try {
       if (editingSection) {
@@ -312,7 +316,7 @@ const OfferSectionsManagement = () => {
                       #{idx + 1} {section.title}
                     </p>
                     <p className="text-[10px] font-bold text-slate-500">
-                      {catNames} · Sellers: {sellerNames} · {productCount} product(s)
+                      {section.isAutomatic ? "⚡ Auto" : catNames} · Sellers: {sellerNames} · {productCount} product(s)
                     </p>
                   </div>
                 </div>
@@ -402,6 +406,50 @@ const OfferSectionsManagement = () => {
             />
           </div>
 
+          {/* Automatic / Manual Toggle */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+              Product Selection Mode
+            </label>
+            <div className="flex items-center gap-3 p-3 bg-slate-50/50 rounded-xl border border-slate-100">
+              <button
+                type="button"
+                onClick={() =>
+                  setFormData((prev) => ({ ...prev, isAutomatic: true, categoryIds: [], productIds: [] }))
+                }
+                className={cn(
+                  "flex-1 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wide transition-all",
+                  formData.isAutomatic
+                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                    : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50"
+                )}
+              >
+                ⚡ Automatic
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setFormData((prev) => ({ ...prev, isAutomatic: false }))
+                }
+                className={cn(
+                  "flex-1 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wide transition-all",
+                  !formData.isAutomatic
+                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                    : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50"
+                )}
+              >
+                ✋ Manual
+              </button>
+            </div>
+            {formData.isAutomatic && (
+              <p className="text-[10px] text-emerald-600 font-bold mt-1">
+                Top-selling products will be fetched automatically from the selected sellers.
+              </p>
+            )}
+          </div>
+
+          {/* Categories - hidden when automatic */}
+          {!formData.isAutomatic && (
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
               Categories (choose one or more)
@@ -435,6 +483,7 @@ const OfferSectionsManagement = () => {
               })}
             </div>
           </div>
+          )}
 
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -470,7 +519,8 @@ const OfferSectionsManagement = () => {
             </div>
           </div>
 
-          {(formData.categoryIds.length > 0 || formData.sellerIds.length > 0) && (
+          {/* Products - hidden when automatic */}
+          {!formData.isAutomatic && (formData.categoryIds.length > 0 || formData.sellerIds.length > 0) && (
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                 Products (from selected categories & sellers)

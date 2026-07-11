@@ -82,6 +82,7 @@ const DeliveryOtpDisplay = ({ orderId, checkoutGroupId = null, tokenKey = STORAG
             otp: response.data.result.otp,
             expiresAt: response.data.result.expiresAt,
             deliveryPersonNearby: true,
+            cancelReason: response.data.result.cancelReason,
           });
           setIsDelivered(false);
           setRemainingSeconds(calculateRemainingTime(response.data.result.expiresAt));
@@ -110,6 +111,7 @@ const DeliveryOtpDisplay = ({ orderId, checkoutGroupId = null, tokenKey = STORAG
           otp: payload.otp,
           expiresAt: payload.expiresAt,
           deliveryPersonNearby: payload.deliveryPersonNearby,
+          cancelReason: payload.cancelReason,
         });
         setIsDelivered(false);
         setRemainingSeconds(calculateRemainingTime(payload.expiresAt));
@@ -125,6 +127,7 @@ const DeliveryOtpDisplay = ({ orderId, checkoutGroupId = null, tokenKey = STORAG
           otp: otpValue,
           expiresAt: payload.expiresAt || new Date(Date.now() + 600000).toISOString(),
           deliveryPersonNearby: true,
+          cancelReason: payload.cancelReason,
         });
         setIsDelivered(false);
         setRemainingSeconds(calculateRemainingTime(payload.expiresAt || new Date(Date.now() + 600000).toISOString()));
@@ -192,7 +195,7 @@ const DeliveryOtpDisplay = ({ orderId, checkoutGroupId = null, tokenKey = STORAG
           Delivery Confirmed!
         </h3>
         <p className="text-sm text-brand-700">
-          Your order has been successfully delivered
+          {otpData?.cancelReason ? "Your order has been cancelled" : "Your order has been successfully delivered"}
         </p>
       </div>
     );
@@ -219,6 +222,21 @@ const DeliveryOtpDisplay = ({ orderId, checkoutGroupId = null, tokenKey = STORAG
                 Within 0-120 meters of your location
               </p>
             </div>
+          </div>
+        )}
+
+        {/* Cancellation Reason Indicator */}
+        {otpData.cancelReason && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <Shield className="w-5 h-5 text-red-600" />
+              <p className="text-xs font-bold text-red-900 uppercase tracking-wider">
+                Cancellation Requested
+              </p>
+            </div>
+            <p className="text-sm text-red-800">
+              Reason: <span className="font-semibold">{otpData.cancelReason}</span>
+            </p>
           </div>
         )}
 

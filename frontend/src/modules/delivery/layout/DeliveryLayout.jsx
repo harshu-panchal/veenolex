@@ -1047,7 +1047,6 @@ const DeliveryLayout = () => {
       </main>
 
       {shouldShowBottomNav && <BottomNav />}
-      <Toaster position="top-center" />
     </div>
   );
 };

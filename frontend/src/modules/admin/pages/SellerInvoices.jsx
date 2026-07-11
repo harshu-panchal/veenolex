@@ -73,6 +73,7 @@ export default function SellerInvoices() {
               `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
                 seller.shopName || seller.ownerName || seller.email || "seller",
               )}`,
+            ownerName: seller.name || seller.ownerName || "N/A",
             locationLabel: seller.address || seller.locationLabel || "Location not set",
           };
         });
@@ -690,79 +691,70 @@ export default function SellerInvoices() {
           </div>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="space-y-6">
 
-          {/* Left Side: Seller Info Details */}
-          <div className="lg:col-span-4 space-y-6">
-            <Card className="p-6 bg-slate-50 border border-slate-200/50 shadow-md">
-              <h3 className="text-lg font-black text-slate-900 uppercase border-b border-slate-200/60 pb-3 mb-4 flex items-center gap-2">
-                <HiOutlineBuildingOffice2 className="h-5 w-5 text-slate-500" />
-                Store Profile
-              </h3>
-
-              <div className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-xl bg-white shadow-sm overflow-hidden flex items-center justify-center border border-slate-200">
-                    {selectedSeller?.avatar ? (
-                      <img src={selectedSeller.avatar} alt="logo" className="h-full w-full object-cover" />
-                    ) : (
-                      <span className="text-slate-400 font-bold text-lg">{selectedSeller?.shopName?.charAt(0)}</span>
-                    )}
-                  </div>
-                  <div>
-                    <h4 className="font-black text-slate-900 uppercase text-sm leading-tight">
-                      {selectedSeller?.shopName}
-                    </h4>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                      {selectedSeller?.category || "General Store"}
-                    </p>
-                  </div>
+          {/* Horizontal Store Profile Card */}
+          <Card className="p-6 bg-slate-50 border border-slate-200/50 shadow-md">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+              {/* Profile Details */}
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 rounded-2xl bg-white shadow-sm overflow-hidden flex items-center justify-center border border-slate-200 shrink-0">
+                  {selectedSeller?.avatar ? (
+                    <img src={selectedSeller.avatar} alt="logo" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-slate-400 font-bold text-lg">{selectedSeller?.shopName?.charAt(0)}</span>
+                  )}
                 </div>
-
-                <div className="space-y-3 pt-3 border-t border-slate-200/60 text-xs font-semibold text-slate-700">
-                  <div className="flex items-center gap-3">
-                    <HiOutlineUser className="h-4 w-4 text-slate-400" />
-                    <span>Owner: {selectedSeller?.ownerName || "N/A"}</span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <HiOutlineBuildingOffice2 className="h-5 w-5 text-slate-500" />
+                    <h3 className="text-sm font-black text-slate-900 uppercase leading-none">
+                      {selectedSeller?.shopName}
+                    </h3>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <HiOutlineEnvelope className="h-4 w-4 text-slate-400" />
-                    <span className="break-all">{selectedSeller?.email || "N/A"}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <HiOutlinePhone className="h-4 w-4 text-slate-400" />
-                    <span>{selectedSeller?.phone || "N/A"}</span>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <HiOutlineMapPin className="h-4 w-4 text-slate-400 mt-0.5" />
-                    <span className="leading-relaxed">{selectedSeller?.locationLabel || selectedSeller?.address || "Location not set"}</span>
-                  </div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1.5 ml-7">
+                    {selectedSeller?.category || "General Store"}
+                  </p>
                 </div>
               </div>
-            </Card>
 
-            <Card className="p-6 bg-white border border-slate-100 shadow-md">
-              <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">
-                Active Stats
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">
+              {/* Contact Information (Horizontal Grid) */}
+              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-xs font-semibold text-slate-700 border-t lg:border-t-0 lg:border-l lg:border-r border-slate-200/60 lg:px-6 pt-4 lg:pt-0">
+                <div className="flex items-center gap-3">
+                  <HiOutlineUser className="h-4 w-4 text-slate-400 shrink-0" />
+                  <span>Owner: {selectedSeller?.ownerName || "N/A"}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <HiOutlineEnvelope className="h-4 w-4 text-slate-400 shrink-0" />
+                  <span className="break-all">{selectedSeller?.email || "N/A"}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <HiOutlinePhone className="h-4 w-4 text-slate-400 shrink-0" />
+                  <span>{selectedSeller?.phone || "N/A"}</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <HiOutlineMapPin className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
+                  <span className="leading-relaxed">{selectedSeller?.locationLabel || selectedSeller?.address || "Location not set"}</span>
+                </div>
+              </div>
+
+              {/* Active Stats */}
+              <div className="flex items-center gap-4 pt-4 lg:pt-0 border-t lg:border-t-0 border-slate-200/60 shrink-0">
+                <div className="text-center bg-white border border-slate-100 rounded-2xl p-3 min-w-[90px] shadow-sm">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-0.5">
                     Products
                   </p>
-                  <p className="text-lg font-black text-slate-900">{products.length}</p>
+                  <p className="text-base font-black text-slate-900">{products.length}</p>
                 </div>
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">
+                <div className="text-center bg-white border border-slate-100 rounded-2xl p-3 min-w-[90px] shadow-sm">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-0.5">
                     Orders
                   </p>
-                  <p className="text-lg font-black text-slate-900">{orders.length}</p>
+                  <p className="text-base font-black text-slate-900">{orders.length}</p>
                 </div>
               </div>
-            </Card>
-          </div>
-
-          {/* Right Side: Tab Panel */}
-          <div className="lg:col-span-8 space-y-6">
+            </div>
+          </Card>
 
             {/* Tabs Header */}
             <div className="flex bg-slate-100 p-1.5 rounded-2xl ring-1 ring-slate-200">
@@ -1241,7 +1233,6 @@ export default function SellerInvoices() {
                 )}
               </motion.div>
             )}
-          </div>
         </div>
       )}
     </div>

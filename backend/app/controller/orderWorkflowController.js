@@ -6,6 +6,8 @@ import {
   requestHandoffOtpAtomic,
   verifyHandoffOtpAndDeliver,
   rescheduleOrderAtomic,
+  requestCancelOtpAtomic,
+  verifyCancelOtpAtomic,
 } from "../services/orderWorkflowService.js";
 import { getCachedRoute } from "../services/mapsRouteService.js";
 import { geocodeAddress } from "../services/mapsGeocodeService.js";
@@ -146,6 +148,64 @@ export const verifyDeliveryOtp = async (req, res) => {
       result.warning
         ? "Order delivered successfully (finance pending)"
         : "Order delivered successfully",
+      result,
+    );
+  } catch (e) {
+    return handleResponse(res, e.statusCode || 500, e.message, {
+      error: {
+        code: e.code || "VALIDATION_FAILED",
+        message: e.message,
+        ...(typeof e.attemptsRemaining === "number"
+          ? { attemptsRemaining: e.attemptsRemaining }
+          : {}),
+      },
+    });
+  }
+};
+
+export const requestCancelOtp = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { reason, location, lat: bodyLat, lng: bodyLng } = req.body || {};
+    const lat =
+      typeof bodyLat === "number"
+        ? bodyLat
+        : typeof location?.lat === "number"
+          ? location.lat
+          : undefined;
+    const lng =
+      typeof bodyLng === "number"
+        ? bodyLng
+        : typeof location?.lng === "number"
+          ? location.lng
+          : undefined;
+    const result = await requestCancelOtpAtomic(req.user.id, orderId, lat, lng, reason);
+    return handleResponse(
+      res,
+      200,
+      result.message || "OTP generated and sent to customer",
+      result,
+    );
+  } catch (e) {
+    return handleResponse(res, e.statusCode || 500, e.message, {
+      error: {
+        code: e.code || "OTP_REQUEST_FAILED",
+        message: e.message,
+      },
+    });
+  }
+};
+
+export const verifyCancelOtp = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { code, otp, reason } = req.body || {};
+    const entered = String(code ?? otp ?? "").trim();
+    const result = await verifyCancelOtpAtomic(req.user.id, orderId, entered, reason);
+    return handleResponse(
+      res,
+      200,
+      "Order cancelled successfully",
       result,
     );
   } catch (e) {

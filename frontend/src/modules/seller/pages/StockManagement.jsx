@@ -365,281 +365,102 @@ const StockManagement = () => {
                                                                     </div>
                                                                 </div>
                                                             </td>
-                                                            <td className="px-6 py-5">
-{/* ─────── PRICE + STOCK SECTION ─────── */}
-<div style={{
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: "10px",
-  marginTop: "12px"
-}}>
+                                                            <td className="px-6 py-5 align-middle">
+                                                                <div className="flex items-center gap-4 flex-wrap">
+                                                                    {/* AVAILABLE STOCK */}
+                                                                    <div className="bg-slate-50 rounded-xl px-4 py-2.5 text-center min-w-[90px]">
+                                                                        <p className="text-[10px] text-slate-400 uppercase font-semibold tracking-wide mb-0.5">Stock</p>
+                                                                        <p className={`text-xl font-extrabold ${item.stock === 0 ? 'text-rose-500' : 'text-emerald-600'}`}>
+                                                                            {item.stock}
+                                                                        </p>
+                                                                        <p className="text-[10px] text-slate-400">units</p>
+                                                                    </div>
 
-  {/* AVAILABLE STOCK (READ ONLY) */}
-  <div style={{
-    backgroundColor: "#f9f9f9",
-    padding: "10px",
-    borderRadius: "8px",
-    textAlign: "center"
-  }}>
-    <p style={{
-      fontSize: "10px",
-      color: "#999",
-      margin: "0 0 2px",
-      textTransform: "uppercase",
-      fontWeight: "600"
-    }}>
-      Available Stock
-    </p>
-    <p style={{
-      fontSize: "22px",
-      fontWeight: "800",
-      color: item.stock === 0
-        ? "#E74C3C"
-        : "#27AE60",
-      margin: "0"
-    }}>
-      {item.stock}
-    </p>
-    <p style={{
-      fontSize: "10px",
-      color: "#999",
-      margin: "0"
-    }}>
-      units
-    </p>
-  </div>
+                                                                    {/* ADMIN PRICE */}
+                                                                    <div className="bg-slate-50 rounded-xl px-4 py-2.5 text-center min-w-[100px]">
+                                                                        <p className="text-[10px] text-slate-400 uppercase font-semibold tracking-wide mb-0.5">Admin Price</p>
+                                                                        <p className="text-sm font-bold text-slate-400 line-through">
+                                                                            {formatPrice(item.originalPrice)}
+                                                                        </p>
+                                                                        <p className="text-[10px] text-slate-400">base price</p>
+                                                                    </div>
 
-  {/* ORIGINAL PRICE (READ ONLY - Admin set) */}
-  <div style={{
-    backgroundColor: "#f9f9f9",
-    padding: "10px",
-    borderRadius: "8px",
-    textAlign: "center"
-  }}>
-    <p style={{
-      fontSize: "10px",
-      color: "#999",
-      margin: "0 0 2px",
-      textTransform: "uppercase",
-      fontWeight: "600"
-    }}>
-      Admin Price
-    </p>
-    <p style={{
-      fontSize: "15px",
-      fontWeight: "700",
-      color: "#999",
-      margin: "0",
-      textDecoration: "line-through"
-    }}>
-      {formatPrice(item.originalPrice)}
-    </p>
-    <p style={{
-      fontSize: "10px",
-      color: "#999",
-      margin: "0"
-    }}>
-      base price
-    </p>
-  </div>
+                                                                    {/* YOUR SELLING PRICE */}
+                                                                    <div className="bg-blue-50 border-2 border-blue-400 rounded-xl px-4 py-2.5 text-center min-w-[120px]">
+                                                                        <p className="text-[10px] text-blue-500 uppercase font-bold tracking-wide mb-0.5">✏️ Selling Price</p>
+                                                                        {editingPriceId !== (item._id || item.id) && (
+                                                                            <p className="text-xl font-extrabold text-blue-700">
+                                                                                {formatPrice(item.price)}
+                                                                            </p>
+                                                                        )}
+                                                                        {editingPriceId === (item._id || item.id) && (
+                                                                            <div className="flex items-center gap-1.5 mt-1">
+                                                                                <span className="text-sm font-bold text-slate-700">₹</span>
+                                                                                <input
+                                                                                    type="number"
+                                                                                    value={newPrice}
+                                                                                    onChange={(e) => {
+                                                                                        setNewPrice(e.target.value);
+                                                                                        setPriceUpdateError(null);
+                                                                                    }}
+                                                                                    placeholder="Price"
+                                                                                    min="1"
+                                                                                    step="0.01"
+                                                                                    autoFocus
+                                                                                    className="w-20 px-2 py-1 border-2 border-blue-400 rounded-lg text-sm font-bold outline-none"
+                                                                                    onKeyDown={(e) => {
+                                                                                        if (e.key === "Enter") {
+                                                                                            handlePriceUpdate(item._id || item.id, item.price);
+                                                                                        }
+                                                                                        if (e.key === "Escape") {
+                                                                                            setEditingPriceId(null);
+                                                                                            setNewPrice("");
+                                                                                        }
+                                                                                    }}
+                                                                                />
+                                                                                <button
+                                                                                    onClick={() => handlePriceUpdate(item._id || item.id, item.price)}
+                                                                                    disabled={priceUpdateLoading}
+                                                                                    className="px-2 py-1 bg-emerald-500 text-white text-xs font-bold rounded-lg hover:bg-emerald-600 disabled:opacity-50"
+                                                                                >
+                                                                                    {priceUpdateLoading ? "⏳" : "✅"}
+                                                                                </button>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
 
-</div>
+                                                                    {/* EDIT / CANCEL BUTTON */}
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            const id = item._id || item.id;
+                                                                            if (editingPriceId === id) {
+                                                                                setEditingPriceId(null);
+                                                                                setNewPrice("");
+                                                                                setPriceUpdateError(null);
+                                                                            } else {
+                                                                                setEditingPriceId(id);
+                                                                                setNewPrice(item.price.toString());
+                                                                                setPriceUpdateError(null);
+                                                                            }
+                                                                        }}
+                                                                        className={`px-3 py-2 rounded-lg border text-xs font-bold transition-colors ${
+                                                                            editingPriceId === (item._id || item.id)
+                                                                                ? 'border-rose-300 bg-rose-50 text-rose-500 hover:bg-rose-100'
+                                                                                : 'border-blue-300 bg-white text-blue-500 hover:bg-blue-50'
+                                                                        }`}
+                                                                    >
+                                                                        {editingPriceId === (item._id || item.id) ? "✕ Cancel" : "✏️ Edit Price"}
+                                                                    </button>
+                                                                </div>
 
-{/* ─────── YOUR SELLING PRICE (EDITABLE) ─────── */}
-<div style={{
-  marginTop: "10px",
-  backgroundColor: "#F0F7FF",
-  borderRadius: "8px",
-  padding: "12px",
-  border: "2px solid #3B9FD9"
-}}>
-
-  <div style={{
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: editingPriceId === (item._id || item.id) ? "10px" : "0"
-  }}>
-    <div>
-      <p style={{
-        fontSize: "10px",
-        color: "#3B9FD9",
-        margin: "0 0 2px",
-        textTransform: "uppercase",
-        fontWeight: "700",
-        letterSpacing: "0.5px"
-      }}>
-        ✏️ Your Selling Price
-      </p>
-      {editingPriceId !== (item._id || item.id) && (
-        <p style={{
-          fontSize: "22px",
-          fontWeight: "800",
-          color: "#1565C0",
-          margin: "0"
-        }}>
-          {formatPrice(item.price)}
-        </p>
-      )}
-    </div>
-
-    {/* EDIT / CANCEL BUTTON */}
-    <button
-      onClick={() => {
-        const id = item._id || item.id;
-        if (editingPriceId === id) {
-          setEditingPriceId(null);
-          setNewPrice("");
-          setPriceUpdateError(null);
-        } else {
-          setEditingPriceId(id);
-          setNewPrice(item.price.toString());
-          setPriceUpdateError(null);
-        }
-      }}
-      style={{
-        padding: "6px 12px",
-        borderRadius: "6px",
-        border: `1px solid ${
-          editingPriceId === (item._id || item.id)
-            ? "#E74C3C"
-            : "#3B9FD9"
-        }`,
-        backgroundColor: editingPriceId === (item._id || item.id)
-          ? "#FFEBEE"
-          : "white",
-        color: editingPriceId === (item._id || item.id)
-          ? "#E74C3C"
-          : "#3B9FD9",
-        cursor: "pointer",
-        fontSize: "12px",
-        fontWeight: "600"
-      }}
-    >
-      {editingPriceId === (item._id || item.id)
-        ? "✕ Cancel"
-        : "✏️ Edit Price"}
-    </button>
-  </div>
-
-  {/* PRICE INPUT - Only shows when editing */}
-  {editingPriceId === (item._id || item.id) && (
-    <div>
-      <div style={{
-        display: "flex",
-        gap: "8px",
-        alignItems: "center"
-      }}>
-        {/* RUPEE SYMBOL */}
-        <span style={{
-          fontSize: "16px",
-          fontWeight: "700",
-          color: "#333"
-        }}>
-          ₹
-        </span>
-
-        {/* PRICE INPUT */}
-        <input
-          type="number"
-          value={newPrice}
-          onChange={(e) => {
-            setNewPrice(e.target.value);
-            setPriceUpdateError(null);
-          }}
-          placeholder="Enter new price"
-          min="1"
-          step="0.01"
-          autoFocus
-          style={{
-            flex: 1,
-            padding: "8px 10px",
-            border: "2px solid #3B9FD9",
-            borderRadius: "6px",
-            fontSize: "16px",
-            fontWeight: "700",
-            outline: "none",
-            fontFamily: "inherit"
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              handlePriceUpdate(
-                item._id || item.id,
-                item.price
-              );
-            }
-            if (e.key === "Escape") {
-              setEditingPriceId(null);
-              setNewPrice("");
-            }
-          }}
-        />
-
-        {/* SAVE BUTTON */}
-        <button
-          onClick={() =>
-            handlePriceUpdate(item._id || item.id, item.price)
-          }
-          disabled={priceUpdateLoading}
-          style={{
-            padding: "8px 14px",
-            backgroundColor: priceUpdateLoading
-              ? "#ccc"
-              : "#27AE60",
-            color: "white",
-            border: "none",
-            borderRadius: "6px",
-            cursor: priceUpdateLoading
-              ? "not-allowed"
-              : "pointer",
-            fontSize: "13px",
-            fontWeight: "700"
-          }}
-        >
-          {priceUpdateLoading ? "⏳" : "✅ Save"}
-        </button>
-      </div>
-
-      {/* PRICE ERROR */}
-      {priceUpdateError && (
-        <p style={{
-          fontSize: "12px",
-          color: "#E74C3C",
-          margin: "6px 0 0",
-          fontWeight: "500"
-        }}>
-          ❌ {priceUpdateError}
-        </p>
-      )}
-
-      {/* HINT */}
-      <p style={{
-        fontSize: "11px",
-        color: "#666",
-        margin: "6px 0 0"
-      }}>
-        Admin base price: {formatPrice(item.originalPrice)}
-        &nbsp;• Press Enter to save, Esc to cancel
-      </p>
-    </div>
-  )}
-
-</div>
-
-{/* ─────── SUCCESS MESSAGE ─────── */}
-{priceUpdateSuccess && (
-  <div style={{
-    marginTop: "8px",
-    padding: "8px 10px",
-    backgroundColor: "#E8F5E9",
-    borderRadius: "6px",
-    fontSize: "12px",
-    color: "#27AE60",
-    fontWeight: "600"
-  }}>
-    {priceUpdateSuccess}
-  </div>
-)}
+                                                                {/* PRICE ERROR */}
+                                                                {priceUpdateError && (
+                                                                    <p className="text-xs text-rose-500 font-medium mt-2">❌ {priceUpdateError}</p>
+                                                                )}
+                                                                {/* SUCCESS MESSAGE */}
+                                                                {priceUpdateSuccess && (
+                                                                    <p className="text-xs text-emerald-600 font-semibold mt-2 bg-emerald-50 px-3 py-1.5 rounded-lg inline-block">{priceUpdateSuccess}</p>
+                                                                )}
                                                             </td>
                                                             <td className="px-6 py-5 text-right">
                                                                 <button

@@ -73,7 +73,7 @@ function CategoryNavColumn({
   useEffect(() => {
     gsap.fromTo(
       iconWrapRef.current,
-      { y: 12, opacity: 0, scale: 0.75 },
+      { y: 0, opacity: 0, scale: 0.75 },
       { y: 0, opacity: 1, scale: 1, duration: 0.45, ease: "back.out(1.7)", delay: index * 0.055 }
     );
   }, [index]);
@@ -82,7 +82,7 @@ function CategoryNavColumn({
   useEffect(() => {
     if (isActive !== wasActive.current) {
       if (isActive) {
-        gsap.to(iconWrapRef.current, { y: -6, scale: 1.14, ease: "elastic.out(1, 0.4)", duration: 0.5 });
+        gsap.to(iconWrapRef.current, { y: 0, scale: 1.14, ease: "elastic.out(1, 0.4)", duration: 0.5 });
         gsap.fromTo(labelRef.current, { scale: 0.88 }, { scale: 1, ease: "back.out(2)", duration: 0.3 });
         if (barRef.current) {
           gsap.fromTo(barRef.current, 
@@ -92,6 +92,7 @@ function CategoryNavColumn({
         }
       } else {
         gsap.to(iconWrapRef.current, { y: 0, scale: 1, ease: "power3.out", duration: 0.3 });
+        gsap.to(labelRef.current, { scale: 1, duration: 0.3 });
         if (barRef.current) {
           gsap.to(barRef.current, { scaleX: 0, opacity: 0, duration: 0.2 });
         }
@@ -119,7 +120,7 @@ function CategoryNavColumn({
 
   const handleMouseEnter = () => {
     if (!isActive) {
-      gsap.to(iconWrapRef.current, { y: -3, scale: 1.07, duration: 0.22, ease: "power2.out" });
+      gsap.to(iconWrapRef.current, { y: 0, scale: 1.07, duration: 0.22, ease: "power2.out" });
     }
   };
 

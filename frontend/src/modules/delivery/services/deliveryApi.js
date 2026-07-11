@@ -38,6 +38,10 @@ export const deliveryApi = {
     axiosInstance.post(`/orders/workflow/${orderId}/otp/request`, body),
   verifyDeliveryOtp: (orderId, body) =>
     axiosInstance.post(`/orders/workflow/${orderId}/otp/verify`, body),
+  requestCancelOtp: (orderId, body) =>
+    axiosInstance.post(`/orders/workflow/${orderId}/cancel-otp/request`, body),
+  verifyCancelOtp: (orderId, body) =>
+    axiosInstance.post(`/orders/workflow/${orderId}/cancel-otp/verify`, body),
   getOrderRoute: (orderId, params, config = {}) =>
     axiosInstance.get(`/orders/workflow/${orderId}/route`, { params, ...config }),
   rescheduleOrder: (orderId, rescheduledFor) =>

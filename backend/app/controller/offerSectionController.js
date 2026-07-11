@@ -1,4 +1,5 @@
 import OfferSection from "../models/offerSection.js";
+import Product from "../models/product.js";
 import handleResponse from "../utils/helper.js";
 import {
   parseCustomerCoordinates,
@@ -49,7 +50,8 @@ export const getPublicOfferSections = async (req, res) => {
           })
           .lean();
 
-        return sections.map((section) => {
+        const results = [];
+        for (const section of sections) {
           const sellerIds = Array.isArray(section.sellerIds)
             ? section.sellerIds.filter((seller) => {
                 const sid = String(seller?._id || seller || "");
@@ -57,19 +59,42 @@ export const getPublicOfferSections = async (req, res) => {
               })
             : [];
 
-          const productIds = Array.isArray(section.productIds)
-            ? section.productIds.filter((product) => {
-                const sid = String(product?.sellerId?._id || product?.sellerId || "");
-                return sid && nearbySellerSet.has(sid);
-              })
-            : [];
+          if (section.isAutomatic) {
+            // For automatic sections, fetch top-selling products dynamically
+            const sellerFilter = sellerIds.length
+              ? sellerIds.map((s) => s._id || s)
+              : nearbySellerIds;
+            const topProducts = await Product.find({
+              sellerId: { $in: sellerFilter },
+              status: "active",
+              ...getApprovedOrLegacyFilter(),
+            })
+              .sort({ salesCount: -1, createdAt: -1 })
+              .limit(10)
+              .select("name slug price salePrice mainImage stock unit sellerId status approvalStatus")
+              .lean();
 
-          return {
-            ...section,
-            sellerIds,
-            productIds,
-          };
-        });
+            results.push({
+              ...section,
+              sellerIds,
+              productIds: topProducts,
+            });
+          } else {
+            const productIds = Array.isArray(section.productIds)
+              ? section.productIds.filter((product) => {
+                  const sid = String(product?.sellerId?._id || product?.sellerId || "");
+                  return sid && nearbySellerSet.has(sid);
+                })
+              : [];
+
+            results.push({
+              ...section,
+              sellerIds,
+              productIds,
+            });
+          }
+        }
+        return results;
       },
       getTTL("homepage"),
     );
@@ -110,13 +135,14 @@ export const createOfferSection = async (req, res) => {
       productIds = [],
       order,
       status,
+      isAutomatic = false,
     } = req.body;
 
     if (!title || !title.trim()) {
       return handleResponse(res, 400, "Title is required");
     }
     const catIds = Array.isArray(categoryIds) ? categoryIds.filter(Boolean) : [];
-    if (!catIds.length) {
+    if (!isAutomatic && !catIds.length) {
       return handleResponse(res, 400, "At least one category is required");
     }
 
@@ -125,11 +151,12 @@ export const createOfferSection = async (req, res) => {
       title: title.trim(),
       backgroundColor: backgroundColor || "#FCD34D",
       sideImageKey: sideImageKey || "hair-care",
-      categoryIds: catIds,
+      categoryIds: isAutomatic ? [] : catIds,
       sellerIds: Array.isArray(sellerIds) ? sellerIds.filter(Boolean) : [],
-      productIds: Array.isArray(productIds) ? productIds : [],
+      productIds: isAutomatic ? [] : (Array.isArray(productIds) ? productIds : []),
       order: typeof order === "number" ? order : count,
       status: status || "active",
+      isAutomatic: Boolean(isAutomatic),
     });
 
     return handleResponse(res, 201, "Offer section created", section);
@@ -150,11 +177,22 @@ export const updateOfferSection = async (req, res) => {
       section.backgroundColor = payload.backgroundColor;
     if (payload.sideImageKey !== undefined)
       section.sideImageKey = payload.sideImageKey;
-    if (Array.isArray(payload.categoryIds))
-      section.categoryIds = payload.categoryIds.filter(Boolean);
+    if (payload.isAutomatic !== undefined)
+      section.isAutomatic = Boolean(payload.isAutomatic);
+
+    const isAuto = payload.isAutomatic !== undefined ? Boolean(payload.isAutomatic) : section.isAutomatic;
+    if (isAuto) {
+      // Clear categories and products for automatic sections
+      section.categoryIds = [];
+      section.productIds = [];
+    } else {
+      if (Array.isArray(payload.categoryIds))
+        section.categoryIds = payload.categoryIds.filter(Boolean);
+      if (Array.isArray(payload.productIds)) section.productIds = payload.productIds;
+    }
+
     if (Array.isArray(payload.sellerIds))
       section.sellerIds = payload.sellerIds.filter(Boolean);
-    if (Array.isArray(payload.productIds)) section.productIds = payload.productIds;
     if (payload.order !== undefined) section.order = payload.order;
     if (payload.status !== undefined) section.status = payload.status;
 

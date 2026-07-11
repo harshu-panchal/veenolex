@@ -323,6 +323,7 @@ const DashboardLayout = ({ children, navItems, title }) => {
 
     useEffect(() => {
         setIsSidebarOpen(false);
+        window.scrollTo(0, 0);
     }, [location.pathname]);
 
     // Timer: driven by server expiry (sellerPendingExpiresAt), not a local 60s from modal open

@@ -87,10 +87,10 @@ const SlideToPay = ({
 
             {/* Text Label */}
             <motion.div
-                className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none"
+                className="absolute inset-y-0 left-16 right-12 flex items-center justify-center z-10 pointer-events-none"
                 style={{ opacity: textOpacity }}
             >
-                <span className="text-white font-black text-sm md:text-[13px] tracking-[0.25em] flex items-center gap-2">
+                <span className="text-white font-black text-xs md:text-sm tracking-wider flex items-center justify-center gap-2 w-full text-center">
                     {text} <span className="text-white/40">|</span> <span className="text-brand-50 font-extrabold">₹{amount}</span>
                 </span>
 

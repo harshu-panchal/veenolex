@@ -51,7 +51,10 @@ const ReschedulePicker = ({ isOpen, onClose, onSchedule, title = "Reschedule Del
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-50 p-4">
+    <div 
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 backdrop-blur-xs"
+      style={{ backgroundColor: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)" }}
+    >
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden">
         <div className="p-4 border-b flex justify-between items-center">
           <h2 className="text-lg font-semibold">{title}</h2>

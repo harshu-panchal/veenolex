@@ -621,10 +621,16 @@ const Home = () => {
 
             {/* Popup Box */}
             <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              initial={{ opacity: 0, scale: 0.3, rotate: -180, x: -100, filter: "blur(10px)" }}
+              animate={{ opacity: 1, scale: 1, rotate: 0, x: 0, filter: "blur(0px)" }}
+              exit={{ 
+                opacity: 0, 
+                y: -150, 
+                scale: 0.9, 
+                filter: "blur(15px)",
+                transition: { duration: 0.5, ease: "easeIn" } 
+              }}
+              transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
               className="bg-white rounded-[2.5rem] overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.5)] w-full max-w-sm sm:max-w-md relative z-10 border border-white/20"
             >
               {/* Premium Floating Close button */}

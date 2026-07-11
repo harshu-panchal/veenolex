@@ -18,7 +18,7 @@ import { deliveryApi } from "../services/deliveryApi";
  * @param {Function} props.onError - Callback when validation fails
  * @param {Function} props.onCancel - Optional callback for cancel action
  */
-const OtpInput = ({ orderId, isReturn = false, isReturnDrop = false, onSuccess, onError, onCancel }) => {
+const OtpInput = ({ orderId, isReturn = false, isReturnDrop = false, isCancel = false, cancelReason = "", onSuccess, onError, onCancel }) => {
   const [otp, setOtp] = useState(["", "", "", ""]);
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -111,9 +111,13 @@ const OtpInput = ({ orderId, isReturn = false, isReturnDrop = false, onSuccess, 
 
     setIsGenerating(true);
     try {
-      const response = isReturn
-        ? await deliveryApi.requestReturnOtp(orderId, {})
-        : await deliveryApi.requestDeliveryOtp(orderId, {});
+      const response = isCancel
+        ? await deliveryApi.requestCancelOtp(orderId, { reason: cancelReason })
+        : isReturnDrop
+          ? await deliveryApi.requestReturnDropOtp(orderId, {})
+          : isReturn
+            ? await deliveryApi.requestReturnOtp(orderId, {})
+            : await deliveryApi.requestDeliveryOtp(orderId, {});
       toast.success(response.data?.message || "OTP generated and sent to customer");
       setError(null);
       setLastErrorCode(null);
@@ -150,20 +154,24 @@ const OtpInput = ({ orderId, isReturn = false, isReturnDrop = false, onSuccess, 
 
     try {
       // Call appropriate validation endpoint
-      const response = isReturnDrop
-        ? await deliveryApi.verifyReturnDropOtp(orderId, { code: otpString })
-        : isReturn
-          ? await deliveryApi.verifyReturnOtp(orderId, { otp: otpString })
-          : await deliveryApi.verifyDeliveryOtp(orderId, { code: otpString });
+      const response = isCancel
+        ? await deliveryApi.verifyCancelOtp(orderId, { code: otpString, reason: cancelReason })
+        : isReturnDrop
+          ? await deliveryApi.verifyReturnDropOtp(orderId, { code: otpString })
+          : isReturn
+            ? await deliveryApi.verifyReturnOtp(orderId, { otp: otpString })
+            : await deliveryApi.verifyDeliveryOtp(orderId, { code: otpString });
 
       // Success
       toast.success(
         response.data?.message ||
-        (isReturnDrop
-          ? "Seller confirmed! Return complete."
-          : isReturn
-            ? "Return pickup verified!"
-            : "Order delivered successfully!")
+        (isCancel
+          ? "Order cancelled successfully!"
+          : isReturnDrop
+            ? "Seller confirmed! Return complete."
+            : isReturn
+              ? "Return pickup verified!"
+              : "Order delivered successfully!")
       );
 
       if (onSuccess) {

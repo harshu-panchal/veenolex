@@ -82,6 +82,7 @@ const CheckoutPage = () => {
     removeFromCart,
     clearCart,
   } = useCart();
+  const hasOutOfStockItems = cart.some(item => Number(item.stock || 0) <= 0);
   const { wishlist, addToWishlist, fetchFullWishlist, isFullDataFetched } =
     useWishlist();
   const { showToast } = useToast();
@@ -671,14 +672,16 @@ const CheckoutPage = () => {
     }
 
     const buildPreviewPayload = () => ({
-      items: cart.map((item) => ({
-        product: item.id || item._id,
-        name: item.name,
-        variantSku: String(item.variantSku || "").trim(),
-        quantity: item.quantity,
-        price: item.price,
-        image: item.image,
-      })),
+      items: cart
+        .filter((item) => Number(item.stock || 0) > 0)
+        .map((item) => ({
+          product: item.id || item._id,
+          name: item.name,
+          variantSku: String(item.variantSku || "").trim(),
+          quantity: item.quantity,
+          price: item.price,
+          image: item.image,
+        })),
       address: buildAddressForOrder(),
       discountTotal: discountAmount,
       taxTotal: 0,
@@ -743,6 +746,10 @@ const CheckoutPage = () => {
   }, [cartProductIdKey]);
 
   const handlePrePlaceOrderCheck = () => {
+    if (hasOutOfStockItems) {
+      showToast("Please remove out of stock items to place your order.", "error");
+      return;
+    }
     const hasOutOfZone = !!pricingPreview?.isOutOfZone || cart.some(item => item.isInZone === false);
     if (hasOutOfZone) {
       const cost = pricingPreview?.deliveryFeeCharged || cart.reduce((acc, item) => item.isInZone === false ? acc + (item.shippingCost || item.zoneOutPrice || 0) : acc, 0);
@@ -1180,14 +1187,13 @@ const CheckoutPage = () => {
               walletAmountToUse={walletAmountToUse}
             />
 
-            {/* Desktop Place Order Button */}
             <div className="hidden lg:block mt-6">
               <SlideToPay 
                 onSuccess={handlePrePlaceOrderCheck}
                 amount={finalAmountToPay}
                 isLoading={isPlacingOrder || isPreviewLoading || !pricingPreview}
-                disabled={isPlacingOrder || isPreviewLoading || !pricingPreview}
-                text={finalAmountToPay === 0 ? "SLIDE TO PLACE FREE ORDER" : "SLIDE TO PAY & ORDER"}
+                disabled={isPlacingOrder || isPreviewLoading || !pricingPreview || hasOutOfStockItems}
+                text={finalAmountToPay === 0 ? "SLIDE TO PLACE FREE ORDER" : "SLIDE TO PAY"}
               />
               <p className="text-center text-[10px] text-slate-400 font-bold mt-4 uppercase tracking-[0.1em]">
                 🔒 SSL encrypted secure checkout
@@ -1204,8 +1210,8 @@ const CheckoutPage = () => {
             onSuccess={handlePrePlaceOrderCheck}
             amount={finalAmountToPay}
             isLoading={isPlacingOrder || isPreviewLoading || !pricingPreview}
-            disabled={isPlacingOrder || isPreviewLoading || !pricingPreview}
-            text={finalAmountToPay === 0 ? "SLIDE TO PLACE FREE ORDER" : "SLIDE TO PAY & ORDER"}
+            disabled={isPlacingOrder || isPreviewLoading || !pricingPreview || hasOutOfStockItems}
+            text={finalAmountToPay === 0 ? "SLIDE TO PLACE FREE ORDER" : "SLIDE TO PAY"}
           />
         </div>
       </div>

@@ -346,7 +346,10 @@ export const approveSellerRequest = async (req, res) => {
       // Clone product to Seller's catalog
       const adminProduct = await Product.findById(item.productId);
       if (adminProduct) {
-        let clonedProduct = await Product.findOne({ adminProductId: adminProduct._id, sellerId: request.sellerId });
+        // Prevent "clone of clone" bug. If this product is already cloned, trace it back to its original master product ID
+        const actualMasterId = adminProduct.adminProductId || adminProduct._id;
+
+        let clonedProduct = await Product.findOne({ adminProductId: actualMasterId, sellerId: request.sellerId });
         const quantity = item.quantity || 0;
         const now = new Date();
         
@@ -357,14 +360,24 @@ export const approveSellerRequest = async (req, res) => {
           );
         } else {
           const uniqueSuffix = `-${request.sellerId.toString().slice(-6)}-${Date.now().toString().slice(-4)}`;
+          
+          // Ensure we base the clone on the original master product's properties
+          let baseProduct = adminProduct;
+          if (adminProduct.adminProductId) {
+            const masterProduct = await Product.findById(adminProduct.adminProductId);
+            if (masterProduct) {
+              baseProduct = masterProduct;
+            }
+          }
+
           const clonedData = {
-            ...adminProduct.toObject(),
+            ...baseProduct.toObject(),
             _id: new mongoose.Types.ObjectId(),
             sellerId: request.sellerId,
-            adminProductId: adminProduct._id,
+            adminProductId: actualMasterId,
             stock: quantity,
-            slug: `${adminProduct.slug}${uniqueSuffix}`,
-            sku: `${adminProduct.sku || 'SKU'}${uniqueSuffix}`,
+            slug: `${baseProduct.slug}${uniqueSuffix}`,
+            sku: `${baseProduct.sku || 'SKU'}${uniqueSuffix}`,
             lastSubmittedByRole: "admin",
             approvalStatus: "approved",
             approvalNote: "Automatically approved from admin warehouse delivery.",

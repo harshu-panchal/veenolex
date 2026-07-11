@@ -59,10 +59,14 @@ export function applyThemeVariables(settings) {
   const primary = settings.primaryColor || DEFAULT_SETTINGS.primaryColor;
   const secondary = settings.secondaryColor || DEFAULT_SETTINGS.secondaryColor;
   
-  root.style.setProperty("--primary", primary);
-  root.style.setProperty("--secondary", secondary);
-  root.style.setProperty("--primary-color", primary);
-  root.style.setProperty("--secondary-color", secondary);
+  if (primary && primary !== "var(--primary)") {
+    root.style.setProperty("--primary", primary);
+    root.style.setProperty("--primary-color", primary);
+  }
+  if (secondary && secondary !== "var(--secondary)") {
+    root.style.setProperty("--secondary", secondary);
+    root.style.setProperty("--secondary-color", secondary);
+  }
 
   // Calculate high-contrast foreground color
   if (primary && !primary.startsWith("var")) {

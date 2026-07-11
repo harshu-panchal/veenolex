@@ -16,6 +16,7 @@ export const fetchAdminProducts = async (params = {}) => {
         page: 1,
         status: "active",
         approvalStatus: "approved",
+        sellerId: "admin",
         ...params
       }
     });

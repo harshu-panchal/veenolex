@@ -318,7 +318,11 @@ export const getProducts = async (req, res) => {
           .filter((id) => id && id !== "all");
         if (ids.length) query.sellerId = { $in: ids };
       } else if (sellerId) {
-        query.sellerId = sellerId;
+        if (sellerId === "admin" || sellerId === "null") {
+          query.sellerId = { $in: [null, undefined] };
+        } else {
+          query.sellerId = sellerId;
+        }
       }
     }
 

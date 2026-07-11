@@ -43,7 +43,6 @@ export async function reserveStockForItems({
       updated = await Product.findOneAndUpdate(
         {
           _id: item.productId,
-          stock: { $gte: item.quantity },
           variants: {
             $elemMatch: {
               sku: variantSku,

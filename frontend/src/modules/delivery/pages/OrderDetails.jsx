@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Truck,
   Calendar,
+  XCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Button from "@/shared/components/ui/Button";
@@ -177,6 +178,10 @@ const OrderDetails = () => {
   const [pickupProofSubmitted, setPickupProofSubmitted] = useState(false);
   const [routeStats, setRouteStats] = useState(null);
   const [clockTick, setClockTick] = useState(Date.now());
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [isCancelOtpFlow, setIsCancelOtpFlow] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   const isReturn = order?.returnStatus && order.returnStatus !== "none";
   const isShiprocket = order?.isOutOfZone || order?.deliveryType === "SHIPROCKET";
@@ -542,6 +547,25 @@ const OrderDetails = () => {
 
   const handleOtpValidationError = (error) => {
     console.error("OTP validation error:", error);
+  };
+
+  const handleRequestCancel = async () => {
+    if (!cancelReason.trim()) {
+      toast.error("Please enter a reason for cancellation");
+      return;
+    }
+    try {
+      setCancelLoading(true);
+      await deliveryApi.requestCancelOtp(orderId, { reason: cancelReason });
+      setShowCancelModal(false);
+      setIsCancelOtpFlow(true);
+      setShowOtpInput(true);
+      toast.success("Cancellation OTP sent to customer");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err?.message || "Failed to request cancel OTP");
+    } finally {
+      setCancelLoading(false);
+    }
   };
 
   const handleAcceptReturn = async () => {
@@ -1125,8 +1149,65 @@ const OrderDetails = () => {
                   Reschedule
                 </Button>
               </div>
+              {/* Cancel Delivery Option */}
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-brand-100">
+                <div className="flex items-center">
+                  <div className="bg-white p-2 rounded-full shadow-sm mr-3">
+                    <XCircle size={20} className="text-red-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-gray-800 text-sm">Need to cancel?</h4>
+                    <p className="text-xs text-gray-500">Cancel this delivery</p>
+                  </div>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setShowCancelModal(true)}
+                  className="bg-white border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800 rounded-xl"
+                >
+                  Cancel
+                </Button>
+              </div>
             </Card>
           </motion.div>
+        )}
+
+        {/* Cancel Reason Modal */}
+        {showCancelModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-xl animate-in zoom-in-95 duration-200">
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Cancel Delivery</h3>
+              <p className="text-sm text-gray-500 mb-4">Please provide a reason for cancelling this delivery. An OTP will be sent to the customer to verify this action.</p>
+              
+              <textarea
+                className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 min-h-[100px] mb-4"
+                placeholder="Enter cancellation reason..."
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+              />
+              
+              <div className="flex gap-3">
+                <Button 
+                  variant="outline" 
+                  className="flex-1 rounded-xl"
+                  onClick={() => {
+                    setShowCancelModal(false);
+                    setCancelReason("");
+                  }}
+                >
+                  Back
+                </Button>
+                <Button 
+                  className="flex-1 rounded-xl bg-red-600 hover:bg-red-700 text-white"
+                  onClick={handleRequestCancel}
+                  disabled={cancelLoading}
+                >
+                  {cancelLoading ? <Loader2 className="animate-spin" size={16} /> : "Verify via OTP"}
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Normal delivery Step 3: generate OTP for customer */}
@@ -1186,9 +1267,21 @@ const OrderDetails = () => {
                 orderId={orderId}
                 isReturn={isReturn}
                 isReturnDrop={false}
-                onSuccess={handleOtpValidationSuccess}
+                isCancel={isCancelOtpFlow}
+                cancelReason={cancelReason}
+                onSuccess={(data) => {
+                  if (isCancelOtpFlow) {
+                    toast.success("Order cancelled successfully");
+                    navigate("/delivery/dashboard");
+                  } else {
+                    handleOtpValidationSuccess(data);
+                  }
+                }}
                 onError={handleOtpValidationError}
-                onCancel={() => setShowOtpInput(false)}
+                onCancel={() => {
+                  setShowOtpInput(false);
+                  setIsCancelOtpFlow(false);
+                }}
               />
             </Card>
           </motion.div>

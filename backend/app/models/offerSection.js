@@ -28,6 +28,10 @@ const offerSectionSchema = new mongoose.Schema(
     categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category" }, // legacy single category
     sellerIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Seller" }],
     productIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
+    isAutomatic: {
+      type: Boolean,
+      default: false,
+    },
     order: {
       type: Number,
       default: 0,

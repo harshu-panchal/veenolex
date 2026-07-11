@@ -30,7 +30,7 @@ export const CartProvider = ({ children }) => {
     return items.map((item) => {
       const product = item.productId;
       const variantKey = String(item.variantSku || "").trim();
-      const { price, salePrice, variantName } = resolveVariantPricing(product, variantKey);
+      const { price, salePrice, variantName, stock } = resolveVariantPricing(product, variantKey);
       return {
         ...product,
         id: product?._id, // Normalize ID
@@ -39,6 +39,7 @@ export const CartProvider = ({ children }) => {
         variantName,
         price,
         salePrice,
+        stock,
         image: product?.mainImage, // Handle mapping for frontend
       };
     });
@@ -51,6 +52,7 @@ export const CartProvider = ({ children }) => {
         price: Number(product?.price || 0),
         salePrice: Number(product?.salePrice || 0),
         variantName: "",
+        stock: Number(product?.stock ?? 0),
       };
     }
 
@@ -64,6 +66,7 @@ export const CartProvider = ({ children }) => {
       price: Number(hit?.price || product?.price || 0),
       salePrice: Number(hit?.salePrice || 0),
       variantName: String(hit?.name || "").trim(),
+      stock: hit ? Number(hit.stock ?? 0) : Number(product?.stock ?? 0),
     };
   };
 
@@ -124,7 +127,7 @@ export const CartProvider = ({ children }) => {
     const variantSku = String(product?.variantSku || product?.variantName || "").trim();
     const id = product.id || product._id;
     const key = `${id}::${variantSku || ""}`;
-    const { price, salePrice, variantName } = resolveVariantPricing(product, variantSku);
+    const { price, salePrice, variantName, stock } = resolveVariantPricing(product, variantSku);
 
     // Optimistic UI update for instant feedback
     setCart((prev) => {
@@ -148,6 +151,7 @@ export const CartProvider = ({ children }) => {
           variantName,
           price,
           salePrice,
+          stock,
           quantity: 1,
           image: product.image || product.mainImage,
         },
@@ -270,13 +274,14 @@ export const CartProvider = ({ children }) => {
   };
 
   const cartTotal = cart.reduce((total, item) => {
+    if (Number(item.stock || 0) <= 0) return total;
     const unit =
       Number(item.salePrice || 0) > 0 && Number(item.salePrice) < Number(item.price || 0)
         ? Number(item.salePrice)
         : Number(item.price || 0);
     return total + unit * Number(item.quantity || 0);
   }, 0);
-  const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
+  const cartCount = cart.reduce((total, item) => total + (Number(item.stock || 0) <= 0 ? 0 : item.quantity), 0);
 
   const cartValue = useMemo(() => ({
     cart,

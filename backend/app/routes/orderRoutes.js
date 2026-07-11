@@ -42,6 +42,8 @@ import {
   verifyReturnDropOtp,
   getOrderRoute,
   rescheduleOrder,
+  requestCancelOtp,
+  verifyCancelOtp,
 } from "../controller/orderWorkflowController.js";
 import {
   verifyToken,
@@ -233,6 +235,20 @@ router.post(
   verifyToken,
   allowRoles("delivery", "admin"),
   verifyDeliveryOtp,
+);
+
+// Workflow routes — cancel OTP (delivery cancels)
+router.post(
+  "/workflow/:orderId/cancel-otp/request",
+  verifyToken,
+  allowRoles("delivery", "admin"),
+  requestCancelOtp,
+);
+router.post(
+  "/workflow/:orderId/cancel-otp/verify",
+  verifyToken,
+  allowRoles("delivery", "admin"),
+  verifyCancelOtp,
 );
 
 // Workflow routes — return pickup OTP (customer)

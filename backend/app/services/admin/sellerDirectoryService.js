@@ -506,7 +506,7 @@ export async function getActiveSellersData({
 
 export async function getSellerOptions() {
   return Seller.find({})
-    .select("_id shopName name email phone")
+    .select("_id shopName name email phone address")
     .sort({ shopName: 1 })
     .lean();
 }

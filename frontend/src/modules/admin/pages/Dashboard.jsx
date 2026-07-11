@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Card from '@shared/components/ui/Card';
 import PageHeader from '@shared/components/ui/PageHeader';
 import StatCard from '@shared/components/ui/StatCard';
@@ -30,6 +31,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 const AdminDashboard = () => {
+    const navigate = useNavigate();
     const [statsData, setStatsData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
@@ -90,7 +92,8 @@ const AdminDashboard = () => {
             color: 'text-brand-600',
             bg: 'bg-brand-50',
             trend: '+12.5%',
-            description: 'Active this month'
+            description: 'Active this month',
+            path: '/admin/customers'
         },
         {
             label: 'Active Sellers',
@@ -99,7 +102,8 @@ const AdminDashboard = () => {
             color: 'text-purple-600',
             bg: 'bg-purple-50',
             trend: '+5.2%',
-            description: 'Verified stores'
+            description: 'Verified stores',
+            path: '/admin/sellers/active'
         },
         {
             label: 'Total Orders',
@@ -108,7 +112,8 @@ const AdminDashboard = () => {
             color: 'text-orange-600',
             bg: 'bg-orange-50',
             trend: '+18.4%',
-            description: 'Last 30 days'
+            description: 'Last 30 days',
+            path: '/admin/orders/all'
         },
         {
             label: 'Revenue',
@@ -117,7 +122,8 @@ const AdminDashboard = () => {
             color: 'text-brand-600',
             bg: 'bg-brand-50',
             trend: '+8.2%',
-            description: 'Net earnings'
+            description: 'Net earnings',
+            path: '/admin/wallet'
         },
     ];
 
@@ -152,6 +158,7 @@ const AdminDashboard = () => {
                         description={stat.description}
                         color={stat.color}
                         bg={stat.bg}
+                        onClick={() => navigate(stat.path)}
                         className={cn("ring-1 ring-gray-100", stat.bg + "/30")}
                     />
                 ))}

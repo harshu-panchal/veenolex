@@ -22,6 +22,7 @@ import {
   HiOutlineFolderOpen,
   HiOutlineSwatch,
   HiOutlineSquaresPlus,
+  HiOutlineArrowDownTray,
 } from "react-icons/hi2";
 import Modal from "@shared/components/ui/Modal";
 import { cn } from "@/lib/utils";
@@ -166,6 +167,42 @@ const ProductManagement = () => {
       }
     } catch {
       toast.error("Failed to generate unique barcode");
+    }
+  };
+
+  const handleDownloadBarcode = async (index) => {
+    const barcodeValue = formData.variants[index]?.barcode;
+    if (!barcodeValue) {
+      toast.error("No barcode to download. Generate one first.");
+      return;
+    }
+    try {
+      if (!window.JsBarcode) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js";
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+      const canvas = document.createElement("canvas");
+      window.JsBarcode(canvas, String(barcodeValue), {
+        format: "CODE128",
+        width: 2,
+        height: 80,
+        displayValue: true,
+        fontSize: 16,
+        margin: 10,
+      });
+      const link = document.createElement("a");
+      link.download = `barcode-${barcodeValue}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+      toast.success("Barcode downloaded!");
+    } catch (err) {
+      console.error("Barcode download error:", err);
+      toast.error("Failed to generate barcode image for download");
     }
   };
 
@@ -791,9 +828,9 @@ const ProductManagement = () => {
                 <tr
                   key={p._id || p.id}
                   className="hover:bg-gray-50/50 transition-colors group border-b border-gray-100 last:border-b-0">
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4 min-w-[220px] align-middle">
                     <div className="flex items-center gap-4">
-                      <div className="h-14 w-14 rounded-lg overflow-hidden bg-slate-100 ring-1 ring-slate-200">
+                      <div className="h-14 w-14 rounded-lg overflow-hidden bg-slate-100 ring-1 ring-slate-200 flex-shrink-0">
                         <img
                           src={
                             p.mainImage ||
@@ -805,24 +842,24 @@ const ProductManagement = () => {
                         />
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-slate-900">
+                        <p className="text-sm font-medium text-slate-900 leading-tight">
                           {p.name}
                         </p>
                         {String(p.approvalStatus || "").toLowerCase() === "pending" ? (
-                          <p className="text-[10px] font-medium text-amber-600">
+                          <p className="text-[10px] font-medium text-amber-600 mt-0.5">
                             Hidden from customers until admin approval.
                           </p>
                         ) : null}
                         {String(p.approvalStatus || "").toLowerCase() === "rejected" ? (
-                          <p className="text-[10px] font-medium text-rose-600">
+                          <p className="text-[10px] font-medium text-rose-600 mt-0.5">
                             {p.approvalNote ? `Rejected: ${p.approvalNote}` : "Rejected by admin. Update and resubmit."}
                           </p>
                         ) : null}
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <span className="text-sm font-medium text-slate-900">
+                  <td className="px-6 py-4 min-w-[150px] max-w-[180px] align-middle">
+                    <span className="text-xs font-mono bg-slate-50 border border-slate-100 text-slate-600 px-2.5 py-1 rounded-lg break-all inline-block w-full text-center">
                       {displaySku(p)}
                     </span>
                   </td>
@@ -1714,6 +1751,18 @@ const ProductManagement = () => {
                                   Generate
                                 </button>
                               </div>
+                              {v.barcode && (
+                                <div className="col-span-12 flex justify-end mt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadBarcode(i)}
+                                    className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-indigo-700 flex items-center justify-center gap-1.5"
+                                  >
+                                    <HiOutlineArrowDownTray className="h-4 w-4" />
+                                    Download Barcode
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </div>
                         ))}

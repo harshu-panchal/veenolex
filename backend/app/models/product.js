@@ -188,6 +188,11 @@ const productSchema = new mongoose.Schema(
             type: Boolean,
             default: false,
         },
+        salesCount: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
         zoneOutDeliveryEnabled: {
             type: Boolean,
             default: true  // Allow products to be shown outside service radius

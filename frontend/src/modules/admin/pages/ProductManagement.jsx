@@ -23,7 +23,8 @@ import {
     HiOutlineExclamationCircle,
     HiOutlineFolderOpen,
     HiOutlineSwatch,
-    HiOutlineSquaresPlus
+    HiOutlineSquaresPlus,
+    HiOutlineArrowDownTray,
 } from 'react-icons/hi2';
 import Modal from '@shared/components/ui/Modal';
 import Pagination from '@shared/components/ui/Pagination';
@@ -77,6 +78,43 @@ const ProductManagement = () => {
             }
         } catch {
             toast.error("Failed to generate unique barcode");
+        }
+    };
+
+    const handleDownloadBarcode = async (index) => {
+        const barcodeValue = formData.variants[index]?.barcode;
+        if (!barcodeValue) {
+            toast.error("No barcode to download. Generate one first.");
+            return;
+        }
+        try {
+            // Dynamically import JsBarcode from CDN
+            if (!window.JsBarcode) {
+                await new Promise((resolve, reject) => {
+                    const script = document.createElement("script");
+                    script.src = "https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js";
+                    script.onload = resolve;
+                    script.onerror = reject;
+                    document.head.appendChild(script);
+                });
+            }
+            const canvas = document.createElement("canvas");
+            window.JsBarcode(canvas, String(barcodeValue), {
+                format: "CODE128",
+                width: 2,
+                height: 80,
+                displayValue: true,
+                fontSize: 16,
+                margin: 10,
+            });
+            const link = document.createElement("a");
+            link.download = `barcode-${barcodeValue}.png`;
+            link.href = canvas.toDataURL("image/png");
+            link.click();
+            toast.success("Barcode downloaded!");
+        } catch (err) {
+            console.error("Barcode download error:", err);
+            toast.error("Failed to generate barcode image for download");
         }
     };
 
@@ -1185,6 +1223,18 @@ const ProductManagement = () => {
                                                                     Generate
                                                                 </button>
                                                             </div>
+                                                            {v.barcode && (
+                                                                <div className="col-span-12 flex justify-end mt-1">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleDownloadBarcode(i)}
+                                                                        className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-indigo-700 flex items-center justify-center gap-1.5"
+                                                                    >
+                                                                        <HiOutlineArrowDownTray className="h-4 w-4" />
+                                                                        Download Barcode
+                                                                    </button>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 ))}
