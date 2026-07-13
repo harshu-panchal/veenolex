@@ -138,7 +138,14 @@ const DeliveryOtpDisplay = ({ orderId, checkoutGroupId = null, tokenKey = STORAG
     const offValidated = onDeliveryOtpValidated(getToken, (payload) => {
       console.log(`[DeliveryOtpDisplay] Received delivery:otp:validated event:`, payload);
       if (matchesOrderIdentifier(payload?.orderId, acceptedOrderIds)) {
-        setIsDelivered(true);
+        const isCancelled =
+          payload?.status === "cancelled" ||
+          payload?.workflowStatus === "CANCELLED";
+        if (isCancelled) {
+          setIsDelivered(false);
+        } else {
+          setIsDelivered(true);
+        }
         setOtpData(null);
       }
     });

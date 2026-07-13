@@ -59,7 +59,10 @@ export async function resolveCanonicalOrderId(routeParam) {
   }
   const q = orderMatchQueryFromRouteParam(routeParam);
   if (!q) return null;
-  const doc = await Order.findOne(q);
+  let doc = await Order.findOne(q);
+  if (!doc && raw && raw.toUpperCase().startsWith("CHK-")) {
+    doc = await Order.findOne({ checkoutGroupId: raw });
+  }
   if (doc) {
     if (!doc.workflowVersion || doc.workflowVersion < 2 || !doc.workflowStatus) {
       doc.workflowVersion = 2;

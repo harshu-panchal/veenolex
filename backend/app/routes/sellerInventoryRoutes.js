@@ -203,8 +203,14 @@ router.patch(
 
       await inventoryItem.save();
 
+      // Sync the price update to the seller's cloned Product in the catalog
+      await Product.updateOne(
+        { adminProductId: inventoryItem.productId, sellerId: sellerId },
+        { $set: { price: sellerPrice, salePrice: sellerPrice } }
+      );
+
       console.log(
-        `✅ Price updated: ₹${oldPrice} → ₹${sellerPrice}`
+        `✅ Price updated & synced: ₹${oldPrice} → ₹${sellerPrice}`
       );
 
       return res.status(200).json({

@@ -26,6 +26,9 @@ export function getOrderStatusVariant(status) {
             return 'success';
         case 'cancelled':
             return 'error';
+        case 'rescheduled':
+        case 'scheduled':
+            return 'secondary';
         default:
             return 'secondary';
     }

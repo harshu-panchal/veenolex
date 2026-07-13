@@ -842,7 +842,7 @@ const ProductManagement = () => {
                         />
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-slate-900 leading-tight">
+                        <p className="text-sm font-medium text-slate-900 leading-tight line-clamp-2 max-w-[280px]" title={p.name}>
                           {p.name}
                         </p>
                         {String(p.approvalStatus || "").toLowerCase() === "pending" ? (

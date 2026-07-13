@@ -2204,6 +2204,7 @@ export async function verifyCancelOtpAtomic(deliveryId, orderId, code, reason) {
   }
   
   await order.save();
+  await compensateOrderCancellation(order, orderId);
 
   const customerId = order.customer && typeof order.customer.toString === "function"
         ? order.customer.toString()

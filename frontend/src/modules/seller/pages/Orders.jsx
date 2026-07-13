@@ -116,6 +116,8 @@ const Orders = () => {
                 status: getLegacyStatusFromOrder(order),
                 workflowStatus: order.workflowStatus,
                 workflowVersion: order.workflowVersion,
+                rescheduledFor: order.rescheduledFor,
+                rescheduleInitiatedBy: order.rescheduleInitiatedBy,
                 date: order.createdAt
                     ? new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
                     : '',
@@ -159,7 +161,7 @@ const Orders = () => {
         }
     };
 
-    const tabs = ['All', 'Pending', 'Confirmed', 'Packed', 'Out for Delivery', 'Delivered', 'Cancelled'];
+    const tabs = ['All', 'Pending', 'Confirmed', 'Packed', 'Out for Delivery', 'Delivered', 'Cancelled', 'Rescheduled'];
     const todayStr = new Date().toISOString().split('T')[0];
     const fortyDaysAgo = new Date();
     fortyDaysAgo.setDate(fortyDaysAgo.getDate() - 40);
@@ -860,6 +862,31 @@ const Orders = () => {
                                                 </div>
                                             </div>
                                         </div>
+
+                                        {(selectedOrder.status === "rescheduled" || selectedOrder.status === "scheduled") && (
+                                            <div className="mb-5 bg-blue-50 border border-blue-200 rounded-2xl p-4 shadow-xs">
+                                                <p className="text-xs text-blue-600 font-extrabold uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
+                                                    <HiOutlineClock className="h-4 w-4" /> Order Rescheduled
+                                                </p>
+                                                <p className="text-sm font-bold text-slate-800">
+                                                    This order has been rescheduled to{" "}
+                                                    <span className="text-indigo-700 font-extrabold">
+                                                        {selectedOrder.rescheduledFor
+                                                            ? new Date(selectedOrder.rescheduledFor).toLocaleString("en-IN", {
+                                                                  weekday: "long",
+                                                                  month: "short",
+                                                                  day: "numeric",
+                                                                  hour: "2-digit",
+                                                                  minute: "2-digit",
+                                                              })
+                                                            : "the requested slot"}
+                                                    </span>
+                                                </p>
+                                                <p className="text-xs text-slate-500 font-medium mt-1">
+                                                    Reschedule initiated by the {selectedOrder.rescheduleInitiatedBy || 'customer'}. On this date, the order will trigger and alert you to assign a delivery partner.
+                                                </p>
+                                            </div>
+                                        )}
 
                                         <h4 className="text-xs font-black text-slate-600 uppercase tracking-widest mb-3 sm:mb-4">Items Ordered ({selectedOrder.items.length})</h4>
                                         <div className="space-y-3 max-h-52 sm:max-h-64 overflow-y-auto pr-1">

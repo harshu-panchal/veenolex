@@ -58,6 +58,7 @@ const LiveTrackingMap = memo(({
   routePhase = "pickup",
   routePolyline,
   onOpenInMaps,
+  order = null,
 }) => {
   const mapRef = useRef(null);
   const [mapInstance, setMapInstance] = useState(null);
@@ -223,6 +224,37 @@ const LiveTrackingMap = memo(({
   }, [isSearching]);
 
   const norm = status?.toLowerCase?.() || "";
+  if (norm === "rescheduled" || norm === "scheduled") {
+    const displayDate = order?.rescheduledFor || order?.scheduledFor;
+    const formatted = displayDate
+      ? new Date(displayDate).toLocaleString("en-IN", {
+          weekday: "long",
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "the requested slot";
+
+    return (
+      <div className="relative w-full min-h-[240px] bg-gradient-to-br from-blue-50/70 to-indigo-50/70 overflow-hidden rounded-b-[2rem] flex flex-col items-center justify-center gap-3 px-6 py-10 border-b border-blue-100 shadow-sm">
+        <div className="h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shadow-md">
+          <Clock size={32} />
+        </div>
+        <h3 className="text-xl font-black text-slate-800 text-center">
+          Delivery Rescheduled
+        </h3>
+        <div className="bg-white border border-blue-100/80 rounded-2xl px-5 py-3 shadow-xs text-center max-w-sm">
+          <p className="text-xs text-blue-500 font-bold uppercase tracking-wider mb-1">Rescheduled For</p>
+          <p className="text-sm font-extrabold text-indigo-950">{formatted}</p>
+        </div>
+        <p className="text-xs text-slate-500 text-center max-w-xs font-semibold leading-relaxed">
+          Your order will be prepared and delivered during this time. No action is required from you.
+        </p>
+      </div>
+    );
+  }
+
   if (norm === "cancelled" || norm === "canceled") {
     return (
       <div className="relative w-full min-h-[220px] bg-gradient-to-br from-slate-100 to-slate-50 overflow-hidden rounded-b-[2rem] flex flex-col items-center justify-center gap-3 px-6 py-10 border-b border-slate-200">

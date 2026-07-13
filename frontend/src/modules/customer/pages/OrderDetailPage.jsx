@@ -897,7 +897,7 @@ const OrderDetailPage = () => {
         )}
 
         {/* Enhanced Map with Cleaner Design - Hide when delivered or cancelled */}
-        {!isAwaitingOnlinePayment && status !== "delivered" && status !== "cancelled" && (
+        {!isAwaitingOnlinePayment && status !== "delivered" && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -917,12 +917,13 @@ const OrderDetailPage = () => {
               routePhase={routePhase}
               routePolyline={activeRoutePolyline}
               onOpenInMaps={handleOpenInMaps}
+              order={order}
             />
           </motion.div>
         )}
-
+ 
         {/* Order Progress Tracker - New Component */}
-        {!isAwaitingOnlinePayment && (
+        {!isAwaitingOnlinePayment && status !== "rescheduled" && status !== "scheduled" && status !== "cancelled" && (
           <OrderProgressTracker
             order={order}
             estimatedArrivalText={estimatedArrival.arrivalTimeText}
@@ -1260,12 +1261,15 @@ const OrderDetailPage = () => {
       <ReschedulePicker
         isOpen={isReschedulePickerOpen}
         onClose={() => setIsReschedulePickerOpen(false)}
+        isLoading={isRescheduling}
         onSchedule={async (date) => {
           try {
             setIsRescheduling(true);
             const res = await customerApi.rescheduleOrder(order?.orderId || orderId, date.toISOString());
             if (res.data?.success) {
               toast.success("Delivery rescheduled successfully");
+              setIsReschedulePickerOpen(false);
+              fetchOrderDetails();
             } else {
               toast.error(res.data?.message || "Failed to reschedule");
             }

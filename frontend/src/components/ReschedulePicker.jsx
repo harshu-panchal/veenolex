@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const ReschedulePicker = ({ isOpen, onClose, onSchedule, title = "Reschedule Delivery" }) => {
+const ReschedulePicker = ({ isOpen, onClose, onSchedule, title = "Reschedule Delivery", isLoading = false }) => {
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [dates, setDates] = useState([]);
@@ -115,10 +115,10 @@ const ReschedulePicker = ({ isOpen, onClose, onSchedule, title = "Reschedule Del
           </button>
           <button
             onClick={handleConfirm}
-            disabled={!selectedDate || !selectedSlot}
-            className="flex-1 py-2 px-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+            disabled={!selectedDate || !selectedSlot || isLoading}
+            className="flex-1 py-2 px-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            Confirm
+            {isLoading ? "Confirming..." : "Confirm"}
           </button>
         </div>
       </div>

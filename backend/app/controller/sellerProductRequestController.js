@@ -343,51 +343,53 @@ export const approveSellerRequest = async (req, res) => {
         });
       }
 
-      // Clone product to Seller's catalog
+      // Clone product to Seller's catalog (atomic upsert to prevent race conditions)
       const adminProduct = await Product.findById(item.productId);
       if (adminProduct) {
-        // Prevent "clone of clone" bug. If this product is already cloned, trace it back to its original master product ID
+        // Prevent "clone of clone" bug. Trace back to original master product ID
         const actualMasterId = adminProduct.adminProductId || adminProduct._id;
-
-        let clonedProduct = await Product.findOne({ adminProductId: actualMasterId, sellerId: request.sellerId });
         const quantity = item.quantity || 0;
-        const now = new Date();
-        
-        if (clonedProduct) {
-          await Product.updateOne(
-            { _id: clonedProduct._id },
-            { $inc: { stock: quantity } }
-          );
-        } else {
-          const uniqueSuffix = `-${request.sellerId.toString().slice(-6)}-${Date.now().toString().slice(-4)}`;
-          
-          // Ensure we base the clone on the original master product's properties
-          let baseProduct = adminProduct;
-          if (adminProduct.adminProductId) {
-            const masterProduct = await Product.findById(adminProduct.adminProductId);
-            if (masterProduct) {
-              baseProduct = masterProduct;
-            }
-          }
 
-          const clonedData = {
-            ...baseProduct.toObject(),
-            _id: new mongoose.Types.ObjectId(),
-            sellerId: request.sellerId,
-            adminProductId: actualMasterId,
-            stock: quantity,
-            slug: `${baseProduct.slug}${uniqueSuffix}`,
-            sku: `${baseProduct.sku || 'SKU'}${uniqueSuffix}`,
-            lastSubmittedByRole: "admin",
-            approvalStatus: "approved",
-            approvalNote: "Automatically approved from admin warehouse delivery.",
-            createdAt: now,
-            updatedAt: now
-          };
-          
-          delete clonedData.__v;
-          await Product.create(clonedData);
+        // Resolve the true master product for cloning properties
+        let baseProduct = adminProduct;
+        if (adminProduct.adminProductId) {
+          const masterProduct = await Product.findById(adminProduct.adminProductId);
+          if (masterProduct) {
+            baseProduct = masterProduct;
+          }
         }
+
+        const uniqueSuffix = `-${request.sellerId.toString().slice(-6)}-${Date.now().toString().slice(-4)}`;
+        const baseObj = baseProduct.toObject();
+        delete baseObj._id;
+        delete baseObj.__v;
+        delete baseObj.sellerId;
+        delete baseObj.adminProductId;
+        delete baseObj.stock;
+        delete baseObj.slug;
+        delete baseObj.sku;
+        delete baseObj.createdAt;
+        delete baseObj.updatedAt;
+
+        // Atomic upsert: if product exists for this seller+master, increment stock.
+        // If it doesn't exist, create it with all base product properties.
+        await Product.findOneAndUpdate(
+          { adminProductId: actualMasterId, sellerId: request.sellerId },
+          {
+            $inc: { stock: quantity },
+            $setOnInsert: {
+              ...baseObj,
+              sellerId: request.sellerId,
+              adminProductId: actualMasterId,
+              slug: `${baseProduct.slug}${uniqueSuffix}`,
+              sku: `${baseProduct.sku || 'SKU'}${uniqueSuffix}`,
+              lastSubmittedByRole: "admin",
+              approvalStatus: "approved",
+              approvalNote: "Automatically approved from admin warehouse delivery.",
+            },
+          },
+          { upsert: true, new: true }
+        );
       }
     }
 

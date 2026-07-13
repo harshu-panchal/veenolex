@@ -35,6 +35,15 @@ function isSellerAlertEligible(order) {
     const hasExpiry = Boolean(order.sellerPendingExpiresAt ?? order.expiresAt);
 
     if (hasExpiry && secondsLeftUntilSellerExpiry(order) <= 0) return false;
+
+    // If the order was rescheduled for a future date, don't show the alert yet.
+    // The alert should only appear once the reschedule date has actually arrived
+    // and the backend transitions the order back to SELLER_PENDING.
+    if (order.rescheduledFor) {
+        const rescheduleTime = new Date(order.rescheduledFor).getTime();
+        if (!isNaN(rescheduleTime) && rescheduleTime > Date.now()) return false;
+    }
+
     if (ws) return ws === 'SELLER_PENDING';
 
     // Backward compatibility: older payloads may not include workflowStatus.
