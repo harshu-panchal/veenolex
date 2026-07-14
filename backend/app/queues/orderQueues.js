@@ -54,9 +54,18 @@ export const rescheduleQueue = isRedisEnabled()
     })
   : createNoopQueue();
 
+export const shiprocketQueue = isRedisEnabled()
+  ? new Bull("shiprocket", {
+      redis: redisOpts,
+      createClient: createBullRedisClient,
+      settings: queueSettings,
+    })
+  : createNoopQueue();
+
 export const JOB_NAMES = {
   SELLER_TIMEOUT: "seller-timeout",
   DELIVERY_TIMEOUT: "delivery-timeout",
   RETURN_PICKUP_TIMEOUT: "return-pickup-timeout",
   ORDER_RESCHEDULE: "order-reschedule",
+  SHIPROCKET_CREATE: "shiprocket-create",
 };

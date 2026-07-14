@@ -2,6 +2,7 @@ import handleResponse from "../utils/helper.js";
 import {
   createPaymentOrderForOrderRef,
   verifyPhonePePaymentStatus,
+  verifyRazorpaySignatureAndStatus,
   processPhonePeWebhook,
 } from "../services/paymentService.js";
 import {
@@ -44,6 +45,7 @@ export const createPaymentOrder = async (req, res) => {
         payment: result.payment,
         redirectUrl: result.redirectUrl,
         merchantOrderId: result.payment.gatewayOrderId,
+        gatewayResponse: result.gatewayResponse || result.payment.rawGatewayResponse,
       },
     );
   } catch (error) {
@@ -190,5 +192,36 @@ export const handlePhonePeSellerWebhook = async (req, res) => {
   } catch (error) {
     logger.error("PhonePe seller webhook failed", { message: error.message });
     return res.status(500).send("Internal Server Error");
+  }
+};
+
+export const verifyRazorpayPayment = async (req, res) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return handleResponse(res, 400, "razorpay_order_id, razorpay_payment_id and razorpay_signature are required");
+    }
+
+    const verification = await verifyRazorpaySignatureAndStatus({
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      razorpaySignature: razorpay_signature,
+      userId: req.user?.id,
+      correlationId: req.correlationId || null,
+    });
+
+    return handleResponse(res, 200, "Razorpay payment verified successfully", {
+      status: verification.status,
+      payment: verification.payment,
+    });
+  } catch (error) {
+    logger.error("verifyRazorpayPayment failed:", {
+      scope: "PaymentController.verifyRazorpayPayment",
+      message: error.message,
+      userId: req.user?.id,
+      correlationId: req.correlationId || null,
+    });
+    return handleResponse(res, error.statusCode || 500, error.message);
   }
 };

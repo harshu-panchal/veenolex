@@ -134,6 +134,10 @@ const sellerSchema = new mongoose.Schema(
       type: Number,
       default: 5, // Default 5km
     },
+    shipRocketPickupId: {
+      type: String,
+      default: "Primary",
+    },
     lastLogin: Date,
 
     // ── POS fields ────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import User from "../models/customer.js";
 import { checkProductAvailability } from "../../utils/locationService.js";
 import { createShipRocketOrder } from "../../utils/shipRocketService.js";
 import { WORKFLOW_STATUS, DEFAULT_SELLER_TIMEOUT_MS } from "../constants/orderWorkflow.js";
+import { shiprocketQueue, JOB_NAMES } from "../queues/orderQueues.js";
 
 const router = express.Router();
 
@@ -108,19 +109,31 @@ router.post("/process-order", async (req, res) => {
       order.pricing.deliveryFee = order.shippingCost;
       order.pricing.total += order.shippingCost;
 
-      // Ensure we have user and address data for Shiprocket mapping
-      const srUser = resolvedUser || { name: "Guest", email: "guest@example.com", phone: "0000000000" };
-      const srAddress = resolvedAddress || { address: "Default", city: "Default", state: "Default", pincode: "000000" };
-      
-      // Call shipRocketService.createShipRocketOrder()
-      const shipRocketDetails = await createShipRocketOrder(order, srUser, srAddress, product.seller, order.items);
-      
-      // Save ShipRocket response to order (already partly done in service, but we persist local additions here)
+      // Set "Shipment Pending" state immediately
+      order.shipRocketDetails = {
+        orderId: `PENDING_SR_${order._id}`,
+        trackingNumber: "Assigning...",
+        status: "PENDING",
+        estimatedDelivery: null
+      };
       await order.save();
 
+      // Queue the creation background job with attempts and exponential backoff config
+      await shiprocketQueue.add(
+        JOB_NAMES.SHIPROCKET_CREATE,
+        { type: "ORDER", id: order._id },
+        {
+          attempts: 5,
+          backoff: {
+            type: "exponential",
+            delay: 5000
+          }
+        }
+      );
+
       responseData.deliveryType = "SHIPROCKET";
-      responseData.trackingNumber = shipRocketDetails.trackingNumber;
-      responseData.estimatedDelivery = shipRocketDetails.estimatedDelivery;
+      responseData.trackingNumber = "Assigning...";
+      responseData.estimatedDelivery = null;
       responseData.shippingCost = order.shippingCost;
     }
 

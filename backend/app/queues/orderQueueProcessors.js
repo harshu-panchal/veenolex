@@ -3,6 +3,7 @@ import {
   deliveryTimeoutQueue,
   returnPickupTimeoutQueue,
   rescheduleQueue,
+  shiprocketQueue,
   JOB_NAMES,
 } from "./orderQueues.js";
 import {
@@ -11,6 +12,10 @@ import {
   processReturnPickupTimeoutJob,
   processOrderRescheduleJob,
 } from "../services/orderWorkflowService.js";
+import Order from "../models/order.js";
+import SellerProductRequest from "../models/sellerProductRequest.js";
+import User from "../models/customer.js";
+import { createShipRocketOrder, createShipRocketOrderForRequest } from "../../utils/shipRocketService.js";
 import { isRedisEnabled } from "../config/redis.js";
 import logger from "../services/logger.js";
 import { incrementCounter, recordHistogram } from "../services/metrics.js";
@@ -288,12 +293,94 @@ export function registerOrderQueueProcessors() {
     });
   });
 
+  // Shiprocket shipment creation queue processor
+  shiprocketQueue.process(JOB_NAMES.SHIPROCKET_CREATE, async (job) => {
+    const startTime = Date.now();
+    const { type, id } = job.data;
+    
+    try {
+      logger.info('Processing Shiprocket creation job', {
+        jobId: job.id,
+        jobType: JOB_NAMES.SHIPROCKET_CREATE,
+        id,
+        type,
+        attempt: job.attemptsMade + 1
+      });
+      
+      if (type === "ORDER") {
+        const order = await Order.findById(id).populate("seller");
+        if (!order) throw new Error(`Order ${id} not found`);
+        const user = await User.findById(order.customer).lean();
+        await createShipRocketOrder(order, user || {}, order.address, order.seller, order.items);
+      } else if (type === "REQUEST") {
+        const request = await SellerProductRequest.findById(id).populate("sellerId");
+        if (!request) throw new Error(`Request ${id} not found`);
+        const seller = request.sellerId;
+        await createShipRocketOrderForRequest(request, seller, request.items);
+      }
+      
+      const duration = Date.now() - startTime;
+      logger.info('Shiprocket creation job completed', {
+        jobId: job.id,
+        jobType: JOB_NAMES.SHIPROCKET_CREATE,
+        id,
+        type,
+        duration
+      });
+      
+      incrementCounter('queue_jobs_total', { queue: 'shiprocket', status: 'completed' });
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logger.error('Shiprocket creation job failed', {
+        jobId: job.id,
+        jobType: JOB_NAMES.SHIPROCKET_CREATE,
+        id,
+        type,
+        attempt: job.attemptsMade + 1,
+        duration,
+        error: error.message,
+        stack: error.stack
+      });
+      
+      // If all attempts are exhausted, update status to failed
+      const maxAttempts = job.opts.attempts || 5;
+      if (job.attemptsMade + 1 >= maxAttempts) {
+        logger.error(`Shiprocket creation job exhausted all retries (${maxAttempts}). Flagging as SHIPMENT_FAILED.`);
+        if (type === "ORDER") {
+          await Order.updateOne({ _id: id }, { $set: { "shipRocketDetails.status": "SHIPMENT_FAILED" } });
+        } else if (type === "REQUEST") {
+          await SellerProductRequest.updateOne({ _id: id }, { $set: { "shipRocketDetails.status": "SHIPMENT_FAILED" } });
+        }
+      }
+      
+      incrementCounter('queue_jobs_total', { queue: 'shiprocket', status: 'failed' });
+      throw error;
+    }
+  });
+
+  shiprocketQueue.on("failed", (job, err) => {
+    logger.error('Shiprocket creation queue job failed permanently or retry scheduled', {
+      jobId: job?.id,
+      jobType: JOB_NAMES.SHIPROCKET_CREATE,
+      id: job?.data?.id,
+      error: err?.message,
+    });
+  });
+
+  shiprocketQueue.on("completed", (job) => {
+    logger.debug('Shiprocket creation queue job completed successfully', {
+      jobId: job?.id,
+      id: job?.data?.id,
+    });
+  });
+
   logger.info('Order queue processors registered', {
     queues: [
       JOB_NAMES.SELLER_TIMEOUT,
       JOB_NAMES.DELIVERY_TIMEOUT,
       JOB_NAMES.RETURN_PICKUP_TIMEOUT,
       JOB_NAMES.ORDER_RESCHEDULE,
+      JOB_NAMES.SHIPROCKET_CREATE,
     ]
   });
 }

@@ -2218,10 +2218,12 @@ export async function verifyCancelOtpAtomic(deliveryId, orderId, code, reason) {
   };
 
   emitToCustomer(customerId, { event: "delivery:otp:validated", payload });
-  emitToCustomer(customerId, { event: "order:status_update", payload });
   
-  emitToOrder(orderId, { event: "delivery:otp:validated", payload });
-  emitToOrder(orderId, { event: "order:status_update", payload });
-
+  // Use emitOrderStatusUpdate to properly format and broadcast 'order:status:update'
+  emitOrderStatusUpdate(orderId, {
+    workflowStatus: WORKFLOW_STATUS.CANCELLED,
+    status: order.status,
+    message: reason || "Order cancelled by delivery partner",
+  }, customerId);
   return order;
 }

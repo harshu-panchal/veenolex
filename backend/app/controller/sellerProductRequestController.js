@@ -11,6 +11,8 @@ import Notification from "../models/notification.js";
 import Delivery from "../models/delivery.js";
 import { startRequestDeliverySearch } from "../services/orderWorkflowService.js";
 import { getActivePaymentProvider } from "../services/payment/providerRegistry.js";
+import { createShipRocketOrderForRequest } from "../../utils/shipRocketService.js";
+import { shiprocketQueue, JOB_NAMES } from "../queues/orderQueues.js";
 
 // ═══════════════════════════════════════════════
 // SELLER: CREATE NEW PRODUCT REQUEST
@@ -615,6 +617,73 @@ export const manualAssignDelivery = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to assign delivery boy manually"
+    });
+  }
+};
+
+// ═══════════════════════════════════════════
+// ADMIN: ASSIGN SHIPROCKET DELIVERY (FOR ALREADY APPROVED)
+// ═══════════════════════════════════════════
+export const assignShiprocketDelivery = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    const request = await SellerProductRequest.findById(requestId);
+    if (!request) {
+      return res.status(404).json({ success: false, message: "Request not found" });
+    }
+
+    if (request.status !== "APPROVED") {
+      return res.status(400).json({ success: false, message: "Request must be approved first" });
+    }
+
+    if (request.deliveryBoy) {
+      return res.status(400).json({ success: false, message: "A delivery partner is already assigned" });
+    }
+
+    // Populate seller info so we have address details for Shiprocket mapping
+    const seller = await Seller.findById(request.sellerId);
+    if (!seller) {
+      return res.status(404).json({ success: false, message: "Seller not found" });
+    }
+
+    // Update request state to "Shipment Pending" immediately so user/seller sees state
+    request.deliveryType = "SHIPROCKET";
+    request.deliveryWorkflowStatus = "DELIVERY_ASSIGNED";
+    request.shipRocketDetails = {
+      orderId: `PENDING_SR_${request._id}`,
+      trackingNumber: "Assigning...",
+      status: "PENDING",
+    };
+    await request.save();
+
+    // Queue the creation background job with attempts and exponential backoff config
+    await shiprocketQueue.add(
+      JOB_NAMES.SHIPROCKET_CREATE,
+      { type: "REQUEST", id: request._id },
+      {
+        attempts: 5,
+        backoff: {
+          type: "exponential",
+          delay: 5000
+        }
+      }
+    );
+
+    console.log("🚚 Shiprocket delivery creation queued for request:", request.requestNumber);
+
+    return res.status(200).json({
+      success: true,
+      message: "Shiprocket delivery assigned and queued successfully",
+      request,
+      shipRocketDetails: request.shipRocketDetails
+    });
+  } catch (error) {
+    console.error("❌ Error assigning Shiprocket delivery:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to assign Shiprocket delivery",
+      error: error.message
     });
   }
 };

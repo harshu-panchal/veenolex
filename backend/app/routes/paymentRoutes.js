@@ -2,6 +2,7 @@ import express from "express";
 import {
   createPaymentOrder,
   verifyPaymentStatus,
+  verifyRazorpayPayment,
   handlePhonePeWebhook,
   handlePhonePeSellerWebhook
 } from "../controller/paymentController.js";
@@ -30,6 +31,17 @@ paymentRoute.get(
   verifyToken,
   paymentRouteRateLimiter,
   verifyPaymentStatus,
+);
+
+/**
+ * Verify Razorpay payment signature & status after overlay checkout.
+ * Auth: Required
+ */
+paymentRoute.post(
+  "/verify",
+  verifyToken,
+  paymentRouteRateLimiter,
+  verifyRazorpayPayment,
 );
 
 /**

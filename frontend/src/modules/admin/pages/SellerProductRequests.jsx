@@ -7,6 +7,7 @@ import {
   rejectRequest,
   triggerDeliveryBroadcast,
   manualAssignDelivery,
+  assignShiprocketDelivery,
   formatPrice,
   formatDate,
   getStatusColor
@@ -35,6 +36,28 @@ export default function SellerProductRequests() {
       ));
     } catch (err) {
       toast.error("Failed to trigger broadcast: " + err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleAssignShiprocket = async (requestId) => {
+    try {
+      setActionLoading(requestId + "_shiprocket");
+      const res = await assignShiprocketDelivery(requestId);
+      toast.success("Shiprocket delivery assigned successfully!");
+      
+      if (res && res.request) {
+        setRequests(requests.map(r => 
+          r._id === requestId ? res.request : r
+        ));
+      } else {
+        setRequests(requests.map(r => 
+          r._id === requestId ? { ...r, deliveryType: "SHIPROCKET", deliveryWorkflowStatus: "DELIVERY_ASSIGNED" } : r
+        ));
+      }
+    } catch (err) {
+      toast.error("Failed to assign Shiprocket delivery: " + (err.message || err));
     } finally {
       setActionLoading(null);
     }
@@ -472,7 +495,7 @@ export default function SellerProductRequests() {
 
               {/* ACTIONS */}
               
-              {request.status === "APPROVED" && !request.deliveryBoy && (!request.deliveryWorkflowStatus || request.deliveryWorkflowStatus === "PENDING") && (
+              {request.status === "APPROVED" && !request.deliveryBoy && (!request.deliveryWorkflowStatus || request.deliveryWorkflowStatus === "PENDING" || request.deliveryWorkflowStatus === "DELIVERY_SEARCH") && request.deliveryType !== "SHIPROCKET" && (
                 <div style={{ display: "flex", gap: "10px" }}>
                   <button
                     onClick={() => handleTriggerBroadcast(request._id)}
@@ -509,6 +532,24 @@ export default function SellerProductRequests() {
                     }}
                   >
                     {actionLoading === request._id + "_assign" ? "..." : "👤 Manual Assigned"}
+                  </button>
+                  <button
+                    onClick={() => handleAssignShiprocket(request._id)}
+                    disabled={actionLoading === request._id + "_shiprocket"}
+                    style={{
+                      padding: "8px 16px",
+                      backgroundColor: "#9B59B6",
+                      border: "none",
+                      borderRadius: "6px",
+                      color: "#fff",
+                      fontWeight: "bold",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px"
+                    }}
+                  >
+                    {actionLoading === request._id + "_shiprocket" ? "..." : "🚀 Shiprocket"}
                   </button>
                 </div>
               )}
@@ -630,72 +671,115 @@ export default function SellerProductRequests() {
                 )}
 
                 {/* DELIVERY TRACKING SECTION */}
-                {request.deliveryBoy && (
+                {(request.deliveryBoy || request.deliveryType === "SHIPROCKET") && (
                   <div style={{
                     marginTop: "16px",
                     backgroundColor: "white",
                     padding: "16px",
                     borderRadius: "10px",
-                    border: "2px solid #27AE60"
+                    border: request.deliveryType === "SHIPROCKET" ? "2px solid #9B59B6" : "2px solid #27AE60"
                   }}>
                     <p style={{
                       fontSize: "14px",
                       fontWeight: "700",
-                      color: "#27AE60",
+                      color: request.deliveryType === "SHIPROCKET" ? "#9B59B6" : "#27AE60",
                       margin: "0 0 12px"
                     }}>
                       🚚 Delivery Tracking
                     </p>
 
-                    {/* Driver Info */}
-                    <div style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "12px",
-                      marginBottom: "12px",
-                      padding: "10px",
-                      backgroundColor: "#F0FFF4",
-                      borderRadius: "8px"
-                    }}>
+                    {/* Driver Info or Shiprocket Info */}
+                    {request.deliveryType === "SHIPROCKET" ? (
                       <div style={{
-                        width: "48px",
-                        height: "48px",
-                        borderRadius: "50%",
-                        backgroundColor: "#27AE60",
-                        color: "white",
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "20px",
-                        fontWeight: "bold"
+                        gap: "12px",
+                        marginBottom: "12px",
+                        padding: "10px",
+                        backgroundColor: "#F4ECF7",
+                        borderRadius: "8px"
                       }}>
-                        {request.deliveryBoy.name?.charAt(0) || "?"}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <p style={{ margin: "0 0 2px", fontWeight: "700", fontSize: "14px" }}>
-                          {request.deliveryBoy.name || "Unknown Driver"}
-                        </p>
-                        <p style={{ margin: "0", fontSize: "12px", color: "#666" }}>
-                          📞 {request.deliveryBoy.phone || "N/A"}
-                          {request.deliveryBoy.vehicleDetails?.vehicleType && (
-                            <span> • 🏍️ {request.deliveryBoy.vehicleDetails.vehicleType}</span>
-                          )}
-                        </p>
-                        <p style={{
-                          margin: "4px 0 0",
-                          fontSize: "11px",
-                          color: request.deliveryBoy.isOnline ? "#27AE60" : "#E74C3C",
-                          fontWeight: "600"
+                        <div style={{
+                          width: "48px",
+                          height: "48px",
+                          borderRadius: "50%",
+                          backgroundColor: "#9B59B6",
+                          color: "white",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "20px",
+                          fontWeight: "bold"
                         }}>
-                          {request.deliveryBoy.isOnline ? "● Online" : "○ Offline"}
-                          {request.deliveryBoy.lastLocationAt && (
-                            <span style={{ color: "#999", fontWeight: "400", marginLeft: "8px" }}>
-                              Last seen: {new Date(request.deliveryBoy.lastLocationAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          )}
-                        </p>
+                          🚀
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ margin: "0 0 2px", fontWeight: "700", fontSize: "14px", color: "#9B59B6" }}>
+                            Shiprocket Standard Delivery
+                          </p>
+                          <p style={{ margin: "0", fontSize: "12px", color: "#666" }}>
+                            AWB: {request.shipRocketDetails?.trackingNumber || "Assigning..."}
+                          </p>
+                          <p style={{
+                            margin: "4px 0 0",
+                            fontSize: "11px",
+                            color: "#8E44AD",
+                            fontWeight: "600"
+                          }}>
+                            Status: {request.shipRocketDetails?.status || "NEW"}
+                          </p>
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        marginBottom: "12px",
+                        padding: "10px",
+                        backgroundColor: "#F0FFF4",
+                        borderRadius: "8px"
+                      }}>
+                        <div style={{
+                          width: "48px",
+                          height: "48px",
+                          borderRadius: "50%",
+                          backgroundColor: "#27AE60",
+                          color: "white",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "20px",
+                          fontWeight: "bold"
+                        }}>
+                          {request.deliveryBoy.name?.charAt(0) || "?"}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ margin: "0 0 2px", fontWeight: "700", fontSize: "14px" }}>
+                            {request.deliveryBoy.name || "Unknown Driver"}
+                          </p>
+                          <p style={{ margin: "0", fontSize: "12px", color: "#666" }}>
+                            📞 {request.deliveryBoy.phone || "N/A"}
+                            {request.deliveryBoy.vehicleDetails?.vehicleType && (
+                              <span> • 🏍️ {request.deliveryBoy.vehicleDetails.vehicleType}</span>
+                            )}
+                          </p>
+                          <p style={{
+                            margin: "4px 0 0",
+                            fontSize: "11px",
+                            color: request.deliveryBoy.isOnline ? "#27AE60" : "#E74C3C",
+                            fontWeight: "600"
+                          }}>
+                            {request.deliveryBoy.isOnline ? "● Online" : "○ Offline"}
+                            {request.deliveryBoy.lastLocationAt && (
+                              <span style={{ color: "#999", fontWeight: "400", marginLeft: "8px" }}>
+                                Last seen: {new Date(request.deliveryBoy.lastLocationAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Workflow Status */}
                     <div style={{
@@ -722,8 +806,8 @@ export default function SellerProductRequests() {
                             borderRadius: "20px",
                             fontSize: "11px",
                             fontWeight: "600",
-                            backgroundColor: isCurrent ? "#27AE60" : isDone ? "#A3D9A5" : "#E0E0E0",
-                            color: isCurrent ? "white" : isDone ? "#1A5C2A" : "#999"
+                            backgroundColor: isCurrent ? (request.deliveryType === "SHIPROCKET" ? "#9B59B6" : "#27AE60") : isDone ? (request.deliveryType === "SHIPROCKET" ? "#D2B4DE" : "#A3D9A5") : "#E0E0E0",
+                            color: isCurrent ? "white" : isDone ? (request.deliveryType === "SHIPROCKET" ? "#4A235A" : "#1A5C2A") : "#999"
                           }}>
                             {isDone ? "✓ " : ""}{labels[step]}
                           </span>
@@ -732,7 +816,7 @@ export default function SellerProductRequests() {
                     </div>
 
                     {/* Live Location */}
-                    {request.deliveryBoy.location?.coordinates && (
+                    {request.deliveryBoy && request.deliveryBoy.location?.coordinates && (
                       <div style={{
                         padding: "10px",
                         backgroundColor: "#EBF5FB",
@@ -770,7 +854,7 @@ export default function SellerProductRequests() {
                 )}
 
                 {/* No delivery assigned message */}
-                {request.status === "APPROVED" && !request.deliveryBoy && (
+                {request.status === "APPROVED" && !request.deliveryBoy && request.deliveryType !== "SHIPROCKET" && (
                   <div style={{
                     marginTop: "12px",
                     padding: "10px 12px",

@@ -197,6 +197,17 @@ const sellerProductRequestSchema = new mongoose.Schema(
       type: Date,
       default: null
     },
+    deliveryType: {
+      type: String,
+      enum: ["SELLER_DIRECT", "SHIPROCKET"],
+      default: "SELLER_DIRECT"
+    },
+    shipRocketDetails: {
+      orderId: String,
+      trackingNumber: String,
+      status: String,
+      estimatedDelivery: Date
+    },
 
     // ─────────────────────────────────
     // NOTES

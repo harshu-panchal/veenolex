@@ -145,6 +145,14 @@ const paymentSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    lastReconciledAt: {
+      type: Date,
+      default: null,
+    },
+    reconciliationAttempts: {
+      type: Number,
+      default: 0,
+    },
     statusHistory: {
       type: [paymentStateChangeSchema],
       default: [],

@@ -482,15 +482,18 @@ export async function createPaymentOrderForOrderRef({
     ? { checkoutGroupId: target.checkoutGroupId }
     : { order: primaryOrder._id };
 
+  const provider = getActivePaymentProvider();
+
   if (idempotencyKey) {
     const existingForKey = await Payment.findOne({
       ...paymentScopeQuery,
       idempotencyKey,
     });
-    if (existingForKey) {
+    if (existingForKey && existingForKey.gatewayName === provider.providerName) {
       return {
         payment: existingForKey,
         redirectUrl: existingForKey.rawGatewayResponse?.redirectUrl,
+        gatewayResponse: existingForKey.rawGatewayResponse,
         duplicate: true,
       };
     }
@@ -503,10 +506,16 @@ export async function createPaymentOrderForOrderRef({
     },
   }).sort({ createdAt: -1 });
 
-  if (existingOpenPayment && existingOpenPayment.rawGatewayResponse?.redirectUrl) {
+  if (
+    existingOpenPayment &&
+    existingOpenPayment.gatewayName === provider.providerName &&
+    existingOpenPayment.rawGatewayResponse?.redirectUrl &&
+    (provider.providerName !== "RAZORPAY" || String(existingOpenPayment.gatewayOrderId).startsWith("order_"))
+  ) {
     return {
       payment: existingOpenPayment,
       redirectUrl: existingOpenPayment.rawGatewayResponse.redirectUrl,
+      gatewayResponse: existingOpenPayment.rawGatewayResponse,
       duplicate: true,
     };
   }
@@ -519,7 +528,6 @@ export async function createPaymentOrderForOrderRef({
     attemptCount,
   );
 
-  const provider = getActivePaymentProvider();
   const redirectUrl = `${process.env.FRONTEND_URL}/payment-status?merchantOrderId=${merchantOrderId}`;
 
   const initResult = await provider.initiatePayment({
@@ -535,7 +543,7 @@ export async function createPaymentOrderForOrderRef({
     publicOrderId: target.publicOrderRef,
     customer: primaryOrder.customer,
     gatewayName: provider.providerName,
-    gatewayOrderId: merchantOrderId,
+    gatewayOrderId: provider.providerName === "RAZORPAY" && initResult.gatewayResponse?.id ? initResult.gatewayResponse.id : merchantOrderId,
     amount: amountPaise,
     currency,
     status: PAYMENT_STATUS.PENDING,
@@ -546,6 +554,7 @@ export async function createPaymentOrderForOrderRef({
       redirectUrl: initResult.redirectUrl,
       merchantOrderId: merchantOrderId,
       amount: amountPaise,
+      ...(initResult.gatewayResponse || {}),
     },
     statusHistory: [
       {
@@ -569,7 +578,12 @@ export async function createPaymentOrderForOrderRef({
     provider: provider.providerName,
   });
 
-  return { payment, redirectUrl: initResult.redirectUrl, duplicate: false };
+  return { 
+    payment, 
+    redirectUrl: initResult.redirectUrl, 
+    gatewayResponse: initResult.gatewayResponse, 
+    duplicate: false 
+  };
 }
 
 export async function verifyPhonePePaymentStatus({
@@ -704,11 +718,128 @@ export async function processPhonePeWebhook({
   };
 }
 
-// Placeholder for Razorpay compatibility if needed by other services
+export async function verifyRazorpaySignatureAndStatus({
+  razorpayOrderId,
+  razorpayPaymentId,
+  razorpaySignature,
+  userId,
+  correlationId = null,
+}) {
+  // Validate signature (if provided, otherwise skip to direct status check on reconciliation/fallback)
+  if (razorpaySignature) {
+    const secret = process.env.RAZORPAY_KEY_SECRET;
+    const shasum = crypto.createHmac("sha256", secret);
+    shasum.update(`${razorpayOrderId}|${razorpayPaymentId}`);
+    const digest = shasum.digest("hex");
+    if (digest !== razorpaySignature) {
+      const err = new Error("Invalid Razorpay payment signature");
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  // Find the payment record (gatewayOrderId holds the Razorpay Order ID)
+  const payment = await Payment.findOne({ gatewayOrderId: razorpayOrderId });
+  if (!payment) {
+    const err = new Error(`Payment record not found for Razorpay Order ID: ${razorpayOrderId}`);
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Security check: only the owner can verify
+  if (userId && String(payment.customer) !== String(userId)) {
+    const err = new Error("Not authorized to verify this payment");
+    err.statusCode = 403;
+    throw err;
+  }
+
+  const provider = getActivePaymentProvider();
+  const statusResp = await provider.getPaymentStatus({ gatewayOrderId: razorpayOrderId });
+  const nextStatus = provider.mapStatusToInternal(statusResp.state);
+
+  await transitionPaymentState(payment, {
+    nextStatus,
+    source: PAYMENT_EVENT_SOURCE.CLIENT_VERIFY,
+    reason: `Razorpay client verify callback: ${statusResp.state}`,
+    gatewayPaymentId: razorpayPaymentId || statusResp.gatewayResponse?.payments?.[0]?.id || null,
+    rawGatewayResponse: statusResp.gatewayResponse,
+  });
+
+  await handleOrderSideEffectsFromPaymentStatus(
+    payment,
+    nextStatus,
+    statusResp.responseCode || statusResp.state,
+  );
+
+  payment.correlationId = correlationId || payment.correlationId;
+  await payment.save();
+
+  logger.info("payment_razorpay_verified", {
+    correlationId,
+    razorpayOrderId,
+    status: nextStatus,
+  });
+
+  return {
+    payment,
+    status: nextStatus,
+  };
+}
+
+export async function reconcilePaymentStatus(payment) {
+  const provider = getActivePaymentProvider();
+  const gatewayOrderId = payment.gatewayOrderId;
+
+  logger.info(`Reconciling payment ${payment._id} via ${provider.providerName}`);
+
+  const statusResp = await provider.getPaymentStatus({ gatewayOrderId });
+  const nextStatus = provider.mapStatusToInternal(statusResp.state);
+
+  await transitionPaymentState(payment, {
+    nextStatus,
+    source: PAYMENT_EVENT_SOURCE.SYSTEM,
+    reason: `${provider.providerName} status reconciliation: ${statusResp.state}`,
+    gatewayPaymentId: statusResp.gatewayResponse?.payments?.[0]?.id || null,
+    rawGatewayResponse: statusResp.gatewayResponse,
+  });
+
+  await handleOrderSideEffectsFromPaymentStatus(
+    payment,
+    nextStatus,
+    statusResp.responseCode || statusResp.state,
+  );
+
+  if (payment.reconciliationAttempts >= 20 && (nextStatus === PAYMENT_STATUS.PENDING || nextStatus === PAYMENT_STATUS.CREATED)) {
+    logger.warn(`⚠️ Payment ${payment._id} exceeded max reconciliation attempts. Flagging for manual review.`);
+    payment.rawGatewayResponse = {
+      ...(payment.rawGatewayResponse || {}),
+      needsManualReview: true
+    };
+    await payment.save();
+  }
+
+  return {
+    payment,
+    status: nextStatus,
+  };
+}
+
+// Unified client payment verification callback
 export async function verifyClientPaymentCallback(data) {
-    return verifyPhonePePaymentStatus({
-        merchantOrderId: data.gatewayOrderId || data.merchantOrderId,
-        userId: data.userId,
-        correlationId: data.correlationId
+  const provider = getActivePaymentProvider();
+  if (provider.providerName === "RAZORPAY") {
+    return verifyRazorpaySignatureAndStatus({
+      razorpayOrderId: data.razorpayOrderId || data.gatewayOrderId || data.merchantOrderId,
+      razorpayPaymentId: data.razorpayPaymentId || data.gatewayPaymentId,
+      razorpaySignature: data.razorpaySignature,
+      userId: data.userId,
+      correlationId: data.correlationId
     });
+  } else {
+    return verifyPhonePePaymentStatus({
+      merchantOrderId: data.gatewayOrderId || data.merchantOrderId,
+      userId: data.userId,
+      correlationId: data.correlationId
+    });
+  }
 }

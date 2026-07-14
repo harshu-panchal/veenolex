@@ -197,3 +197,15 @@ export const manualAssignDelivery = async (requestId, deliveryBoyId) => {
     throw error.response?.data || error;
   }
 };
+
+export const assignShiprocketDelivery = async (requestId) => {
+  try {
+    const response = await axiosInstance.patch(
+      `${API_BASE}/admin/${requestId}/shiprocket-delivery`
+    );
+    return response.data;
+  } catch (error) {
+    console.error("❌ API Error assigning Shiprocket delivery:", error);
+    throw error.response?.data || error;
+  }
+};

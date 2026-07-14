@@ -7,7 +7,8 @@ import {
   approveSellerRequest,
   rejectSellerRequest,
   triggerDeliveryBroadcast,
-  manualAssignDelivery
+  manualAssignDelivery,
+  assignShiprocketDelivery
 } from "../controller/sellerProductRequestController.js";
 import {
   verifyToken,
@@ -92,6 +93,14 @@ router.patch(
   verifyToken,
   allowRoles("admin"),
   manualAssignDelivery
+);
+
+// PATCH /api/seller-requests/admin/:requestId/shiprocket-delivery
+router.patch(
+  "/admin/:requestId/shiprocket-delivery",
+  verifyToken,
+  allowRoles("admin"),
+  assignShiprocketDelivery
 );
 
 export default router;

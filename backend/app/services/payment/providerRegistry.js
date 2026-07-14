@@ -16,6 +16,7 @@
  */
 
 import { PhonePeAdapter } from "./providers/phonepe.adapter.js";
+import { RazorpayAdapter } from "./providers/razorpay.adapter.js";
 
 let _provider = null;
 let _providerName = null;
@@ -28,7 +29,8 @@ function buildProvider(name) {
   switch (name) {
     case "phonepe":
       return new PhonePeAdapter();
-    // future: case "razorpay": return new RazorpayAdapter();
+    case "razorpay":
+      return new RazorpayAdapter();
     // future: case "stripe":   return new StripeAdapter();
     default:
       throw new Error(`Unknown payment provider: ${name}`);

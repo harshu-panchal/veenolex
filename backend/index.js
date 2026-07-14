@@ -45,11 +45,17 @@ import {
   getFirebaseTrackingCleanupJobInterval,
   isFirebaseTrackingCleanupJobEnabled,
 } from "./app/jobs/firebaseTrackingCleanupJob.js";
+import {
+  getPaymentReconciliationJobHandler,
+  getPaymentReconciliationJobInterval,
+  isPaymentReconciliationJobEnabled,
+} from "./app/jobs/paymentReconciliationJob.js";
 import logger from "./app/services/logger.js";
 import { stopScheduledJobs } from "./app/services/distributedScheduler.js";
 import mapsRouter from "./routes/maps.js";
 import sellerProductRequestRoutes from "./app/routes/sellerProductRequestRoutes.js";
 import sellerInventoryRoutes from "./app/routes/sellerInventoryRoutes.js";
+import deliveryWebhookRoutes from "./app/routes/deliveryWebhookRoutes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -178,6 +184,15 @@ function createApp() {
     }),
   );
 
+  // Shiprocket webhook needs raw body for signature verification
+  app.use(
+    "/api/delivery/webhook/shiprocket",
+    express.raw({
+      type: "application/json",
+      limit: "1mb",
+    }),
+  );
+
   app.use(express.json({ limit: process.env.API_JSON_LIMIT || "1mb" }));
   app.use(express.urlencoded({ limit: process.env.API_URLENCODED_LIMIT || "1mb", extended: true }));
 
@@ -218,6 +233,7 @@ function createApp() {
   app.use("/api/maps", mapsRouter);
   app.use("/api/seller-requests", sellerProductRequestRoutes);
   app.use("/api/seller-inventory", sellerInventoryRoutes);
+  app.use("/api/delivery", deliveryWebhookRoutes);
 
   // Setup all routes (includes /health, /metrics, /api/*)
   setupRoutes(app);
@@ -357,11 +373,17 @@ async function startScheduler() {
     );
   }
 
+  registerScheduledJob(
+    'paymentReconciliationJob',
+    getPaymentReconciliationJobInterval(),
+    getPaymentReconciliationJobHandler()
+  );
+
   // Start all registered jobs
   await startScheduledJobs();
   registerSchedulerStopper(stopScheduledJobs);
 
-  const scheduledJobs = ['orderAutoCancelJob', 'returnWindowReleaseJob'];
+  const scheduledJobs = ['orderAutoCancelJob', 'returnWindowReleaseJob', 'paymentReconciliationJob'];
   if (isPayoutBatchJobEnabled()) scheduledJobs.push('payoutBatchJob');
   if (isWalletLedgerVerifierEnabled()) scheduledJobs.push('walletLedgerVerifierJob');
   if (isFirebaseTrackingCleanupJobEnabled()) scheduledJobs.push('firebaseTrackingCleanupJob');
