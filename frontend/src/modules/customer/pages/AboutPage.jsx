@@ -19,58 +19,102 @@ const AboutPage = () => {
                 <h1 className="text-xl font-semibold text-slate-900 tracking-tight">About Us</h1>
             </div>
 
-            <div className="px-4 pt-1 max-w-3xl mx-auto space-y-4">
+            <div className="px-4 pt-6 max-w-6xl mx-auto space-y-12">
 
-                {/* Hero Section */}
-                <div className="rounded-xl p-5 text-center bg-white border border-slate-200">
-                    <div className="flex flex-col items-center">
-                        <div className="bg-slate-100 p-3 rounded-lg mb-3">
-                            <ShoppingBag size={24} className="text-slate-700" />
+                {/* Founders Section */}
+                <div className="bg-slate-50">
+                    <div className="grid lg:grid-cols-2 gap-10 items-start">
+                        {/* Text Content */}
+                        <div className="space-y-6 lg:pr-8">
+                            <h2 className="text-4xl md:text-5xl font-light text-slate-800 leading-tight">
+                                Meet Founders of <br className="hidden md:block" />Veenolex
+                            </h2>
+                            <p className="text-slate-600 leading-relaxed text-base md:text-lg">
+                                Veenolex Herabal not only a Ayurvdic Herbal company but it's a dream of two pationate founders from Pratapgarh and Sagwara Rajasthan, found a adultration in cosmetic industry and to fill the gape into market to relay on trust of customers a deep research of 3 years has concluded us into this company which is consumer centric with pure essential of Natural Herbals
+                            </p>
                         </div>
-                        <h2 className="text-xl font-semibold mb-1 tracking-tight text-slate-900">{appName}</h2>
-                        <p className="text-slate-600 text-sm max-w-sm mx-auto">Delivering happiness to your doorstep in minutes.</p>
+                        
+                        {/* Founder Cards */}
+                        <div className="grid sm:grid-cols-2 gap-6">
+                            {/* Card 1 */}
+                            <div className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-300 border border-slate-100 flex flex-col group cursor-pointer hover:border-pink-300">
+                                <div className="h-64 sm:h-72 overflow-hidden">
+                                    <img src="https://veenolex.com/wp-content/uploads/2025/10/Mr.-Rajesh-Patel-e1761927592265.jpeg" alt="Mr. Rajesh Patel" className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500" />
+                                </div>
+                                <div className="p-6 flex flex-col flex-grow text-center">
+                                    <h3 className="text-2xl font-bold font-serif text-slate-800 mb-1" style={{fontFamily: "'Playfair Display', serif"}}>Mr. Rajesh Patel</h3>
+                                    <p className="text-xs text-slate-400 mb-4 uppercase tracking-widest font-semibold">CEO</p>
+                                    <p className="text-sm text-slate-500 leading-relaxed">Future is in your hand, think about it and take action and move on</p>
+                                </div>
+                            </div>
+
+                            {/* Card 2 */}
+                            <div className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-300 border border-slate-100 flex flex-col group cursor-pointer hover:border-pink-300">
+                                <div className="h-64 sm:h-72 overflow-hidden">
+                                    <img src="https://veenolex.com/wp-content/uploads/2025/10/Sandeep-Ji-Founder-sahab-e1761927492330.jpg" alt="Mr. Sandeep Rathore" className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500" />
+                                </div>
+                                <div className="p-6 flex flex-col flex-grow text-center">
+                                    <h3 className="text-2xl font-bold font-serif text-slate-800 mb-1" style={{fontFamily: "'Playfair Display', serif"}}>Mr. Sandeep Rathore</h3>
+                                    <p className="text-xs text-slate-400 mb-4 uppercase tracking-widest font-semibold">Co - Founder</p>
+                                    <p className="text-sm text-slate-500 leading-relaxed">After a Succesful journey in Yash Courier and Cargo Agency, dive in Veenolex Herbal as Co - Founder @ Veenolex.com</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                {/* Mission Card */}
-                <div className="bg-white rounded-xl p-4 border border-slate-200">
-                    <div className="flex items-center gap-3 mb-3">
-                        <div className="h-9 w-9 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700">
-                            <Truck size={18} />
+                <div className="grid md:grid-cols-3 gap-6 pt-8 border-t border-slate-200">
+                    {/* Hero Section / About App */}
+                    <div className="rounded-xl p-6 text-center bg-white border border-slate-200 shadow-sm">
+                        <div className="flex flex-col items-center">
+                            <div className="bg-slate-50 p-4 rounded-full mb-4">
+                                <ShoppingBag size={28} className="text-slate-700" />
+                            </div>
+                            <h2 className="text-xl font-semibold mb-2 tracking-tight text-slate-900">{appName}</h2>
+                            <p className="text-slate-600 text-sm max-w-sm mx-auto">Delivering happiness to your doorstep in minutes.</p>
                         </div>
-                        <h3 className="text-base font-semibold text-slate-800">Our Mission</h3>
                     </div>
-                    <p className="text-slate-600 leading-relaxed text-sm">
-                        To revolutionize quick commerce by providing the fastest, most reliable delivery of daily essentials, ensuring quality and convenience for every household.
-                    </p>
+
+                    {/* Mission Card */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
+                        <div className="flex flex-col items-center text-center mb-4">
+                            <div className="h-12 w-12 rounded-full bg-slate-50 flex items-center justify-center text-slate-700 mb-3">
+                                <Truck size={24} />
+                            </div>
+                            <h3 className="text-lg font-semibold text-slate-800">Our Mission</h3>
+                        </div>
+                        <p className="text-slate-600 leading-relaxed text-sm text-center">
+                            To revolutionize quick commerce by providing the fastest, most reliable delivery of daily essentials, ensuring quality and convenience for every household.
+                        </p>
+                    </div>
+
+                    {/* Values Card */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
+                        <div className="flex flex-col items-center text-center mb-4">
+                            <div className="h-12 w-12 rounded-full bg-slate-50 flex items-center justify-center text-slate-700 mb-3">
+                                <Heart size={24} />
+                            </div>
+                            <h3 className="text-lg font-semibold text-slate-800">Our Values</h3>
+                        </div>
+                        <ul className="space-y-3 text-sm text-slate-600">
+                            <li className="flex gap-3 items-start">
+                                <span className="h-1.5 w-1.5 rounded-full bg-slate-400 mt-1.5 flex-shrink-0" />
+                                <span><strong>Customer First:</strong> Your satisfaction is our top priority.</span>
+                            </li>
+                            <li className="flex gap-3 items-start">
+                                <span className="h-1.5 w-1.5 rounded-full bg-slate-400 mt-1.5 flex-shrink-0" />
+                                <span><strong>Quality Assurance:</strong> We deliver only the freshest and best products.</span>
+                            </li>
+                            <li className="flex gap-3 items-start">
+                                <span className="h-1.5 w-1.5 rounded-full bg-slate-400 mt-1.5 flex-shrink-0" />
+                                <span><strong>Speed with Safety:</strong> Fast delivery without compromising safety.</span>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
 
-                {/* Values Card */}
-                <div className="bg-white rounded-xl p-4 border border-slate-200">
-                    <div className="flex items-center gap-3 mb-3">
-                        <div className="h-9 w-9 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700">
-                            <Heart size={18} />
-                        </div>
-                        <h3 className="text-base font-semibold text-slate-800">Our Values</h3>
-                    </div>
-                    <ul className="space-y-3 text-sm text-slate-600">
-                        <li className="flex gap-2">
-                            <span className="h-1.5 w-1.5 rounded-full bg-slate-300 mt-2 flex-shrink-0" />
-                            <span><strong>Customer First:</strong> Your satisfaction is our top priority.</span>
-                        </li>
-                        <li className="flex gap-2">
-                            <span className="h-1.5 w-1.5 rounded-full bg-slate-300 mt-2 flex-shrink-0" />
-                            <span><strong>Quality Assurance:</strong> We deliver only the freshest and best products.</span>
-                        </li>
-                        <li className="flex gap-2">
-                            <span className="h-1.5 w-1.5 rounded-full bg-slate-300 mt-2 flex-shrink-0" />
-                            <span><strong>Speed with Safety:</strong> Fast delivery without compromising on safety standards.</span>
-                        </li>
-                    </ul>
-                </div>
-
-                <div className="text-center pt-2">
-                    <p className="text-xs text-slate-400">© {new Date().getFullYear()} {appName}. All rights reserved.</p>
+                <div className="text-center pt-8 pb-4">
+                    <p className="text-xs text-slate-400 font-medium tracking-wide">© {new Date().getFullYear()} {appName}. All rights reserved.</p>
                 </div>
 
             </div>

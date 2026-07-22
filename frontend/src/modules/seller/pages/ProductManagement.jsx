@@ -125,6 +125,8 @@ const ProductManagement = () => {
   const filterDropdownRef = useRef(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [selectedItems, setSelectedItems] = useState([]);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [viewingVariants, setViewingVariants] = useState(null);
   const [isVariantsViewModalOpen, setIsVariantsViewModalOpen] = useState(false);
@@ -541,6 +543,34 @@ const ProductManagement = () => {
     }
   };
 
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedItems(filteredProducts.map((p) => p._id || p.id));
+    } else {
+      setSelectedItems([]);
+    }
+  };
+
+  const handleSelectItem = (id) => {
+    setSelectedItems((prev) =>
+      prev.includes(id) ? prev.filter((itemId) => itemId !== id) : [...prev, id]
+    );
+  };
+
+  const confirmBulkDelete = async () => {
+    try {
+      await Promise.all(
+        selectedItems.map((id) => sellerApi.deleteProduct(id))
+      );
+      toast.success(`${selectedItems.length} product(s) deleted successfully`);
+      setIsBulkDeleteModalOpen(false);
+      setSelectedItems([]);
+      fetchProducts();
+    } catch (error) {
+      toast.error("Failed to delete selected products");
+    }
+  };
+
   const openEditModal = (item = null) => {
     if (item) {
       setFormData({
@@ -785,6 +815,26 @@ const ProductManagement = () => {
               <option value="stock-asc">Stock Low-High</option>
               <option value="stock-desc">Stock High-Low</option>
             </select>
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedItems.length === 0) {
+                  toast.error("Please select at least one product to delete");
+                  return;
+                }
+                setIsBulkDeleteModalOpen(true);
+              }}
+              className={cn(
+                "flex items-center space-x-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer",
+                selectedItems.length > 0
+                  ? "bg-rose-600 text-white shadow-md shadow-rose-100 hover:bg-rose-700"
+                  : "bg-white ring-1 ring-slate-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+              )}
+              title={selectedItems.length > 0 ? `Delete ${selectedItems.length} selected items` : "Select items to delete"}
+            >
+              <HiOutlineTrash className="h-4 w-4" />
+              <span>Delete{selectedItems.length > 0 ? ` (${selectedItems.length})` : ""}</span>
+            </button>
           </div>
         </div>
       </Card>
@@ -797,6 +847,14 @@ const ProductManagement = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-100">
+                <th className="px-4 py-3 text-center">
+                  <input
+                    type="checkbox"
+                    checked={filteredProducts.length > 0 && selectedItems.length === filteredProducts.length}
+                    onChange={handleSelectAll}
+                    className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/20 cursor-pointer accent-primary"
+                  />
+                </th>
                 <th className="px-6 py-3 text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wider">
                   Product
                 </th>
@@ -827,7 +885,18 @@ const ProductManagement = () => {
               {filteredProducts.map((p) => (
                 <tr
                   key={p._id || p.id}
-                  className="hover:bg-gray-50/50 transition-colors group border-b border-gray-100 last:border-b-0">
+                  className={cn(
+                    "hover:bg-gray-50/50 transition-colors group border-b border-gray-100 last:border-b-0",
+                    selectedItems.includes(p._id || p.id) && "bg-purple-50/30"
+                  )}>
+                  <td className="px-4 py-4 text-center align-middle" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedItems.includes(p._id || p.id)}
+                      onChange={() => handleSelectItem(p._id || p.id)}
+                      className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/20 cursor-pointer accent-primary"
+                    />
+                  </td>
                   <td className="px-6 py-4 min-w-[220px] align-middle">
                     <div className="flex items-center gap-4">
                       <div className="h-14 w-14 rounded-lg overflow-hidden bg-slate-100 ring-1 ring-slate-200 flex-shrink-0">
@@ -1824,6 +1893,45 @@ const ProductManagement = () => {
                 {itemToDelete?.name}
               </span>{" "}
               from the catalog.
+            </p>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk Delete Modal */}
+      <Modal
+        isOpen={isBulkDeleteModalOpen}
+        onClose={() => setIsBulkDeleteModalOpen(false)}
+        title="Confirm Bulk Deletion"
+        size="sm"
+        footer={
+          <div className="flex gap-4 justify-end w-full">
+            <button
+              onClick={() => setIsBulkDeleteModalOpen(false)}
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-700 transition-colors">
+              Cancel
+            </button>
+            <button
+              onClick={confirmBulkDelete}
+              className="px-6 py-2.5 bg-rose-600 text-white rounded-xl text-sm font-semibold shadow-lg shadow-rose-100 hover:bg-rose-700 transition-all active:scale-95">
+              Delete ({selectedItems.length}) products
+            </button>
+          </div>
+        }>
+        <div className="px-6 py-6 flex flex-col items-center text-center space-y-5">
+          <div className="h-18 w-18 md:h-20 md:w-20 bg-rose-50 rounded-full flex items-center justify-center text-rose-500">
+            <HiOutlineTrash className="h-9 w-9 md:h-10 md:w-10" />
+          </div>
+          <div className="space-y-2 max-w-md">
+            <h4 className="text-lg font-semibold text-slate-900">
+              Delete Selected Products?
+            </h4>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Are you sure you want to delete{" "}
+              <span className="font-semibold text-slate-900">
+                {selectedItems.length} selected product(s)
+              </span>?
+              This action cannot be undone.
             </p>
           </div>
         </div>

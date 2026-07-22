@@ -133,6 +133,8 @@ const ProductManagement = () => {
 
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+    const [selectedItems, setSelectedItems] = useState([]);
     const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState(null);
     const [itemToReject, setItemToReject] = useState(null);
@@ -318,6 +320,32 @@ const ProductManagement = () => {
             fetchProducts(page);
         } catch (error) {
             toast.error('Failed to delete product');
+        }
+    };
+
+    const handleSelectAll = (e) => {
+        if (e.target.checked) {
+            setSelectedItems(productsList.map(p => p._id));
+        } else {
+            setSelectedItems([]);
+        }
+    };
+
+    const handleSelectItem = (id) => {
+        setSelectedItems(prev =>
+            prev.includes(id) ? prev.filter(itemId => itemId !== id) : [...prev, id]
+        );
+    };
+
+    const confirmBulkDelete = async () => {
+        try {
+            await Promise.all(selectedItems.map(id => adminApi.deleteProduct(id)));
+            toast.success(`${selectedItems.length} product(s) deleted successfully`);
+            setIsBulkDeleteModalOpen(false);
+            setSelectedItems([]);
+            fetchProducts(page);
+        } catch (error) {
+            toast.error('Failed to delete selected products');
         }
     };
 
@@ -654,6 +682,26 @@ const ProductManagement = () => {
                             <option value="stock-asc">Stock Low-High</option>
                             <option value="stock-desc">Stock High-Low</option>
                         </select>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (selectedItems.length === 0) {
+                                    toast.error('Please select at least one product to delete');
+                                    return;
+                                }
+                                setIsBulkDeleteModalOpen(true);
+                            }}
+                            className={cn(
+                                "flex items-center space-x-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer",
+                                selectedItems.length > 0
+                                    ? "bg-rose-600 text-white shadow-md shadow-rose-100 hover:bg-rose-700"
+                                    : "bg-white ring-1 ring-slate-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                            )}
+                            title={selectedItems.length > 0 ? `Delete ${selectedItems.length} selected items` : "Select items to delete"}
+                        >
+                            <HiOutlineTrash className="h-4 w-4" />
+                            <span>Delete{selectedItems.length > 0 ? ` (${selectedItems.length})` : ''}</span>
+                        </button>
                     </div>
                 </div>
             </Card>
@@ -663,16 +711,25 @@ const ProductManagement = () => {
                 <div className="overflow-x-auto">
                     <table className="w-full min-w-[1180px] table-fixed text-left border-collapse">
                         <colgroup>
-                            <col className="w-[24%]" />
-                            <col className="w-[13%]" />
-                            <col className="w-[11%]" />
+                            <col className="w-[5%]" />
+                            <col className="w-[23%]" />
                             <col className="w-[12%]" />
-                            <col className="w-[14%]" />
-                            <col className="w-[11%]" />
+                            <col className="w-[10%]" />
+                            <col className="w-[12%]" />
+                            <col className="w-[13%]" />
+                            <col className="w-[10%]" />
                             <col className="w-[15%]" />
                         </colgroup>
                         <thead>
                             <tr className="bg-slate-50/50 border-b border-slate-100">
+                                <th className="px-3 py-3 text-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={productsList.length > 0 && selectedItems.length === productsList.length}
+                                        onChange={handleSelectAll}
+                                        className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/20 cursor-pointer accent-primary"
+                                    />
+                                </th>
                                 <th className="px-6 py-3 text-left text-[10px] font-medium text-slate-500 uppercase tracking-[0.18em]">Product</th>
                                 <th className="px-6 py-3 text-left text-[10px] font-medium text-slate-500 uppercase tracking-[0.18em]">Seller</th>
                                 <th className="px-6 py-3 text-left text-[10px] font-medium text-slate-500 uppercase tracking-[0.18em]">Variant</th>
@@ -685,7 +742,7 @@ const ProductManagement = () => {
                         <tbody className="divide-y divide-slate-50">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan="7" className="px-6 py-20 text-center">
+                                    <td colSpan="8" className="px-6 py-20 text-center">
                                         <div className="flex flex-col items-center gap-3">
                                             <HiOutlineArrowPath className="h-8 w-8 text-primary animate-spin" />
                                             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading Products...</p>
@@ -694,16 +751,26 @@ const ProductManagement = () => {
                                 </tr>
                             ) : productsList.length === 0 ? (
                                 <tr>
-                                    <td colSpan="7" className="px-6 py-20 text-center text-slate-400 font-bold text-xs uppercase tracking-widest">No products found</td>
+                                    <td colSpan="8" className="px-6 py-20 text-center text-slate-400 font-bold text-xs uppercase tracking-widest">No products found</td>
                                 </tr>
                             ) : productsList.map((p) => (
                                 <tr
                                     key={p._id}
                                     className={cn(
                                         "group transition-colors hover:bg-slate-50/60",
-                                        String(p.approvalStatus || '').toLowerCase() === 'pending' && "bg-amber-50/40"
+                                        String(p.approvalStatus || '').toLowerCase() === 'pending' && "bg-amber-50/40",
+                                        selectedItems.includes(p._id) && "bg-purple-50/30"
                                     )}
                                 >
+                                    {/* Select Checkbox Column */}
+                                    <td className="px-3 py-5 text-center align-middle" onClick={(e) => e.stopPropagation()}>
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedItems.includes(p._id)}
+                                            onChange={() => handleSelectItem(p._id)}
+                                            className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/20 cursor-pointer accent-primary"
+                                        />
+                                    </td>
                                     {/* Product Column */}
                                     <td className="px-6 py-5 align-middle">
                                         <div className="flex items-center gap-3 min-w-0">
@@ -1582,6 +1649,41 @@ const ProductManagement = () => {
                     <h3 className="text-lg font-black text-slate-900 mb-2 uppercase tracking-tight">Delete Product?</h3>
                     <p className="text-sm text-slate-500 font-medium">
                         Are you sure you want to delete <span className="font-bold text-slate-900">"{itemToDelete?.name}"</span>?
+                        This action cannot be undone.
+                    </p>
+                </div>
+            </Modal>
+
+            {/* Bulk Delete Confirmation Modal */}
+            <Modal
+                isOpen={isBulkDeleteModalOpen}
+                onClose={() => setIsBulkDeleteModalOpen(false)}
+                title="Confirm Bulk Deletion"
+                size="sm"
+                footer={
+                    <>
+                        <button
+                            onClick={() => setIsBulkDeleteModalOpen(false)}
+                            className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 transition-colors"
+                        >
+                            CANCEL
+                        </button>
+                        <button
+                            onClick={confirmBulkDelete}
+                            className="px-6 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-100 hover:bg-rose-700 transition-all active:scale-95"
+                        >
+                            DELETE ({selectedItems.length}) PRODUCTS
+                        </button>
+                    </>
+                }
+            >
+                <div className="flex flex-col items-center text-center py-4">
+                    <div className="h-16 w-16 bg-rose-50 rounded-full flex items-center justify-center mb-4">
+                        <HiOutlineExclamationCircle className="h-10 w-10 text-rose-500" />
+                    </div>
+                    <h3 className="text-lg font-black text-slate-900 mb-2 uppercase tracking-tight">Delete Selected Products?</h3>
+                    <p className="text-sm text-slate-500 font-medium">
+                        Are you sure you want to delete <span className="font-bold text-slate-900">{selectedItems.length} selected product(s)</span>?
                         This action cannot be undone.
                     </p>
                 </div>
