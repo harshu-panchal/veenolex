@@ -1134,6 +1134,11 @@ const ProductDetailPage = () => {
 
                         {/* Desktop Only Rating, Category & Price Block */}
                         <div className="hidden md:flex items-center gap-3 mb-6 mt-4">
+                            {product.status === "coming_soon" && (
+                                <span className="bg-purple-100 border border-purple-200 text-purple-700 px-3.5 py-1.5 rounded-full text-xs font-black uppercase tracking-wider">
+                                    COMING SOON
+                                </span>
+                            )}
                             <span className="bg-brand-50 border border-[#e2e8f0] text-primary px-3.5 py-1.5 rounded-full text-xs font-black uppercase tracking-wider">
                                 {product.categoryId?.name || 'Essential'}
                             </span>
@@ -1180,7 +1185,14 @@ const ProductDetailPage = () => {
 
                     {/* Desktop Only / Inline Quantity Adjuster */}
                     <div className="hidden md:flex flex-col sm:flex-row items-center gap-6 p-6 md:p-8 bg-white/70 border border-slate-100/80 rounded-[2.5rem] shadow-[0_10px_30px_rgba(0,0,0,0.02)] backdrop-blur-sm">
-                        {quantity > 0 ? (
+                        {product.status === "coming_soon" ? (
+                            <button
+                                disabled
+                                className="h-16 w-full sm:w-64 bg-purple-100 text-purple-700 font-black rounded-2xl cursor-not-allowed uppercase tracking-wider text-base border border-purple-200"
+                            >
+                                COMING SOON
+                            </button>
+                        ) : quantity > 0 ? (
                             <div className="flex items-center bg-primary text-primary-foreground rounded-2xl h-16 w-full sm:w-auto px-2 shadow-xl shadow-brand-500/20 border border-brand-400/20">
                                 <button
                                     onClick={() => updateQuantity(product.id, -1, selectedVariant?.sku || defaultVariant?.sku || "")}
@@ -2021,7 +2033,14 @@ const ProductDetailPage = () => {
                     </div>
 
                     <div className="flex-1 max-w-[200px]">
-                        {quantity > 0 ? (
+                        {product.status === "coming_soon" ? (
+                            <button
+                                disabled
+                                className="w-full h-12 bg-purple-100 text-purple-700 font-black rounded-xl cursor-not-allowed uppercase tracking-wider text-xs border border-purple-200"
+                            >
+                                COMING SOON
+                            </button>
+                        ) : quantity > 0 ? (
                             <div className="flex items-center justify-between bg-primary text-primary-foreground rounded-xl h-12 px-2 shadow-md">
                                 <button
                                     onClick={() => updateQuantity(product.id, -1, selectedVariant?.sku || defaultVariant?.sku || "")}

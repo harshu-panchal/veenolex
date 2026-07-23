@@ -330,7 +330,7 @@ export const getProducts = async (req, res) => {
 
     let finalQuery = { ...query };
     if (enforceRadius) {
-      finalQuery.status = "active";
+      finalQuery.status = { $in: ["active", "coming_soon"] };
       finalQuery = { $and: [finalQuery, getApprovedOrLegacyFilter()] };
     } else {
       if (status && status !== "all") {

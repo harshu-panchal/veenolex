@@ -51,8 +51,8 @@ export class MongoSearchBackend extends SearchBackend {
       }
     }
     
-    // Status filter (always active)
-    mongoQuery.status = "active";
+    // Status filter (active or coming_soon)
+    mongoQuery.status = { $in: ["active", "coming_soon"] };
     Object.assign(mongoQuery, getApprovedOrLegacyFilter());
     
     // Category filter

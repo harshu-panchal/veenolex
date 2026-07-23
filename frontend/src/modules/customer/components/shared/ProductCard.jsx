@@ -272,8 +272,18 @@ const ProductCard = React.memo(
         onClick={handleProductClick}>
         {/* Top Image Section */}
         <div className="relative">
-          {/* Badge (Custom or Discount) */}
-          {displayBadgeText && (
+          {/* Badge (Coming Soon, Custom or Discount) */}
+          {product?.status === "coming_soon" ? (
+            <div
+              className={cn(
+                "absolute z-10 bg-purple-600 text-white font-[900] rounded-md shadow-sm uppercase tracking-wider flex items-center justify-center",
+                compact
+                  ? "top-2 left-2 px-1.5 py-0.5 text-[7px]"
+                  : "top-2 left-2 px-1.5 py-0.5 text-[7px] sm:top-3 sm:left-3 sm:px-2 sm:py-1 sm:text-[9px]",
+              )}>
+              COMING SOON
+            </div>
+          ) : displayBadgeText ? (
             <div
               className={cn(
                 "absolute z-10 bg-[#ff2c38] text-white font-[900] rounded-md shadow-sm uppercase tracking-wider flex items-center justify-center",
@@ -283,7 +293,7 @@ const ProductCard = React.memo(
               )}>
               {displayBadgeText}
             </div>
-          )}
+          ) : null}
 
           <button
             onClick={toggleWishlist}
@@ -459,7 +469,17 @@ const ProductCard = React.memo(
 
           {/* ADD Button / Quantity Selector */}
           <div className="mt-2 w-full flex">
-            {quantity > 0 ? (
+            {product?.status === "coming_soon" ? (
+              <button
+                disabled
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                className={cn(
+                  "w-full text-purple-700 bg-purple-100 border border-purple-200 rounded-lg font-black flex items-center justify-center uppercase tracking-wide cursor-not-allowed opacity-90",
+                  compact ? "h-7 sm:h-8 text-[9px] sm:text-[10px]" : "h-8 sm:h-9 text-[10px] sm:text-xs"
+                )}>
+                COMING SOON
+              </button>
+            ) : quantity > 0 ? (
               <div
                 style={{
                   backgroundColor: "#0f9ed5",
@@ -598,7 +618,14 @@ const ProductCard = React.memo(
 
           {/* ADD TO CART Button / Quantity Selector */}
           <div className="mt-3 w-full flex">
-            {quantity > 0 ? (
+            {product?.status === "coming_soon" ? (
+              <button
+                disabled
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                className="w-full h-10 text-purple-700 bg-purple-100 border border-purple-200 rounded-lg font-black flex items-center justify-center uppercase tracking-wider text-[11px] cursor-not-allowed opacity-90">
+                COMING SOON
+              </button>
+            ) : quantity > 0 ? (
               <div
                 style={{
                   backgroundColor: "#0f9ed5",

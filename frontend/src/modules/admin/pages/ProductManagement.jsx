@@ -536,6 +536,7 @@ const ProductManagement = () => {
     }), [productsList, total]);
 
     const StatusBadge = ({ status, stock }) => {
+        if (status === 'coming_soon') return <Badge variant="purple" className="text-[10px] px-1.5 py-0 bg-purple-100 text-purple-700 border-purple-200">Coming Soon</Badge>;
         if (stock === 0) return <Badge variant="error" className="text-[10px] px-1.5 py-0">Out of Stock</Badge>;
         if (stock <= 10) return <Badge variant="warning" className="text-[10px] px-1.5 py-0">Low Stock</Badge>;
         if (status === 'active') return <Badge variant="success" className="text-[10px] px-1.5 py-0">Active</Badge>;
@@ -981,6 +982,7 @@ const ProductManagement = () => {
                                             >
                                                 <option value="active">PUBLISHED</option>
                                                 <option value="inactive">DRAFT</option>
+                                                <option value="coming_soon">COMING SOON</option>
                                             </select>
                                         </div>
                                         <div className="mt-3 p-4 bg-brand-50 rounded-2xl border border-brand-100 flex items-center justify-between">

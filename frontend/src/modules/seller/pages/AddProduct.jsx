@@ -401,6 +401,7 @@ const AddProduct = () => {
                 className="w-full bg-transparent border-none text-xs font-bold text-brand-700 outline-none p-0 cursor-pointer focus:ring-0">
                 <option value="active">PUBLISHED</option>
                 <option value="inactive">DRAFT</option>
+                <option value="coming_soon">COMING SOON</option>
               </select>
             </div>
           </div>
