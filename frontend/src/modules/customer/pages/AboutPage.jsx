@@ -2,6 +2,8 @@ import React from 'react';
 import { ChevronLeft, Truck, Heart, ShoppingBag } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSettings } from '@core/context/SettingsContext';
+import sandeepRathore from '@/assets/sandeep-rathore.png';
+import rajeshPatel from '@/assets/rajesh-patel.jpg';
 
 const AboutPage = () => {
     const navigate = useNavigate();
@@ -39,7 +41,7 @@ const AboutPage = () => {
                             {/* Card 1 */}
                             <div className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-300 border border-slate-100 flex flex-col group cursor-pointer hover:border-pink-300">
                                 <div className="h-64 sm:h-72 overflow-hidden">
-                                    <img src="https://veenolex.com/wp-content/uploads/2025/10/Mr.-Rajesh-Patel-e1761927592265.jpeg" alt="Mr. Rajesh Patel" className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500" />
+                                    <img src={rajeshPatel} alt="Mr. Rajesh Patel" className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500" />
                                 </div>
                                 <div className="p-6 flex flex-col flex-grow text-center">
                                     <h3 className="text-2xl font-bold font-serif text-slate-800 mb-1" style={{fontFamily: "'Playfair Display', serif"}}>Mr. Rajesh Patel</h3>
@@ -51,7 +53,7 @@ const AboutPage = () => {
                             {/* Card 2 */}
                             <div className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-300 border border-slate-100 flex flex-col group cursor-pointer hover:border-pink-300">
                                 <div className="h-64 sm:h-72 overflow-hidden">
-                                    <img src="https://veenolex.com/wp-content/uploads/2025/10/Sandeep-Ji-Founder-sahab-e1761927492330.jpg" alt="Mr. Sandeep Rathore" className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500" />
+                                    <img src={sandeepRathore} alt="Mr. Sandeep Rathore" className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500" />
                                 </div>
                                 <div className="p-6 flex flex-col flex-grow text-center">
                                     <h3 className="text-2xl font-bold font-serif text-slate-800 mb-1" style={{fontFamily: "'Playfair Display', serif"}}>Mr. Sandeep Rathore</h3>
