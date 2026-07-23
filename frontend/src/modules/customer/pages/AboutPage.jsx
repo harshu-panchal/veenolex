@@ -10,8 +10,8 @@ const AboutPage = () => {
     const { settings } = useSettings();
     const appName = settings?.appName || 'App';
     return (
-        <div className="min-h-screen bg-slate-50 font-sans pb-24">
-            <div className="sticky top-0 z-30 bg-slate-50/95 backdrop-blur-sm px-4 pt-4 pb-3 border-b border-slate-200/60 mb-4 flex items-center gap-2">
+        <div className="min-h-screen bg-[#9ecae1] font-sans pb-24">
+            <div className="sticky top-0 z-30 bg-[#9ecae1]/95 backdrop-blur-sm px-4 pt-4 pb-3 border-b border-slate-200/60 mb-4 flex items-center gap-2">
                 <button
                     onClick={() => navigate(-1)}
                     className="w-10 h-10 flex items-center justify-center hover:bg-slate-200/70 rounded-full transition-colors -ml-1"
@@ -24,7 +24,7 @@ const AboutPage = () => {
             <div className="px-4 pt-6 max-w-6xl mx-auto space-y-12">
 
                 {/* Founders Section */}
-                <div className="bg-slate-50">
+                <div className="bg-[#9ecae1]">
                     <div className="grid lg:grid-cols-2 gap-10 items-start">
                         {/* Text Content */}
                         <div className="space-y-6 lg:pr-8">
