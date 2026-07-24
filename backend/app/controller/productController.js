@@ -77,6 +77,45 @@ function makeProductSku(name, index = 1) {
   return `${prefix}-${String(index).padStart(3, "0")}`;
 }
 
+async function getUniqueSlug(name, model, currentId = null) {
+  const baseSlug = slugify(name);
+  let slug = baseSlug;
+  let count = 1;
+  while (true) {
+    const query = { slug };
+    if (currentId) {
+      query._id = { $ne: currentId };
+    }
+    const exists = await model.findOne(query);
+    if (!exists) {
+      return slug;
+    }
+    slug = `${baseSlug}-${count}`;
+    count++;
+  }
+}
+
+async function getUniqueSku(name, model, currentId = null, index = 1) {
+  const prefix = String(name || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .slice(0, 5) || "item";
+  
+  let count = index;
+  while (true) {
+    const sku = `${prefix}-${String(count).padStart(3, "0")}`;
+    const query = { sku };
+    if (currentId) {
+      query._id = { $ne: currentId };
+    }
+    const exists = await model.findOne(query);
+    if (!exists) {
+      return sku;
+    }
+    count++;
+  }
+}
+
 function parseJsonIfString(value) {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
@@ -700,7 +739,7 @@ export const createProduct = async (req, res) => {
     
     // Auto-generate slug
     if (!productData.slug || productData.slug.trim() === "") {
-      productData.slug = slugify(productData.name);
+      productData.slug = await getUniqueSlug(productData.name, Product);
     } else {
       productData.slug = slugify(productData.slug);
     }
@@ -712,7 +751,7 @@ export const createProduct = async (req, res) => {
 
     // Auto-generate product SKU if missing
     if (!productData.sku || String(productData.sku).trim() === "") {
-      productData.sku = makeProductSku(productData.name, 1);
+      productData.sku = await getUniqueSku(productData.name, Product);
     }
 
     applyMediaFields(productData);
@@ -784,6 +823,16 @@ export const createProduct = async (req, res) => {
   } catch (error) {
     logger.error("Create Product Error", { scope: "createProduct", error });
     if (error.code === 11000) {
+      const keys = error.keyPattern ? Object.keys(error.keyPattern) : [];
+      if (keys.includes("slug")) {
+        return handleResponse(res, 400, "Slug already exists");
+      }
+      if (keys.includes("sku")) {
+        return handleResponse(res, 400, "SKU already exists");
+      }
+      if (keys.includes("adminProductId") && keys.includes("sellerId")) {
+        return handleResponse(res, 400, "You have already added this product to your catalog");
+      }
       return handleResponse(res, 400, "Slug or SKU already exists");
     }
     return handleResponse(res, 500, error.message);
@@ -894,7 +943,7 @@ export const updateProduct = async (req, res) => {
 
     if (productData.name) {
       if (!productData.slug || productData.slug.trim() === "") {
-        productData.slug = slugify(productData.name);
+        productData.slug = await getUniqueSlug(productData.name, Product, id);
       } else {
         productData.slug = slugify(productData.slug);
       }
@@ -909,7 +958,7 @@ export const updateProduct = async (req, res) => {
 
     const skuBaseName = productData.name || product.name;
     if (!productData.sku || String(productData.sku).trim() === "") {
-      productData.sku = product.sku || makeProductSku(skuBaseName, 1);
+      productData.sku = product.sku || (await getUniqueSku(skuBaseName, Product, id));
     }
 
     applyMediaFields(productData);
@@ -993,6 +1042,16 @@ export const updateProduct = async (req, res) => {
       return handleResponse(res, 400, `Invalid ${error.path}: ${error.value}`);
     }
     if (error.code === 11000) {
+      const keys = error.keyPattern ? Object.keys(error.keyPattern) : [];
+      if (keys.includes("slug")) {
+        return handleResponse(res, 400, "Slug already exists");
+      }
+      if (keys.includes("sku")) {
+        return handleResponse(res, 400, "SKU already exists");
+      }
+      if (keys.includes("adminProductId") && keys.includes("sellerId")) {
+        return handleResponse(res, 400, "You have already added this product to your catalog");
+      }
       return handleResponse(res, 400, "Slug or SKU already exists");
     }
     return handleResponse(res, 500, error.message);
