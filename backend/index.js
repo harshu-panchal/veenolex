@@ -61,6 +61,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 
+// Force nodemon restart to reload .env
 const PORT = parseInt(process.env.PORT || '7000', 10);
 const HEALTH_CHECK_PORT = parseInt(process.env.HEALTH_CHECK_PORT || '9090', 10);
 const NODE_ENV = process.env.NODE_ENV || "development";

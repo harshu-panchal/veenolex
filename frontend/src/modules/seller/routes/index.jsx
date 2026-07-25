@@ -22,7 +22,7 @@ const ProductManagement = React.lazy(
   () => import("../pages/ProductManagement"),
 );
 const StockManagement = React.lazy(() => import("../pages/StockManagement"));
-const AddProduct = React.lazy(() => import("../pages/AddProduct"));
+
 // Note: Orders is imported eagerly above to avoid dynamic import issues
 const OfflineSales = React.lazy(() => import("../pages/OfflineSales"));
 const Returns = React.lazy(() => import("../pages/Returns"));
@@ -88,7 +88,7 @@ const SellerRoutes = () => {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/products" element={<ProductManagement />} />
-        <Route path="/products/add" element={<AddProduct />} />
+
         <Route path="/inventory" element={<StockManagement />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/request-product" element={<RequestProduct />} />

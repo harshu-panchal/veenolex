@@ -23,10 +23,12 @@ import { toast } from "sonner";
 import { sellerApi } from "../services/sellerApi";
 import axiosInstance from "@core/api/axios";
 import QRScannerModal from "../../../components/QRScannerModal";
+import { useAuth } from "@core/context/AuthContext";
 
 
 const AddProduct = () => {
   const navigate = useNavigate();
+  const { role } = useAuth();
   const [modalTab, setModalTab] = useState("general");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -287,7 +289,11 @@ const AddProduct = () => {
       } else {
         toast.success(response?.data?.message || "Product saved successfully!");
       }
-      navigate("/seller/products");
+      if (role === "admin") {
+        navigate("/admin/products");
+      } else {
+        navigate("/seller/products");
+      }
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to save product");
     } finally {

@@ -45,8 +45,7 @@ router.get("/:id", optionalVerifyToken, getProductById);
 router.post(
     "/",
     verifyToken,
-    allowRoles("seller", "admin"),
-    requireApprovedSeller,
+    allowRoles("admin"),
     upload.any(),
     createProduct
 );

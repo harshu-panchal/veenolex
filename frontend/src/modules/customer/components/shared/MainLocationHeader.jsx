@@ -409,7 +409,7 @@ const MainLocationHeader = ({
             type="button"
             aria-label="Open cart"
             onClick={() => navigate("/checkout")}
-            className="absolute top-3 right-5 sm:top-4 sm:right-6 md:top-5 md:right-8 z-20 w-12 h-12 sm:w-14 sm:h-14 md:w-20 md:h-20 cursor-pointer transition-transform">
+            className="absolute top-3 right-5 sm:top-4 sm:right-6 md:top-5 md:right-8 z-30 w-12 h-12 sm:w-14 sm:h-14 md:w-20 md:h-20 cursor-pointer transition-transform">
             {cartAnimData ? (
               <Lottie
                 animationData={cartAnimData}
@@ -419,6 +419,26 @@ const MainLocationHeader = ({
             ) : (
               <div className="w-full h-full" />
             )}
+          </motion.button>
+
+          {/* Profile Icon for desktop/tablet view */}
+          <motion.button
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.95 }}
+            transition={{ duration: 0.5, delay: 0.15, ease: "easeOut" }}
+            style={{
+              opacity: cartOpacity,
+              scale: cartScale,
+            }}
+            type="button"
+            aria-label="Open profile"
+            onClick={() => navigate("/profile")}
+            className="hidden md:flex absolute top-5 right-32 z-30 w-20 h-20 items-center justify-center cursor-pointer transition-transform"
+          >
+            <div className="w-14 h-14 rounded-full bg-white/95 shadow-[0_8px_30px_rgba(0,0,0,0.08)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.15)] flex items-center justify-center text-slate-700 hover:text-primary transition-all duration-300 border border-slate-100">
+              <AccountCircleOutlinedIcon sx={{ fontSize: 32 }} />
+            </div>
           </motion.button>
 
           {/* Desktop/Tablet Header Layout (md and above) */}

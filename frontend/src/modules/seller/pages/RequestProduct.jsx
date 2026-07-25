@@ -359,9 +359,9 @@ export default function RequestProduct() {
                                 backgroundColor: "#f0f0f0",
                                 flexShrink: 0
                               }}>
-                                {product.images?.[0] ? (
+                                {product.mainImage || product.images?.[0] ? (
                                   <img
-                                    src={product.images[0]?.url || product.images[0]}
+                                    src={product.mainImage || product.images[0]?.url || product.images[0]}
                                     alt={product.name}
                                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                                   />
@@ -518,9 +518,9 @@ export default function RequestProduct() {
                   flexShrink: 0,
                   backgroundColor: "#f0f0f0"
                 }}>
-                  {item.images?.[0] ? (
+                  {item.mainImage || item.images?.[0] ? (
                     <img
-                      src={item.images[0]?.url || item.images[0]}
+                      src={item.mainImage || item.images[0]?.url || item.images[0]}
                       alt={item.name}
                       style={{
                         width: "100%",
