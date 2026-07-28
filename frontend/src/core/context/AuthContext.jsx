@@ -202,16 +202,10 @@ export const AuthProvider = ({ children }) => {
             [currentRole]: null,
         }));
 
-        // Clear the current user profile from memory
+        // Clear the current user profile from memory.
+        // SPA state updates (setUser and setAuthData) trigger ProtectedRoute navigation
+        // smoothly within the React application without causing hard browser/WebView reloads.
         setUser(null);
-
-        // Final fallback: redirect based on current path if needed
-        // (ProtectedRoute usually handles this, but explicit navigation is safer for some UI edge cases)
-        const path = window.location.pathname;
-        if (path.startsWith('/admin')) window.location.href = '/admin/auth';
-        else if (path.startsWith('/seller')) window.location.href = '/seller/auth';
-        else if (path.startsWith('/delivery')) window.location.href = '/delivery/auth';
-        else window.location.href = '/login';
     };
 
     const refreshUser = async () => {
