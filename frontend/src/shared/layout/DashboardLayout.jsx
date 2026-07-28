@@ -75,7 +75,6 @@ const DashboardLayout = ({ children, navItems, title }) => {
 
     const shownOrderIdsRef = useRef(new Set());
     const shownReturnOrderIdsRef = useRef(new Set());
-    const isFirstLoadRef = useRef(true);
     const newOrderAlertRef = useRef(null);
     const newReturnAlertRef = useRef(null);
     const fetchOrdersRef = useRef(null);
@@ -183,14 +182,6 @@ const DashboardLayout = ({ children, navItems, title }) => {
                 setSellerOrders(allOrders);
 
                 const pendingOrders = allOrders.filter(isSellerAlertEligible);
-
-                if (isFirstLoadRef.current) {
-                    const existingIds = new Set(pendingOrders.map((o) => o.orderId).filter(Boolean));
-                    shownOrderIdsRef.current = existingIds;
-                    isFirstLoadRef.current = false;
-                    setShownOrderIds(existingIds);
-                    return;
-                }
 
                 const newOrder = pendingOrders.find((o) => !shownOrderIdsRef.current.has(o.orderId));
                 if (!newOrder || newOrderAlertRef.current) return;
