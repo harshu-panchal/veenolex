@@ -1168,7 +1168,7 @@ const ProductManagement = () => {
                                                 <h4 className="text-sm font-bold text-slate-900">Product Variants</h4>
                                                 <button
                                                     type="button"
-                                                    onClick={() => setFormData({ ...formData, variants: [...formData.variants, { id: Date.now(), name: '', price: '', salePrice: '', stock: '', sku: '', barcode: '' }] })}
+                                                    onClick={() => setFormData({ ...formData, variants: [...formData.variants, { id: Date.now(), name: '', sellerPrice: '', price: '', salePrice: '', stock: '', sku: '', barcode: '' }] })}
                                                     className="rounded-xl bg-rose-50 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-rose-600 transition-colors hover:bg-rose-100"
                                                 >
                                                     + ADD
@@ -1177,7 +1177,7 @@ const ProductManagement = () => {
                                             <div className="space-y-3">
                                                 {formData.variants.map((v, i) => (
                                                     <div key={v.id} className="rounded-3xl border border-slate-100 bg-slate-50/80 p-4 shadow-sm">
-                                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+                                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
                                                             <div className="space-y-1.5">
                                                                 <label className="ml-1 text-[8px] font-bold uppercase tracking-widest text-slate-400">Variant Name</label>
                                                                 <input
@@ -1188,6 +1188,20 @@ const ProductManagement = () => {
                                                                         setFormData({ ...formData, variants: news });
                                                                     }}
                                                                     placeholder="500g"
+                                                                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none ring-0 focus:border-primary/40 focus:ring-2 focus:ring-primary/10"
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-1.5">
+                                                                <label className="ml-1 text-[8px] font-bold uppercase tracking-widest text-slate-400">Seller Price</label>
+                                                                <input
+                                                                    type="number"
+                                                                    value={v.sellerPrice ?? ''}
+                                                                    onChange={e => {
+                                                                        const news = [...formData.variants];
+                                                                        news[i].sellerPrice = e.target.value;
+                                                                        setFormData({ ...formData, variants: news });
+                                                                    }}
+                                                                    placeholder="400"
                                                                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none ring-0 focus:border-primary/40 focus:ring-2 focus:ring-primary/10"
                                                                 />
                                                             </div>

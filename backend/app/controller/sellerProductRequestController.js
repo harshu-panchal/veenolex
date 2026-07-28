@@ -61,15 +61,41 @@ export const createProductRequest = async (req, res) => {
         });
       }
 
-      const itemTotal = product.price * item.quantity;
+      let unitPrice = 0;
+      if (Array.isArray(product.variants) && product.variants.length > 0) {
+        let matchedVariant = product.variants[0];
+        if (item.variantSku) {
+          const found = product.variants.find(
+            (v) => String(v.sku || "").trim() === String(item.variantSku).trim()
+          );
+          if (found) matchedVariant = found;
+        }
+        const vSellerPrice = Number(matchedVariant?.sellerPrice);
+        if (!isNaN(vSellerPrice) && vSellerPrice > 0) {
+          unitPrice = vSellerPrice;
+        } else {
+          unitPrice = Number(matchedVariant?.salePrice || matchedVariant?.price) || 0;
+        }
+      }
+
+      if (!unitPrice || unitPrice <= 0) {
+        const pSellerPrice = Number(product.sellerPrice);
+        if (!isNaN(pSellerPrice) && pSellerPrice > 0) {
+          unitPrice = pSellerPrice;
+        } else {
+          unitPrice = Number(product.salePrice || product.price) || 0;
+        }
+      }
+
+      const itemTotal = unitPrice * item.quantity;
       subtotal += itemTotal;
 
       processedItems.push({
         productId: product._id,
         productName: product.name,
-        productImage: product.images?.[0] || "",
+        productImage: product.mainImage || product.images?.[0] || "",
         category: product.category || "",
-        pricePerUnit: product.price,
+        pricePerUnit: unitPrice,
         quantity: item.quantity,
         totalPrice: itemTotal
       });

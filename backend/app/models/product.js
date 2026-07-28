@@ -171,6 +171,7 @@ const productSchema = new mongoose.Schema(
         variants: [
             {
                 name: String,
+                sellerPrice: Number,
                 price: Number,
                 salePrice: Number,
                 stock: Number,

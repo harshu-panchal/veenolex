@@ -1702,6 +1702,7 @@ const ProductManagement = () => {
                                 {
                                   id: Date.now(),
                                   name: "",
+                                  sellerPrice: "",
                                   price: "",
                                   salePrice: "",
                                   stock: "",
@@ -1715,7 +1716,7 @@ const ProductManagement = () => {
                       </div>
                       <div className="space-y-3">
                         {formData.variants.map((v, i) => (
-                          <div key={v.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+                          <div key={v.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 grid grid-cols-1 md:grid-cols-7 gap-3 items-end">
                             <div className="md:col-span-2 space-y-1">
                               <label className="text-[8px] font-bold text-slate-600 uppercase tracking-widest ml-1">Variant Name</label>
                               <input value={v.name} onChange={e => {
@@ -1723,6 +1724,14 @@ const ProductManagement = () => {
                                 news[i].name = e.target.value;
                                 setFormData({ ...formData, variants: news });
                               }} placeholder="e.g. 1kg, 1 pack, 1 liter..." className="w-full bg-white px-3 py-2 rounded-xl text-xs ring-1 ring-slate-100 outline-none" />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[8px] font-bold text-slate-600 uppercase tracking-widest ml-1">Seller Price</label>
+                              <input type="number" value={v.sellerPrice ?? ""} onChange={e => {
+                                const news = [...formData.variants];
+                                news[i].sellerPrice = e.target.value;
+                                setFormData({ ...formData, variants: news });
+                              }} placeholder="Seller" className="w-full bg-white px-3 py-2 rounded-xl text-xs ring-1 ring-slate-100 outline-none" />
                             </div>
                             <div className="space-y-1">
                               <label className="text-[8px] font-bold text-slate-600 uppercase tracking-widest ml-1">Price</label>

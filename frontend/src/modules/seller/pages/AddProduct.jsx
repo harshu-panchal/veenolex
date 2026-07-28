@@ -75,6 +75,7 @@ const AddProduct = () => {
       {
         id: Date.now(),
         name: "",
+        sellerPrice: "",
         price: "",
         salePrice: "",
         stock: "",
@@ -598,6 +599,7 @@ const AddProduct = () => {
                         {
                           id: Date.now(),
                           name: "",
+                          sellerPrice: "",
                           price: "",
                           salePrice: "",
                           stock: "",
@@ -617,8 +619,8 @@ const AddProduct = () => {
                 {(formData.variants || []).map((variant, index) => (
                   <div
                     key={variant.id}
-                    className="p-4 bg-slate-50 rounded-2xl border border-slate-100 grid grid-cols-1 md:grid-cols-12 gap-4 items-end group relative">
-                    <div className="col-span-12 md:col-span-3 space-y-1">
+                    className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-wrap md:flex-nowrap gap-3 items-end group relative">
+                    <div className="flex-[2] min-w-[140px] space-y-1">
                       <label className="text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
                         Variant Name
                       </label>
@@ -641,7 +643,23 @@ const AddProduct = () => {
                         className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-primary/10"
                       />
                     </div>
-                    <div className="col-span-6 md:col-span-2 space-y-1">
+                    <div className="flex-1 min-w-[90px] space-y-1">
+                      <label className="text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
+                        Seller Price
+                      </label>
+                      <input
+                        type="number"
+                        value={variant.sellerPrice ?? ""}
+                        onChange={(e) => {
+                          const newVariants = [...formData.variants];
+                          newVariants[index].sellerPrice = e.target.value;
+                          setFormData({ ...formData, variants: newVariants });
+                        }}
+                        placeholder="400"
+                        className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-[90px] space-y-1">
                       <label className="text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
                         Price
                       </label>
@@ -657,7 +675,7 @@ const AddProduct = () => {
                         className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
                       />
                     </div>
-                    <div className="col-span-6 md:col-span-2 space-y-1">
+                    <div className="flex-1 min-w-[80px] space-y-1">
                       <label className="text-[8px] font-bold text-brand-500 uppercase tracking-widest ml-1">
                         Sale
                       </label>
@@ -673,7 +691,7 @@ const AddProduct = () => {
                         className="w-full px-3 py-2 bg-brand-50 ring-1 ring-brand-100 border-none rounded-xl text-xs font-bold text-brand-700 outline-none focus:ring-2 focus:ring-brand-200"
                       />
                     </div>
-                    <div className="col-span-6 md:col-span-2 space-y-1">
+                    <div className="flex-1 min-w-[70px] space-y-1">
                       <label className="text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
                         Stock
                       </label>
@@ -689,7 +707,7 @@ const AddProduct = () => {
                         className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
                       />
                     </div>
-                    <div className="col-span-5 md:col-span-2 space-y-1">
+                    <div className="flex-[1.5] min-w-[110px] space-y-1">
                       <label className="text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
                         Product Code
                       </label>
@@ -704,7 +722,7 @@ const AddProduct = () => {
                         className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-primary/10"
                       />
                     </div>
-                    <div className="col-span-1 flex justify-end pb-1">
+                    <div className="flex-none flex justify-end pb-1">
                       <button
                         onClick={() => {
                           if (formData.variants.length > 1) {

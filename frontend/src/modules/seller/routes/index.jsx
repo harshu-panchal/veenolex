@@ -45,7 +45,6 @@ const SellerPOSPaymentSuccess = React.lazy(() => import("../pages/pos/SellerPOSP
 const navItems = [
   { label: "Dashboard", path: "/seller", icon: HiOutlineSquares2X2, end: true },
   { label: "Products", path: "/seller/products", icon: HiOutlineCube },
-  { label: "Stock", path: "/seller/inventory", icon: HiOutlineArchiveBox },
   { label: "Orders", path: "/seller/orders", icon: HiOutlineTruck },
   { label: "Request Product", path: "/seller/request-product", icon: HiOutlineShoppingBag },
   { label: "Requested Orders", path: "/seller/requested-orders", icon: HiOutlineShoppingBag },

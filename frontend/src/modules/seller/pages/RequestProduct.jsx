@@ -72,12 +72,32 @@ export default function RequestProduct() {
 
   const getCartQuantity = (productId) => cart[productId] || 0;
 
+  const getEffectiveSellerPrice = (p) => {
+    if (!p) return 0;
+    if (Array.isArray(p.variants) && p.variants.length > 0) {
+      const vSellerPrice = Number(p.variants[0]?.sellerPrice);
+      if (!isNaN(vSellerPrice) && vSellerPrice > 0) return vSellerPrice;
+    }
+    const pSellerPrice = Number(p.sellerPrice);
+    if (!isNaN(pSellerPrice) && pSellerPrice > 0) return pSellerPrice;
+
+    if (Array.isArray(p.variants) && p.variants.length > 0) {
+      const vPrice = Number(p.variants[0]?.salePrice || p.variants[0]?.price);
+      if (!isNaN(vPrice) && vPrice > 0) return vPrice;
+    }
+    return Number(p.salePrice || p.price) || 0;
+  };
+
   const getCartItems = () =>
-    products.filter((p) => cart[p._id] > 0).map((p) => ({
-      ...p,
-      selectedQuantity: cart[p._id],
-      itemTotal: p.price * cart[p._id]
-    }));
+    products.filter((p) => cart[p._id] > 0).map((p) => {
+      const price = getEffectiveSellerPrice(p);
+      return {
+        ...p,
+        effectivePrice: price,
+        selectedQuantity: cart[p._id],
+        itemTotal: price * cart[p._id]
+      };
+    });
 
   const cartTotal = getCartItems().reduce(
     (sum, item) => sum + item.itemTotal, 0
@@ -398,7 +418,7 @@ export default function RequestProduct() {
                           </td>
                           <td style={{ padding: "16px" }}>
                             <span style={{ fontSize: "15px", fontWeight: "700", color: "#27AE60" }}>
-                              {formatPrice(product.price)}
+                              {formatPrice(getEffectiveSellerPrice(product))}
                             </span>
                           </td>
                           <td style={{ padding: "16px", textAlign: "center" }}>
@@ -470,7 +490,7 @@ export default function RequestProduct() {
                           </td>
                           <td style={{ padding: "16px", textAlign: "right" }}>
                             <span style={{ fontSize: "15px", fontWeight: "700", color: "#333" }}>
-                              {formatPrice(product.price * qty)}
+                              {formatPrice(getEffectiveSellerPrice(product) * qty)}
                             </span>
                           </td>
                         </tr>
@@ -557,7 +577,7 @@ export default function RequestProduct() {
                     color: "#999",
                     margin: "0"
                   }}>
-                    {formatPrice(item.price)} × {item.selectedQuantity} units
+                    {formatPrice(item.effectivePrice || getEffectiveSellerPrice(item))} × {item.selectedQuantity} units
                   </p>
                 </div>
 
