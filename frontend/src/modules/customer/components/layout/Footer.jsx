@@ -110,17 +110,17 @@ const Footer = () => {
                             <li className="flex items-start gap-3 md:gap-5 group">
                                 <div className="hidden md:flex h-12 w-12 rounded-xl bg-slate-200/60 items-center justify-center text-slate-800 transition-all shrink-0"><MapPin size={22} /></div>
                                 <MapPin className="mt-1 shrink-0 md:hidden" size={18} style={{ color: primaryColor }} />
-                                <span className="md:text-base text-slate-800 md:pt-1 font-medium">{settings?.address || '—'}</span>
+                                <span className="md:text-base text-slate-800 md:pt-1 font-medium">{settings?.address || 'RIICO Industrial Area, Sagwara, Dungarpur, Rajasthan - 314025'}</span>
                             </li>
                             <li className="flex items-center gap-3 md:gap-5 group">
                                 <div className="hidden md:flex h-12 w-12 rounded-xl bg-slate-200/60 items-center justify-center text-slate-800 transition-all shrink-0"><Phone size={22} /></div>
                                 <Phone className="shrink-0 md:hidden" size={18} style={{ color: primaryColor }} />
-                                <span className="md:text-base text-slate-800 font-medium">{settings?.supportPhone || '—'}</span>
+                                <span className="md:text-base text-slate-800 font-medium">{settings?.supportPhone || '9351478056 - 9799911623'}</span>
                             </li>
                             <li className="flex items-center gap-3 md:gap-5 group">
                                 <div className="hidden md:flex h-12 w-12 rounded-xl bg-slate-200/60 items-center justify-center text-slate-800 transition-all shrink-0"><Mail size={22} /></div>
                                 <Mail className="shrink-0 md:hidden" size={18} style={{ color: primaryColor }} />
-                                <span className="md:text-base text-slate-800 font-medium">{settings?.supportEmail || '—'}</span>
+                                <span className="md:text-base text-slate-800 font-medium">{settings?.supportEmail || 'veenolexharbal@gmail.com'}</span>
                             </li>
                         </ul>
                     </div>

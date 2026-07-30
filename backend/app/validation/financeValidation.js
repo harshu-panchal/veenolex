@@ -17,7 +17,7 @@ const orderItemSchema = Joi.object({
   quantity: Joi.number().integer().min(1).required(),
   price: Joi.number().min(0).optional(),
   image: Joi.string().allow("", null),
-}).or("product", "productId", "id");
+}).or("product", "productId", "id").unknown();
 
 export const checkoutPreviewSchema = Joi.object({
   items: Joi.array().items(orderItemSchema).min(1).required(),
@@ -29,27 +29,17 @@ export const checkoutPreviewSchema = Joi.object({
     phone: Joi.string().allow("", null),
     landmark: Joi.string().allow("", null),
     location: locationSchema.optional(),
-  }).required(),
+  }).unknown().required(),
   distanceKm: Joi.number().min(0).optional(),
   discountTotal: Joi.number().min(0).default(0),
   taxTotal: Joi.number().min(0).default(0),
   tipAmount: Joi.number().min(0).default(0),
-  // Audit Phase 4 (C-1): accept optional walletAmount on the preview so
-  // the frontend can request a post-wallet `payableAmount` without doing
-  // client-side math. Backward-compatible — clients that don't send it
-  // get the pre-wallet `grandTotal` exactly as before.
   walletAmount: Joi.number().min(0).default(0),
   paymentMode: Joi.string().valid("ONLINE", "COD").default("COD"),
   timeSlot: Joi.string().allow("", null),
   couponId: Joi.string().allow("", null).optional(),
-  // Audit Phase 5 (C-2 + H-7): accept the coupon CODE as an alternative
-  // to couponId so the server can re-validate the coupon end-to-end
-  // even when the frontend doesn't yet know the ObjectId (e.g. the
-  // user typed a code instead of selecting from a list). The pricing
-  // snapshot ignores client-supplied `discountTotal` when either
-  // identifier is provided and SERVER_SIDE_COUPON_ENGINE is on.
   couponCode: Joi.string().trim().allow("", null).optional(),
-});
+}).unknown();
 
 export const createFinanceOrderSchema = checkoutPreviewSchema.keys({
   items: Joi.array().items(orderItemSchema).min(1).optional(),

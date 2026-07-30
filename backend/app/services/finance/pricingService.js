@@ -1,4 +1,5 @@
 import Product from "../../models/product.js";
+import Seller from "../../models/seller.js";
 import Category from "../../models/category.js";
 import {
   PRODUCT_APPROVAL_STATUS,
@@ -308,6 +309,19 @@ export function calculateRiderPayout(distanceKm, deliverySettings) {
   };
 }
 
+let _cachedDefaultSellerId = null;
+async function getDefaultSellerId(session = null) {
+  if (_cachedDefaultSellerId) return _cachedDefaultSellerId;
+  const sellerQuery = Seller.findOne({}).select("_id").sort({ createdAt: 1 }).lean();
+  if (session) sellerQuery.session(session);
+  const seller = await sellerQuery;
+  if (seller?._id) {
+    _cachedDefaultSellerId = String(seller._id);
+    return _cachedDefaultSellerId;
+  }
+  return "";
+}
+
 export async function hydrateOrderItems(
   orderItems = [],
   { session = null, enforceServerPricing = true } = {},
@@ -321,12 +335,13 @@ export async function hydrateOrderItems(
     .filter(Boolean);
 
   const productQuery = Product.find({ _id: { $in: productIds } })
-    .select("_id name salePrice price mainImage headerId sellerId status approvalStatus variants zoneOutDeliveryEnabled zoneOutPrice")
+    .select("_id name salePrice price mainImage headerId sellerId seller status approvalStatus variants zoneOutDeliveryEnabled zoneOutPrice")
     .lean();
   if (session) productQuery.session(session);
   const products = await productQuery;
 
   const productMap = new Map(products.map((product) => [String(product._id), product]));
+  const defaultSellerId = await getDefaultSellerId(session);
 
   return orderItems.map((item) => {
     const productId = String(item.product || item.productId || item._id || item.id);
@@ -366,6 +381,12 @@ export async function hydrateOrderItems(
       ? serverUnitPrice
       : normalizeLinePrice(item.price) || serverUnitPrice;
 
+    const resolvedSellerId = product.sellerId
+      ? String(product.sellerId)
+      : product.seller
+        ? String(product.seller)
+        : defaultSellerId;
+
     return {
       productId,
       productName: item.name || product.name,
@@ -373,7 +394,7 @@ export async function hydrateOrderItems(
       price: inferredUnitPrice,
       image: item.image || product.mainImage,
       headerCategoryId: product.headerId ? String(product.headerId) : "",
-      sellerId: product.sellerId ? String(product.sellerId) : "",
+      sellerId: resolvedSellerId,
       variantSku: rawVariantSku || "",
       variantName: resolvedVariant ? String(resolvedVariant?.name || "").trim() : "",
       zoneOutDeliveryEnabled: !!product.zoneOutDeliveryEnabled,

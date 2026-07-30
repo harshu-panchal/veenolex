@@ -342,10 +342,20 @@ const OrderDetails = () => {
     }
 
     if (publicStatusStage === 3) {
+      const recordedDistanceKm =
+        order?.distanceSnapshot?.distanceKmRounded ??
+        order?.distanceSnapshot?.distanceKmActual ??
+        order?.paymentBreakdown?.distanceKmRounded ??
+        order?.paymentBreakdown?.distanceKmActual ??
+        order?.distanceKm ??
+        null;
+      const formattedRecordedDistance =
+        recordedDistanceKm != null ? `${recordedDistanceKm} km` : "—";
+
       return {
         arrivalTimeText: "Arrived",
         arrivingInText: isReturn ? "Return Complete" : "Delivered",
-        totalDistanceText: "0 km",
+        totalDistanceText: formattedRecordedDistance,
       };
     }
 
@@ -400,6 +410,77 @@ const OrderDetails = () => {
     routeStats,
     step,
   ]);
+
+  const totalBill =
+    order?.pricing?.total ??
+    order?.pricing?.grandTotal ??
+    order?.paymentBreakdown?.grandTotal ??
+    order?.total ??
+    order?.amount ??
+    0;
+
+  const walletAmountUsed =
+    order?.pricing?.walletAmount ??
+    order?.paymentBreakdown?.walletAmount ??
+    order?.walletAmount ??
+    0;
+
+  const collectCashAmount = Math.max(0, totalBill - walletAmountUsed);
+
+  const customerName =
+    order?.address?.name ||
+    order?.customerName ||
+    order?.customer?.name ||
+    "Customer";
+
+  const customerPhone =
+    order?.address?.phone ||
+    order?.customerPhone ||
+    order?.customer?.phone ||
+    "";
+
+  const customerAddressText =
+    order?.address?.address ||
+    order?.address?.street ||
+    order?.address?.completeAddress ||
+    "Address not available";
+
+  const customerCityText =
+    order?.address?.city ||
+    order?.address?.pincode ||
+    "";
+
+  const isCodPayment =
+    order?.payment?.method?.toLowerCase() === "cash" ||
+    order?.payment?.method?.toLowerCase() === "cod" ||
+    order?.paymentMode?.toLowerCase() === "cod";
+
+  const isPaid =
+    order?.paymentStatus === "PAID" ||
+    order?.payment?.status === "completed" ||
+    order?.payment?.status === "PAID" ||
+    order?.financeFlags?.onlinePaymentCaptured;
+
+  const paymentBadgeText = isPaid
+    ? "PAID"
+    : isCodPayment
+    ? "COD"
+    : (order?.payment?.method || order?.paymentMode || order?.paymentStatus || "PENDING").toUpperCase();
+
+  const recordedDistanceKm =
+    order?.distanceSnapshot?.distanceKmRounded ??
+    order?.distanceSnapshot?.distanceKmActual ??
+    order?.paymentBreakdown?.distanceKmRounded ??
+    order?.paymentBreakdown?.distanceKmActual ??
+    order?.distanceKm ??
+    null;
+
+  const distanceText =
+    recordedDistanceKm != null
+      ? `${recordedDistanceKm} km`
+      : summary?.totalDistanceText && summary.totalDistanceText !== "—"
+      ? summary.totalDistanceText
+      : "";
 
   const handleNextStep = async () => {
     const currentStep = steps[step - 1];
@@ -652,15 +733,11 @@ const OrderDetails = () => {
                   "Delivered"
             )}
           </span>
-          {(order.payment?.method?.toLowerCase() === "cash" ||
-            order.payment?.method?.toLowerCase() === "cod") &&
-            !isReturn &&
-            !isShiprocket &&
-            step < 4 && (
-              <span className={`mt-1 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm animate-pulse bg-orange-600`}>
-                COLLECT CASH: ₹{Math.max(0, (order.pricing?.total || 0) - (order.pricing?.walletAmount || 0))}
-              </span>
-            )}
+          {isCodPayment && !isReturn && !isShiprocket && step < 4 && (
+            <span className={`mt-1 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-sm animate-pulse bg-orange-600`}>
+              COLLECT CASH: ₹{collectCashAmount}
+            </span>
+          )}
         </div>
       </div>
 
@@ -920,13 +997,13 @@ const OrderDetails = () => {
                       </p>
                     </div>
                   </div>
-                  {(isReturn ? order.address?.phone : order.seller?.phone) && (
+                  {(isReturn ? customerPhone : order.seller?.phone) && (
                     <Button
                       variant="outline"
                       size="icon"
                       className="h-9 w-9"
                       onClick={() =>
-                        (window.location.href = `tel:${isReturn ? order.address?.phone : order.seller?.phone}`)
+                        (window.location.href = `tel:${isReturn ? customerPhone : order.seller?.phone}`)
                       }
                     >
                       <Phone size={18} />
@@ -936,12 +1013,12 @@ const OrderDetails = () => {
                 <div className="p-4">
                   <h3 className="font-bold text-lg mb-1">
                     {isReturn
-                      ? order.address?.name || "Customer"
+                      ? customerName
                       : order.seller?.shopName || "Seller Store"}
                   </h3>
                   <p className="text-gray-500 text-sm mb-4 leading-relaxed">
                     {isReturn
-                      ? order.address?.address || "Address not available"
+                      ? customerAddressText
                       : order.seller?.address || "Address not available"}
                   </p>
                   <Button onClick={handleNavigate} className="w-full" variant="outline">
@@ -979,15 +1056,20 @@ const OrderDetails = () => {
                       </h2>
                       <div className="flex items-center space-x-2 mt-0.5">
                         <p
-                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${order.payment?.method?.toLowerCase() === "cash" ||
-                              order.payment?.method?.toLowerCase() === "cod"
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                            isCodPayment
                               ? "bg-orange-50 text-orange-700 border-orange-200"
-                              : "bg-brand-50 text-brand-700 border-brand-200"
-                            }`}
+                              : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          }`}
                         >
-                          {order.payment?.method?.toUpperCase() || "PENDING"}
+                          {paymentBadgeText}
                         </p>
-                        <p className="text-[10px] text-gray-400 font-medium">Bill: Rs.{order.pricing?.total}</p>
+                        <p className="text-[10px] text-slate-600 font-bold">Bill: ₹{totalBill}</p>
+                        {distanceText && (
+                          <span className="text-[10px] text-slate-600 bg-slate-100 font-semibold px-2 py-0.5 rounded-full border border-slate-200">
+                            📍 {distanceText}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -995,13 +1077,13 @@ const OrderDetails = () => {
                     <Button variant="outline" size="icon" className="h-9 w-9">
                       <MessageSquare size={18} />
                     </Button>
-                    {(isReturn ? order.seller?.phone : order.address?.phone) && (
+                    {(isReturn ? order.seller?.phone : customerPhone) && (
                       <Button
                         variant="outline"
                         size="icon"
                         className="h-9 w-9"
                         onClick={() =>
-                          (window.location.href = `tel:${isReturn ? order.seller?.phone : order.address?.phone}`)
+                          (window.location.href = `tel:${isReturn ? order.seller?.phone : customerPhone}`)
                         }
                       >
                         <Phone size={18} />
@@ -1013,15 +1095,17 @@ const OrderDetails = () => {
                   <h3 className="font-bold text-lg mb-1">
                     {isReturn
                       ? order.seller?.shopName || "Seller Store"
-                      : order.address?.name || "Customer"}
+                      : customerName}
                   </h3>
-                  <p className="text-gray-500 text-sm mb-1">
-                    {isReturn ? order.seller?.address : order.address?.address}
+                  <p className="text-gray-500 text-sm mb-1 leading-relaxed">
+                    {isReturn ? order.seller?.address : customerAddressText}
                   </p>
-                  <p className="text-gray-500 text-sm mb-4">
-                    {isReturn ? order.seller?.address : order.address?.city}
-                  </p>
-                  <Button onClick={handleNavigate} className="w-full bg-black  hover:bg-brand-700 text-primary-foreground border-none">
+                  {customerCityText && !isReturn && (
+                    <p className="text-gray-500 text-sm mb-4 font-medium">
+                      {customerCityText}
+                    </p>
+                  )}
+                  <Button onClick={handleNavigate} className="w-full bg-black hover:bg-brand-700 text-primary-foreground border-none">
                     <Navigation size={18} className="mr-2" />{" "}
                     {isReturn ? "Navigate to Seller" : "Navigate to Customer"}
                   </Button>
@@ -1043,7 +1127,7 @@ const OrderDetails = () => {
               <div>
                 <span>Order Items</span>
                 <span className="ml-2 text-xs font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                  {order.items?.length || 0} items
+                  {(isReturn ? order.returnItems : order.items)?.length || 0} items
                 </span>
               </div>
             </div>
@@ -1062,20 +1146,25 @@ const OrderDetails = () => {
                 className="overflow-hidden"
               >
                 <div className="p-4 border-t border-gray-100 bg-gray-50/50 space-y-3">
-                  {(isReturn ? order.returnItems : order.items)?.map((item, i) => (
-                    <div key={i} className="flex justify-between items-center text-sm">
-                      <div className="flex items-center">
-                        <span className="font-bold text-gray-500 mr-3 text-xs w-6 bg-white border border-gray-200 text-center rounded py-0.5">
-                          x{item.quantity}
-                        </span>
-                        <span className="text-gray-800 font-medium">{item.name}</span>
+                  {(isReturn ? order.returnItems : order.items)?.map((item, i) => {
+                    const itemName = item.name || item.productName || item.product?.name || "Item";
+                    const itemQty = item.quantity || 1;
+                    const itemUnitPrice = item.price || item.unitPrice || item.product?.price || 0;
+                    return (
+                      <div key={i} className="flex justify-between items-center text-sm">
+                        <div className="flex items-center">
+                          <span className="font-bold text-gray-500 mr-3 text-xs w-6 bg-white border border-gray-200 text-center rounded py-0.5">
+                            x{itemQty}
+                          </span>
+                          <span className="text-gray-800 font-medium">{itemName}</span>
+                        </div>
+                        <span className="font-bold text-gray-600">₹{itemUnitPrice * itemQty}</span>
                       </div>
-                      <span className="font-bold text-gray-600">Rs.{item.price * item.quantity}</span>
-                    </div>
-                  ))}
+                    );
+                  })}
                   <div className="pt-3 mt-2 border-t border-gray-200 flex justify-between items-center">
-                    <span className="text-gray-500 text-sm">Total Bill</span>
-                    <span className="text-lg font-bold text-gray-900">Rs.{order.pricing?.total}</span>
+                    <span className="text-gray-500 text-sm font-semibold">Total Bill</span>
+                    <span className="text-lg font-bold text-gray-900">₹{totalBill}</span>
                   </div>
                 </div>
               </motion.div>

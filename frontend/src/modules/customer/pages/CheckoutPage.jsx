@@ -83,7 +83,7 @@ const CheckoutPage = () => {
     removeFromCart,
     clearCart,
   } = useCart();
-  const hasOutOfStockItems = cart.some(item => Number(item.stock || 0) <= 0);
+  const hasOutOfStockItems = cart.some((item) => item.stock !== undefined && item.stock !== null && Number(item.stock) <= 0);
   const { wishlist, addToWishlist, fetchFullWishlist, isFullDataFetched } =
     useWishlist();
   const { showToast } = useToast();
@@ -674,7 +674,7 @@ const CheckoutPage = () => {
 
     const buildPreviewPayload = () => ({
       items: cart
-        .filter((item) => Number(item.stock || 0) > 0)
+        .filter((item) => item.stock === undefined || item.stock === null || Number(item.stock) > 0)
         .map((item) => ({
           product: item.id || item._id,
           name: item.name,
@@ -695,8 +695,13 @@ const CheckoutPage = () => {
 
     const fetchPreview = async () => {
       try {
+        const payload = buildPreviewPayload();
+        if (!payload.items || payload.items.length === 0) {
+          setPricingPreview(null);
+          return;
+        }
         setIsPreviewLoading(true);
-        const res = await customerApi.checkoutPreview(buildPreviewPayload());
+        const res = await customerApi.checkoutPreview(payload);
         if (res.data?.success) {
           setPricingPreview(res.data.result?.breakdown ?? null);
         }
