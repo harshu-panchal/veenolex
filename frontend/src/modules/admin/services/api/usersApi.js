@@ -19,6 +19,8 @@ export const adminUsersApi = {
     getPendingSellers: (params) =>
         axiosInstance.get('/admin/sellers/pending', { params }),
     approveSeller: (id) => axiosInstance.patch(`/admin/sellers/approve/${id}`),
+    updateSellerStatus: (id, isActive) =>
+        axiosInstance.patch(`/admin/sellers/${id}/status`, { isActive }),
     rejectSeller: (id, data) =>
         axiosInstance.delete(`/admin/sellers/reject/${id}`, { data }),
 };

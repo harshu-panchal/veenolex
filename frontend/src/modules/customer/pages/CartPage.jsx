@@ -68,7 +68,7 @@ const CartPage = () => {
                                                     src={applyCloudinaryTransform(item.image)}
                                                     alt={item.name}
                                                     loading="lazy"
-                                                    className="h-full w-full object-cover"
+                                                    className="h-full w-full object-contain p-1.5"
                                                 />
                                             </div>
 

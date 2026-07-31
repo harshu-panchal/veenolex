@@ -20,6 +20,7 @@ import {
     getActiveSellers,
     getPendingSellers,
     approveSellerApplication,
+    updateSellerStatus,
     rejectSellerApplication,
     getSellerWithdrawals,
     getDeliveryWithdrawals,
@@ -153,6 +154,7 @@ router.get("/sellers/locations", verifyToken, allowRoles("admin"), getSellerLoca
 router.get("/sellers/active", verifyToken, allowRoles("admin"), getActiveSellers);
 router.get("/sellers/pending", verifyToken, allowRoles("admin"), getPendingSellers);
 router.patch("/sellers/approve/:id", verifyToken, allowRoles("admin"), approveSellerApplication);
+router.patch("/sellers/:id/status", verifyToken, allowRoles("admin"), updateSellerStatus);
 router.delete("/sellers/reject/:id", verifyToken, allowRoles("admin"), rejectSellerApplication);
 
 router.get(

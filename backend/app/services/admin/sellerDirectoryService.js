@@ -272,7 +272,7 @@ export async function getActiveSellersData({
   limit,
   skip,
 }) {
-  const baseQuery = { isVerified: true, isActive: true };
+  const baseQuery = { isVerified: true };
   const filters = [baseQuery];
 
   if (category && category !== "all") {

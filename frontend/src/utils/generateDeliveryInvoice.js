@@ -21,6 +21,39 @@ const loadImageAsBase64 = (url) => {
     });
 };
 
+// Helper: Get tracking number dynamically or generate one deterministically
+const getTrackingNumber = (order) => {
+    if (order.shipRocketDetails?.trackingNumber && 
+        order.shipRocketDetails.trackingNumber !== "Assigning...") {
+        return order.shipRocketDetails.trackingNumber;
+    }
+    
+    let hash = 0;
+    const str = order.id || '';
+    for (let i = 0; i < str.length; i++) {
+        hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+    }
+    const numericHash = (hash % 9000000000) + 1000000000;
+    return String(numericHash);
+};
+
+// Helper: Get a dynamic routing code based on destination pincode and order ID hash
+const getRoutingCode = (order) => {
+    const address = order.address || '';
+    const pinMatch = address.match(/\b\d{6}\b/);
+    const pin = pinMatch ? pinMatch[0] : '';
+    
+    let hash = 0;
+    const str = order.id || '';
+    for (let i = 0; i < str.length; i++) {
+        hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+    }
+    const regions = ["MUM", "DEL", "BLR", "HYD", "KOL", "PNQ", "AHD", "MAA", "BZH", "MYU"];
+    const region = regions[hash % regions.length];
+    const pinPart = pin ? pin.substring(0, 3) : 'MYU';
+    return `Routing Code: WB/${region}/${pinPart}`;
+};
+
 export const generateDeliveryInvoice = async (order) => {
     // Load logo first
     let logoBase64;
@@ -131,7 +164,7 @@ export const generateDeliveryInvoice = async (order) => {
     // Generate Courier barcode
     const canvas = document.createElement("canvas");
     try {
-        JsBarcode(canvas, "3259816936", { 
+        JsBarcode(canvas, getTrackingNumber(order), { 
             format: "CODE128",
             displayValue: true,
             fontSize: 16,
@@ -145,7 +178,7 @@ export const generateDeliveryInvoice = async (order) => {
     }
     
     doc.setFontSize(8);
-    doc.text("Routing Code: WB/BZH/MYU", pageWidth - margin - 2, mid1Y + 23, { align: "right" });
+    doc.text(getRoutingCode(order), pageWidth - margin - 2, mid1Y + 23, { align: "right" });
 
     // Middle section 2: Shipped By & Order Info
     const mid2Height = 35;

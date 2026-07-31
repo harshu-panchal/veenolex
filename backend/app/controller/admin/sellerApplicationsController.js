@@ -1,5 +1,6 @@
 import handleResponse from "../../utils/helper.js";
 import getPagination from "../../utils/pagination.js";
+import Seller from "../../models/seller.js";
 import {
   approveSellerApplicationById,
   getPendingSellerApplications,
@@ -61,6 +62,32 @@ export const rejectSellerApplication = async (req, res) => {
     }
 
     return handleResponse(res, 200, "Seller application rejected", seller);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+export const updateSellerStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body || {};
+
+    const seller = await Seller.findByIdAndUpdate(
+      id,
+      { isActive: Boolean(isActive) },
+      { new: true }
+    ).select("-password");
+
+    if (!seller) {
+      return handleResponse(res, 404, "Seller not found");
+    }
+
+    return handleResponse(
+      res,
+      200,
+      `Seller status updated to ${seller.isActive ? "Active" : "Inactive"}`,
+      seller
+    );
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }

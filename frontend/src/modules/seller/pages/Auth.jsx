@@ -968,6 +968,7 @@ const Auth = () => {
             formData.lat ? { lat: formData.lat, lng: formData.lng } : null
           }
           initialRadius={formData.radius}
+          maxRadius={60}
         />
       )}
     </div>

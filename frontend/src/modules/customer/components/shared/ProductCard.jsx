@@ -346,7 +346,7 @@ const ProductCard = React.memo(
                 exit={{ x: -30, opacity: 0 }}
                 transition={{ duration: 0.3, ease: "easeInOut" }}
                 loading="lazy"
-                className="w-full h-full object-cover mix-blend-multiply absolute inset-0"
+                className="w-full h-full object-contain p-2.5 mix-blend-multiply absolute inset-0"
               />
             </AnimatePresence>
 

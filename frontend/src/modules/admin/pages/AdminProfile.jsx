@@ -372,6 +372,7 @@ const AdminProfile = () => {
                     onConfirm={handleLocationSelect}
                     initialLocation={profile.lat ? { lat: profile.lat, lng: profile.lng } : null}
                     initialRadius={profile.radius}
+                    maxRadius={60}
                 />
             )}
         </div>

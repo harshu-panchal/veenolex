@@ -30,7 +30,7 @@ const CheckoutCartSummary = React.memo(function CheckoutCartSummary({
               src={applyCloudinaryTransform(item.image)}
               alt={item.name}
               loading="lazy"
-              className="h-full w-full object-cover"
+              className="h-full w-full object-contain p-1"
             />
           </div>
           <div className="flex-1 min-w-0">

@@ -114,6 +114,28 @@ const ActiveSellers = () => {
   const [lastSyncAt, setLastSyncAt] = useState(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [selectedSeller, setSelectedSeller] = useState(null);
+  const [updatingStatusId, setUpdatingStatusId] = useState(null);
+
+  const handleToggleStatus = async (sellerId, newStatus) => {
+    try {
+      setUpdatingStatusId(sellerId);
+      await adminApi.updateSellerStatus(sellerId, newStatus);
+      toast.success(`Seller status updated to ${newStatus ? "ACTIVE" : "INACTIVE"}`);
+
+      setSellers((prev) =>
+        prev.map((s) => (s.id === sellerId ? { ...s, isActive: newStatus } : s))
+      );
+
+      if (selectedSeller && (selectedSeller.id === sellerId || selectedSeller._id === sellerId)) {
+        setSelectedSeller((prev) => ({ ...prev, isActive: newStatus }));
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.message || "Failed to update status";
+      toast.error(msg);
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -452,12 +474,22 @@ const ActiveSellers = () => {
 
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-2">
-                        <Badge
-                          variant="success"
-                          className="w-fit text-[8px] font-black uppercase tracking-widest"
+                        <select
+                          value={seller.isActive ? "active" : "inactive"}
+                          disabled={updatingStatusId === seller.id}
+                          onChange={(e) =>
+                            handleToggleStatus(seller.id, e.target.value === "active")
+                          }
+                          className={cn(
+                            "text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border outline-none cursor-pointer transition-all w-fit shadow-2xs font-sans",
+                            seller.isActive
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-300 focus:ring-2 focus:ring-emerald-400"
+                              : "bg-rose-50 text-rose-700 border-rose-300 focus:ring-2 focus:ring-rose-400"
+                          )}
                         >
-                          Active
-                        </Badge>
+                          <option value="active" className="bg-white text-emerald-700 font-bold">ACTIVE</option>
+                          <option value="inactive" className="bg-white text-rose-700 font-bold">INACTIVE</option>
+                        </select>
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                           Last order: {seller.lastOrderLabel || "No orders yet"}
                         </span>
@@ -545,12 +577,22 @@ const ActiveSellers = () => {
                       Owned by {selectedSeller.ownerName}
                     </p>
                     <div className="mt-2 flex items-center gap-2">
-                      <Badge
-                        variant="success"
-                        className="text-[8px] font-black uppercase tracking-widest"
+                      <select
+                        value={selectedSeller.isActive ? "active" : "inactive"}
+                        disabled={updatingStatusId === selectedSeller.id}
+                        onChange={(e) =>
+                          handleToggleStatus(selectedSeller.id, e.target.value === "active")
+                        }
+                        className={cn(
+                          "text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border outline-none cursor-pointer transition-all w-fit shadow-2xs font-sans",
+                          selectedSeller.isActive
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                            : "bg-rose-50 text-rose-700 border-rose-300"
+                        )}
                       >
-                        Active
-                      </Badge>
+                        <option value="active" className="bg-white text-emerald-700 font-bold">ACTIVE</option>
+                        <option value="inactive" className="bg-white text-rose-700 font-bold">INACTIVE</option>
+                      </select>
                       <Badge
                         variant="primary"
                         className="text-[8px] font-black uppercase tracking-widest"

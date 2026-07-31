@@ -899,7 +899,7 @@ const ProductManagement = () => {
                             "https://images.unsplash.com/photo-1550989460-0adf9ea622e2?auto=format&fit=crop&q=80&w=400&h=400"
                           }
                           alt={p.name}
-                          className="h-full w-full object-cover group-hover:scale-110 transition-transform duration-500"
+                          className="h-full w-full object-contain p-1 group-hover:scale-110 transition-transform duration-500"
                         />
                       </div>
                       <div>
@@ -1485,7 +1485,7 @@ const ProductManagement = () => {
                               onChange={(e) => handleImageUpload(e, "main")}
                             />
                             {formData.mainImage ? (
-                              <img src={formData.mainImage} alt="Main Preview" className="w-full h-full object-cover" />
+                              <img src={formData.mainImage} alt="Main Preview" className="w-full h-full object-contain p-2" />
                             ) : (
                               <div className="flex flex-col items-center">
                                 <HiOutlinePhoto className="h-10 w-10 text-slate-200" />
@@ -1505,7 +1505,7 @@ const ProductManagement = () => {
                             <div
                               key={`${img}-${idx}`}
                               className="aspect-square rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 overflow-hidden relative">
-                              <img src={img} alt={`Gallery ${idx + 1}`} className="w-full h-full object-cover" />
+                              <img src={img} alt={`Gallery ${idx + 1}`} className="w-full h-full object-contain p-2" />
                             </div>
                           ))}
                           {Array.from({ length: Math.max(0, 4 - (formData.galleryImages || []).length) }).map((_, idx) => (
@@ -1542,7 +1542,7 @@ const ProductManagement = () => {
                             <div
                               key={`${img}-${idx}`}
                               className="group aspect-square rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 overflow-hidden relative">
-                              <img src={img} alt={`Result ${idx + 1}`} className="w-full h-full object-cover" />
+                              <img src={img} alt={`Result ${idx + 1}`} className="w-full h-full object-contain p-2" />
                               <button
                                 type="button"
                                 onClick={() => deleteResultImage(idx)}
@@ -1950,7 +1950,7 @@ const ProductManagement = () => {
           <div className="flex items-center gap-4 mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-100">
             <div className="h-16 w-16 bg-white rounded-xl shadow-sm overflow-hidden flex items-center justify-center border border-slate-100">
               {viewingVariants?.mainImage || viewingVariants?.galleryImages?.[0] || viewingVariants?.image ? (
-                <img src={viewingVariants.mainImage || viewingVariants.galleryImages?.[0] || viewingVariants.image} alt="" className="h-full w-full object-cover" />
+                <img src={viewingVariants.mainImage || viewingVariants.galleryImages?.[0] || viewingVariants.image} alt="" className="h-full w-full object-contain p-1" />
               ) : (
                 <HiOutlineCube className="h-8 w-8 text-slate-200" />
               )}
