@@ -482,35 +482,52 @@ export async function getOrderWithAccess(orderId, userId, role) {
   if (!order) {
     if (orderId && orderId.toUpperCase().startsWith("REQ-")) {
       const request = await SellerProductRequest.findOne({ requestNumber: new RegExp(`^${orderId}$`, "i") })
-        .populate("sellerId", "shopName name address phone location")
+        .populate("sellerId", "shopName name address locality city state pincode phone location email")
         .populate("deliveryBoy", "name phone")
         .lean();
-        
+
       if (request) {
+        const sellerObj = request.sellerId || {};
+        const sellerAddressStr = [sellerObj.address, sellerObj.locality, sellerObj.city, sellerObj.state, sellerObj.pincode].filter(Boolean).join(", ") || sellerObj.address || "Seller Store, Indore";
+        const sellerNameStr = sellerObj.shopName || request.sellerName || sellerObj.name || "Seller Store";
+        const sellerPhoneStr = request.sellerPhone || sellerObj.phone || "";
+        const sellerEmailStr = request.sellerEmail || sellerObj.email || "";
+
         return {
           isGroupSummary: false,
           payload: {
             orderId: request.requestNumber,
+            requestNumber: request.requestNumber,
+            isSellerRequest: true,
             status: request.status?.toLowerCase() || "pending",
             workflowStatus: request.deliveryWorkflowStatus || request.status || "CREATED",
             paymentStatus: request.paymentStatus === "PAID" ? "PAID" : "PENDING",
             deliveryType: "STANDARD",
             address: {
-              fullName: request.sellerName,
-              phone: request.sellerPhone,
-              addressLine1: "Seller Store",
-              city: "Indore",
-              state: "MP",
-              pincode: "452001",
-              location: request.sellerId?.location || { type: "Point", coordinates: [75.8577, 22.7196] },
+              name: sellerNameStr,
+              fullName: sellerNameStr,
+              phone: sellerPhoneStr,
+              address: sellerAddressStr,
+              addressLine1: sellerAddressStr,
+              street: sellerAddressStr,
+              completeAddress: sellerAddressStr,
+              city: sellerObj.city || "Indore",
+              state: sellerObj.state || "MP",
+              pincode: sellerObj.pincode || "452001",
+              location: sellerObj.location || { type: "Point", coordinates: [75.8577, 22.7196] },
             },
-            customer: null,
+            customer: {
+              name: sellerNameStr,
+              phone: sellerPhoneStr,
+              email: sellerEmailStr,
+            },
             seller: {
-              ...request.sellerId,
-              name: request.sellerName,
-              phone: request.sellerPhone,
-              shopName: request.sellerId?.shopName || request.sellerName,
-              location: request.sellerId?.location || { type: "Point", coordinates: [75.8577, 22.7196] },
+              ...sellerObj,
+              name: sellerNameStr,
+              phone: sellerPhoneStr,
+              shopName: sellerNameStr,
+              address: sellerAddressStr,
+              location: sellerObj.location || { type: "Point", coordinates: [75.8577, 22.7196] },
             },
             deliveryBoy: request.deliveryBoy,
             deliveryRiderStep: request.deliveryWorkflowStatus === "DELIVERED" ? 4 : request.deliveryWorkflowStatus === "OUT_FOR_DELIVERY" ? 3 : request.deliveryWorkflowStatus === "PICKUP_READY" ? 2 : 1,
@@ -519,12 +536,18 @@ export async function getOrderWithAccess(orderId, userId, role) {
               deliveryFee: 0,
               platformFee: request.tax || 0,
               total: request.totalAmount || 0,
+              grandTotal: request.totalAmount || 0,
             },
-            items: request.items.map(item => ({
+            total: request.totalAmount || 0,
+            amount: request.totalAmount || 0,
+            items: (request.items || []).map(item => ({
+              name: item.productName || "Product",
+              productName: item.productName || "Product",
               product: { name: item.productName, mainImage: item.productImage },
-              quantity: item.quantity,
-              price: item.pricePerUnit,
-              totalPrice: item.totalPrice,
+              quantity: item.quantity || 1,
+              price: item.pricePerUnit || 0,
+              unitPrice: item.pricePerUnit || 0,
+              totalPrice: item.totalPrice || ((item.pricePerUnit || 0) * (item.quantity || 1)),
             })),
             createdAt: request.createdAt,
             otpValidationLocation: request.otpValidationLocation,

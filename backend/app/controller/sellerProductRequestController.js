@@ -125,15 +125,21 @@ export const createProductRequest = async (req, res) => {
     console.log("✅ Request created:", request.requestNumber);
 
     let redirectUrl = null;
+    let gatewayResponse = null;
     if (paymentType === "PAY_NOW") {
-      const provider = getActivePaymentProvider();
-      const origin = req.headers.origin || "http://localhost:5175";
-      const paymentResult = await provider.initiatePayment({
-        merchantOrderId: request.requestNumber,
-        amountPaise: Math.round(totalAmount * 100),
-        redirectUrl: `${origin}/seller/orders` // Redirect to orders/requests page after payment
-      });
-      redirectUrl = paymentResult.redirectUrl;
+      try {
+        const provider = getActivePaymentProvider();
+        const origin = req.headers.origin || "http://localhost:5173";
+        const paymentResult = await provider.initiatePayment({
+          merchantOrderId: request.requestNumber,
+          amountPaise: Math.round(totalAmount * 100),
+          redirectUrl: `${origin}/seller/requested-orders`
+        });
+        redirectUrl = paymentResult.redirectUrl;
+        gatewayResponse = paymentResult.gatewayResponse;
+      } catch (payErr) {
+        console.error("⚠️ Payment initiation error:", payErr.message);
+      }
     }
 
     return res.status(201).json({
@@ -149,7 +155,8 @@ export const createProductRequest = async (req, res) => {
         status: request.status,
         items: request.items,
         createdAt: request.createdAt,
-        redirectUrl: redirectUrl
+        redirectUrl: redirectUrl,
+        gatewayResponse: gatewayResponse,
       }
     });
 

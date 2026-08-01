@@ -115,17 +115,28 @@ const getPersistedRiderStep = (order) => {
 
 const DEFAULT_CITY_SPEED_KMPH = 24;
 
-const hasValidLatLng = (location) =>
-  location &&
-  typeof location.lat === "number" &&
-  typeof location.lng === "number" &&
-  Number.isFinite(location.lat) &&
-  Number.isFinite(location.lng);
+const parseLatLng = (loc) => {
+  if (!loc) return null;
+  if (typeof loc.lat === "number" && typeof loc.lng === "number" && Number.isFinite(loc.lat) && Number.isFinite(loc.lng)) {
+    return { lat: loc.lat, lng: loc.lng };
+  }
+  if (Array.isArray(loc.coordinates) && loc.coordinates.length >= 2) {
+    const [lng, lat] = loc.coordinates;
+    if (typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng)) {
+      return { lat, lng };
+    }
+  }
+  return null;
+};
+
+const hasValidLatLng = (location) => !!parseLatLng(location);
 
 const toRadians = (value) => (value * Math.PI) / 180;
 
-const distanceMeters = (from, to) => {
-  if (!hasValidLatLng(from) || !hasValidLatLng(to)) return null;
+const distanceMeters = (fromLoc, toLoc) => {
+  const from = parseLatLng(fromLoc);
+  const to = parseLatLng(toLoc);
+  if (!from || !to) return null;
   const r = 6371000;
   const dLat = toRadians(to.lat - from.lat);
   const dLng = toRadians(to.lng - from.lng);
@@ -341,16 +352,29 @@ const OrderDetails = () => {
       };
     }
 
+    const destLoc = parseLatLng(order?.address?.location);
+    const selLoc = parseLatLng(order?.seller?.location);
+    const isSellerReq = order?.isSellerRequest || !!order?.requestNumber || order?.orderId?.startsWith("REQ-");
+
+    const recordedDistanceKm =
+      order?.distanceSnapshot?.distanceKmRounded ??
+      order?.distanceSnapshot?.distanceKmActual ??
+      order?.paymentBreakdown?.distanceKmRounded ??
+      order?.paymentBreakdown?.distanceKmActual ??
+      order?.distanceKm ??
+      null;
+
+    const baseDistanceMeters =
+      (recordedDistanceKm != null ? recordedDistanceKm * 1000 : null) ||
+      distanceMeters(selLoc, destLoc);
+
     if (publicStatusStage === 3) {
-      const recordedDistanceKm =
-        order?.distanceSnapshot?.distanceKmRounded ??
-        order?.distanceSnapshot?.distanceKmActual ??
-        order?.paymentBreakdown?.distanceKmRounded ??
-        order?.paymentBreakdown?.distanceKmActual ??
-        order?.distanceKm ??
-        null;
       const formattedRecordedDistance =
-        recordedDistanceKm != null ? `${recordedDistanceKm} km` : "—";
+        recordedDistanceKm != null
+          ? `${recordedDistanceKm} km`
+          : baseDistanceMeters != null
+          ? formatDistance(baseDistanceMeters)
+          : "—";
 
       return {
         arrivalTimeText: "Arrived",
@@ -364,19 +388,12 @@ const OrderDetails = () => {
     );
     const routeDurationSeconds = Number(routeStats?.routeDurationSeconds);
     const riderLocation = routeStats?.rider || cachedRiderLocation;
-    const sellerCoords = order?.seller?.location?.coordinates;
-    const sellerLocation =
-      Array.isArray(sellerCoords) && sellerCoords.length >= 2
-        ? { lat: sellerCoords[1], lng: sellerCoords[0] }
-        : null;
-    // Return: steps 1-2 navigate to customer, steps 3-4 navigate to seller
-    const targetLocation = isReturn
-      ? step <= 2
-        ? destinationLocation
-        : sellerLocation
-      : step <= 2
-        ? sellerLocation
-        : destinationLocation;
+
+    const targetLocation = isSellerReq
+      ? (destLoc || selLoc)
+      : isReturn
+      ? (step <= 2 ? destLoc : selLoc)
+      : (step <= 2 ? selLoc : destLoc);
 
     let minutes = null;
     if (Number.isFinite(routeDurationSeconds) && routeDurationSeconds > 0) {
@@ -384,7 +401,8 @@ const OrderDetails = () => {
     } else {
       minutes =
         estimateMinutesFromDistance(routeDistanceMeters) ??
-        estimateMinutesFromDistance(distanceMeters(riderLocation, targetLocation));
+        estimateMinutesFromDistance(distanceMeters(riderLocation, targetLocation)) ??
+        estimateMinutesFromDistance(baseDistanceMeters);
     }
 
     if (!Number.isFinite(minutes) || minutes <= 0) {
@@ -393,7 +411,9 @@ const OrderDetails = () => {
 
     const arrivalMs = clockTick + minutes * 60 * 1000;
     const totalDistanceMeters =
-      routeDistanceMeters || distanceMeters(riderLocation, targetLocation);
+      routeDistanceMeters ||
+      distanceMeters(riderLocation, targetLocation) ||
+      baseDistanceMeters;
 
     return {
       arrivalTimeText: formatArrivalTime(arrivalMs),
@@ -403,7 +423,6 @@ const OrderDetails = () => {
   }, [
     cachedRiderLocation,
     clockTick,
-    destinationLocation,
     isReturn,
     order,
     publicStatusStage,
@@ -427,27 +446,36 @@ const OrderDetails = () => {
 
   const collectCashAmount = Math.max(0, totalBill - walletAmountUsed);
 
+  const isSellerRequest = order?.isSellerRequest || !!order?.requestNumber || order?.orderId?.startsWith("REQ-");
+
   const customerName =
     order?.address?.name ||
+    order?.address?.fullName ||
     order?.customerName ||
     order?.customer?.name ||
-    "Customer";
+    order?.seller?.shopName ||
+    order?.seller?.name ||
+    (isSellerRequest ? "Seller Store" : "Customer");
 
   const customerPhone =
     order?.address?.phone ||
     order?.customerPhone ||
     order?.customer?.phone ||
+    order?.seller?.phone ||
     "";
 
   const customerAddressText =
     order?.address?.address ||
+    order?.address?.addressLine1 ||
     order?.address?.street ||
     order?.address?.completeAddress ||
+    order?.seller?.address ||
     "Address not available";
 
   const customerCityText =
     order?.address?.city ||
     order?.address?.pincode ||
+    order?.seller?.city ||
     "";
 
   const isCodPayment =
@@ -1052,7 +1080,7 @@ const OrderDetails = () => {
                     </div>
                     <div>
                       <h2 className="font-bold text-gray-800">
-                        {isReturn ? "Return Drop" : "Customer Details"}
+                        {isReturn ? "Return Drop" : isSellerRequest ? "Seller Request Details" : "Customer Details"}
                       </h2>
                       <div className="flex items-center space-x-2 mt-0.5">
                         <p
@@ -1107,7 +1135,7 @@ const OrderDetails = () => {
                   )}
                   <Button onClick={handleNavigate} className="w-full bg-black hover:bg-brand-700 text-primary-foreground border-none">
                     <Navigation size={18} className="mr-2" />{" "}
-                    {isReturn ? "Navigate to Seller" : "Navigate to Customer"}
+                    {isReturn || isSellerRequest ? "Navigate to Seller" : "Navigate to Customer"}
                   </Button>
                 </div>
               </Card>

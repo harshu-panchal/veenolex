@@ -5,6 +5,7 @@ import {
   createProductRequest,
   formatPrice
 } from "../../../services/sellerProductRequestService";
+import { loadRazorpayScript } from "../../../shared/utils/razorpay";
 
 export default function RequestProduct() {
   const navigate = useNavigate();
@@ -145,13 +146,44 @@ export default function RequestProduct() {
       const response = await createProductRequest(requestData);
 
       if (response.success) {
-        if (response.data?.redirectUrl) {
-          window.location.href = response.data.redirectUrl;
+        const data = response.data || {};
+
+        // If Razorpay gateway response is returned, open Razorpay Checkout Modal
+        if (paymentType === "PAY_NOW" && data.gatewayResponse?.id) {
+          const isScriptLoaded = await loadRazorpayScript();
+          if (isScriptLoaded && window.Razorpay) {
+            const options = {
+              key: data.gatewayResponse.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID,
+              amount: data.gatewayResponse.amount,
+              currency: data.gatewayResponse.currency || "INR",
+              name: "Veenolex",
+              description: `Product Request #${data.requestNumber}`,
+              order_id: data.gatewayResponse.id,
+              handler: function () {
+                navigate("/seller/requested-orders");
+              },
+              modal: {
+                ondismiss: function () {
+                  navigate("/seller/requested-orders");
+                }
+              },
+              theme: { color: "#0ea5e9" }
+            };
+            const rzp = new window.Razorpay(options);
+            rzp.open();
+            return;
+          }
+        }
+
+        // If external gateway redirect URL is returned, redirect to external site (not a broken internal checkout route)
+        if (data.redirectUrl && /^https?:\/\//i.test(data.redirectUrl) && !data.redirectUrl.includes("/payments/checkout")) {
+          window.location.href = data.redirectUrl;
           return;
         }
-        setSubmittedRequest(response.data);
+
+        setSubmittedRequest(data);
         setStep("success");
-        console.log("✅ Request submitted:", response.data.requestNumber);
+        console.log("✅ Request submitted:", data.requestNumber);
       }
 
     } catch (err) {
@@ -1277,7 +1309,7 @@ export default function RequestProduct() {
           </button>
           <button
             onClick={() =>
-              navigate("/seller/request-product/history")
+              navigate("/seller/requested-orders")
             }
             style={{
               flex: 1,
