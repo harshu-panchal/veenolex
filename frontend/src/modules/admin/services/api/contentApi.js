@@ -66,6 +66,13 @@ export const adminContentApi = {
     updatePopup: (id, data) => axiosInstance.put(`/popups/${id}`, data),
     deletePopup: (id) => axiosInstance.delete(`/popups/${id}`),
     uploadPopupImage: (formData) => axiosInstance.post('/popups/upload-image', formData),
+
+    // Today's Best Prices Management
+    getTodayBestPricesAdmin: (params) => axiosInstance.get('/today-best-prices/admin', { params }),
+    createTodayBestPrice: (data) => axiosInstance.post('/today-best-prices/admin', data),
+    updateTodayBestPrice: (id, data) => axiosInstance.put(`/today-best-prices/admin/${id}`, data),
+    deleteTodayBestPrice: (id) => axiosInstance.delete(`/today-best-prices/admin/${id}`),
+    uploadTodayBestPriceImage: (formData) => axiosInstance.post('/today-best-prices/admin/upload-image', formData),
 };
 
 export default adminContentApi;

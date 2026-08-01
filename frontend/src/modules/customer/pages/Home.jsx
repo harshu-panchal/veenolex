@@ -268,6 +268,7 @@ const Home = () => {
   const [activeCategory, setActiveCategory] = useState(() => cachedHomePageData?.activeCategory || ALL_CATEGORY);
   const [products, setProducts] = useState(() => cachedHomePageData?.products || []);
   const productsRef = useRef(cachedHomePageData?.products || []);
+  const [todayBestPrices, setTodayBestPrices] = useState(() => cachedHomePageData?.todayBestPrices || []);
   const [quickCategories, setQuickCategories] = useState(() => cachedHomePageData?.quickCategories || []);
   const [isLoading, setIsLoading] = useState(() => !cachedHomePageData);
   const [experienceSections, setExperienceSections] = useState(() => cachedHomePageData?.experienceSections || []);
@@ -349,6 +350,7 @@ const Home = () => {
     setCategories(data.categories || [ALL_CATEGORY]);
     setQuickCategories(data.quickCategories || []);
     setProducts(data.products || []);
+    setTodayBestPrices(data.todayBestPrices || []);
     setExperienceSections(data.experienceSections || []);
     setOfferSections(data.offerSections || []);
     if (data.heroConfig) setHeroConfig(data.heroConfig);
@@ -383,16 +385,18 @@ const Home = () => {
         productParams.lat = currentLocation.latitude;
         productParams.lng = currentLocation.longitude;
       }
-      const [catRes, prodRes, expRes, sectionsRes] = await Promise.all([
+      const [catRes, prodRes, expRes, sectionsRes, tbpRes] = await Promise.all([
         customerApi.getCategories(),
         hasValidLocation ? customerApi.getProducts(productParams) : Promise.resolve({ data: { success: true, result: { items: [] } } }),
         customerApi.getExperienceSections({ pageType: "home" }).catch(() => null),
         hasValidLocation ? customerApi.getOfferSections({ lat: currentLocation.latitude, lng: currentLocation.longitude }).catch(() => ({ data: {} })) : Promise.resolve({ data: { results: [] } }),
+        customerApi.getTodayBestPrices().catch(() => null),
       ]);
       const nextHomeData = {
         categories: [ALL_CATEGORY],
         activeCategory: ALL_CATEGORY,
         products: [],
+        todayBestPrices: [],
         quickCategories: [],
         experienceSections: [],
         offerSections: [],
@@ -425,6 +429,17 @@ const Home = () => {
         const rawResult = prodRes.data.result;
         const dbProds = Array.isArray(prodRes.data.results) ? prodRes.data.results : Array.isArray(rawResult?.items) ? rawResult.items : Array.isArray(rawResult) ? rawResult : [];
         nextHomeData.products = dbProds.map((p) => ({ ...p, id: p._id, image: p.mainImage || p.image || "https://images.unsplash.com/photo-1550989460-0adf9ea622e2?auto=format&fit=crop&q=80&w=400&h=400", price: p.salePrice || p.price, originalPrice: p.price, weight: p.weight || "1 unit", deliveryTime: "8-15 mins" }));
+      }
+      if (tbpRes && tbpRes.data?.success) {
+        const rawTbp = tbpRes.data?.result || tbpRes.data?.results || tbpRes.data;
+        nextHomeData.todayBestPrices = (Array.isArray(rawTbp) ? rawTbp : []).map((p) => ({
+          ...p,
+          id: p._id || p.id,
+          originalPrice: p.price,
+          price: p.salePrice || p.price,
+          weight: p.weight || "1 unit",
+          deliveryTime: "8-15 mins",
+        }));
       }
       if (expRes?.data?.success) nextHomeData.experienceSections = Array.isArray(expRes.data.result || expRes.data.results) ? (expRes.data.result || expRes.data.results) : [];
       const sectionsList = sectionsRes?.data?.results || sectionsRes?.data?.result || sectionsRes?.data;
@@ -566,7 +581,7 @@ const Home = () => {
           {activeCategory._id === "all" ? (
             <>
               <QuickCategorySlider categories={effectiveQuickCategories} onCategoryClick={(id) => navigate(`/category/${id}`)} />
-              <LowestPriceSection products={products} onSeeAll={() => navigate("/category/all")} />
+              <LowestPriceSection products={todayBestPrices.length > 0 ? todayBestPrices : products} onSeeAll={() => navigate("/category/all")} />
               <OfferSections sections={offerSections} noServiceData={noServiceData} />
               {sectionsForRenderer.length > 0 && (
                 <div className="container mx-auto px-4 md:px-8 lg:px-[50px] pt-0 pb-10 md:pt-0 md:pb-16">

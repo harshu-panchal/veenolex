@@ -99,6 +99,7 @@ const PromoStripManagement = React.lazy(() => import("../pages/PromoStripManagem
 const EnvSettings = React.lazy(() => import("../pages/EnvSettings"));
 const AdminProfile = React.lazy(() => import("../pages/AdminProfile"));
 const PopupManagement = React.lazy(() => import("../pages/PopupManagement"));
+const TodayBestPricesManagement = React.lazy(() => import("../pages/TodayBestPricesManagement"));
 const ReportsPage = React.lazy(() => import("../pages/ReportsPage"));
 const SellerProductRequests = React.lazy(() => import("../pages/SellerProductRequests"));
 
@@ -150,6 +151,7 @@ const navItems = [
       { label: "Offer Sections", path: "/admin/offer-sections" },
       { label: "Shop by Store", path: "/admin/shop-by-store" },
       { label: "Seasonal Popups", path: "/admin/popups" },
+      { label: "Today's Best Prices", path: "/admin/today-best-prices" },
     ],
   },
   {
@@ -298,6 +300,7 @@ const AdminRoutes = () => {
         <Route path="/notifications" element={<NotificationComposer />} />
         <Route path="/promo-strip" element={<PromoStripManagement />} />
         <Route path="/popups" element={<PopupManagement />} />
+        <Route path="/today-best-prices" element={<TodayBestPricesManagement />} />
         <Route path="/offers" element={<OffersManagement />} />
         <Route path="/offer-sections" element={<OfferSectionsManagement />} />
         <Route path="/shop-by-store" element={<ShopByStoreManagement />} />

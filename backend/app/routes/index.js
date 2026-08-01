@@ -20,6 +20,7 @@ import settingsRoute from "./settingsRoutes.js";
 import popupRoute from "./popupRoutes.js";
 import mapsRoute from "./mapsRoutes.js";
 import mediaRoute from "./mediaRoutes.js";
+import todayBestPriceRoute from "./todayBestPriceRoutes.js";
 import healthRoute from "./healthRoutes.js";
 import metricsRoute from "./metricsRoutes.js";
 import franchiseRoute from "./franchiseRoutes.js";
@@ -59,6 +60,7 @@ const setupRoutes = (app) => {
     router.use("/seller/pos", sellerPosRoutes);
     router.use("/settings", settingsRoute);
     router.use("/popups", popupRoute);
+    router.use("/today-best-prices", todayBestPriceRoute);
     router.use("/categories", categoryRoute);
     router.use("/products", productRoute);
     router.use("/cart", cartRoute);

@@ -113,26 +113,15 @@ export async function issueCustomerOtp({
   );
 
   if (flow === "login" && (!customer || !customer.isVerified)) {
-    if (useRealSMS()) {
-      otpAuditLog("customer_otp_login_generic_response", {
-        phone: maskPhone(phone),
-        ipAddress,
-        accountExists: !!customer,
-      });
-      return { sent: true, phone };
-    }
+    const err = new Error("user is not registered");
+    err.statusCode = 404;
+    throw err;
+  }
 
-    // In mock/dev mode, allow login OTP issuance so local testing works end-to-end.
-    if (!customer) {
-      customer = await Customer.create({
-        name: name || "Customer",
-        phone,
-        isVerified: false,
-      });
-      customer = await Customer.findById(customer._id).select(
-        "+otpHash +otpExpiresAt +otpFailedAttempts +otpLockedUntil +otpLastSentAt +otpSessionVersion +otp +otpExpiry",
-      );
-    }
+  if (flow === "signup" && customer && customer.isVerified) {
+    const err = new Error("user is already registered, please login");
+    err.statusCode = 400;
+    throw err;
   }
 
   if (!customer) {

@@ -155,4 +155,7 @@ export const customerApi = {
 
   // Active seasonal popup
   getActivePopup: () => axiosInstance.get("/popups/active"),
+
+  // Today's Best Prices
+  getTodayBestPrices: (params) => getWithDedupe("/today-best-prices", params),
 };

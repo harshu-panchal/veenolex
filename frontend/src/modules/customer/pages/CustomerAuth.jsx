@@ -117,7 +117,8 @@ const CustomerAuth = () => {
             setTimer(30);
             toast.success('OTP sent!');
         } catch (error) {
-            toast.error('Failed to send OTP');
+            const apiMessage = error?.response?.data?.message;
+            toast.error(apiMessage || 'user is not registered');
         } finally {
             setIsLoading(false);
         }
