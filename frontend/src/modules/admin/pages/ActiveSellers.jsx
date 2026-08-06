@@ -61,9 +61,14 @@ const emptyStats = {
 
 const normalizeSeller = (seller) => {
   const joinedAt = seller.joinedAt || seller.createdAt || null;
+  const isSellerActive =
+    seller.isActive !== undefined
+      ? Boolean(seller.isActive)
+      : seller.status === "active" || seller.isVerified === true;
 
   return {
     ...seller,
+    isActive: isSellerActive,
     totalOrders: safeNumber(seller.totalOrders),
     deliveredOrders: safeNumber(seller.deliveredOrders),
     pendingOrders: safeNumber(seller.pendingOrders),

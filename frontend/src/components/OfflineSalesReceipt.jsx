@@ -138,7 +138,7 @@ export const OfflineSalesReceipt = ({ sale, sellerInfo = null, onClose = null })
     }}>
 
       {/* ACTION BUTTONS (Moved to top for visibility) */}
-      <div style={{
+      <div className="no-print" style={{
         display: "flex",
         gap: "12px",
         marginBottom: "20px",
@@ -292,6 +292,7 @@ export const OfflineSalesReceipt = ({ sale, sellerInfo = null, onClose = null })
       <div
         id="receipt-content"
         ref={receiptRef}
+        className="pos-receipt-print-area printable-area"
         style={{
           backgroundColor: "white",
           padding: "20px",

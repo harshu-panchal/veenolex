@@ -62,16 +62,16 @@ export default function RequestProduct() {
   // CART OPERATIONS
   // ─────────────────────────────────
   const updateCart = (productId, quantity) => {
-    if (quantity <= 0) {
-      const newCart = { ...cart };
-      delete newCart[productId];
-      setCart(newCart);
-    } else {
-      setCart({ ...cart, [productId]: quantity });
-    }
+    setCart((prev) => ({ ...prev, [productId]: quantity }));
   };
 
-  const getCartQuantity = (productId) => cart[productId] || 0;
+  const removeFromCart = (productId) => {
+    setCart((prev) => {
+      const newCart = { ...prev };
+      delete newCart[productId];
+      return newCart;
+    });
+  };
 
   const getEffectiveSellerPrice = (p) => {
     if (!p) return 0;
@@ -90,22 +90,25 @@ export default function RequestProduct() {
   };
 
   const getCartItems = () =>
-    products.filter((p) => cart[p._id] > 0).map((p) => {
-      const price = getEffectiveSellerPrice(p);
-      return {
-        ...p,
-        effectivePrice: price,
-        selectedQuantity: cart[p._id],
-        itemTotal: price * cart[p._id]
-      };
-    });
+    products
+      .filter((p) => Object.prototype.hasOwnProperty.call(cart, p._id) && Number(cart[p._id]) > 0)
+      .map((p) => {
+        const price = getEffectiveSellerPrice(p);
+        const qty = Number(cart[p._id]) || 0;
+        return {
+          ...p,
+          effectivePrice: price,
+          selectedQuantity: qty,
+          itemTotal: price * qty
+        };
+      });
 
   const cartTotal = getCartItems().reduce(
     (sum, item) => sum + item.itemTotal, 0
   );
 
-  const cartCount = Object.values(cart).reduce(
-    (sum, qty) => sum + qty, 0
+  const cartCount = getCartItems().reduce(
+    (sum, item) => sum + item.selectedQuantity, 0
   );
 
   // ─────────────────────────────────
@@ -391,13 +394,15 @@ export default function RequestProduct() {
                   </thead>
                   <tbody>
                     {filteredProducts.map((product) => {
-                      const qty = getCartQuantity(product._id);
+                      const isInCart = Object.prototype.hasOwnProperty.call(cart, product._id);
+                      const rawCartVal = cart[product._id];
+                      const qty = Number(rawCartVal) || 0;
                       return (
                         <tr
                           key={product._id}
                           style={{
                             borderBottom: "1px solid #e0e0e0",
-                            backgroundColor: qty > 0 ? "#F0F8FF" : "white",
+                            backgroundColor: isInCart ? "#F0F8FF" : "white",
                             transition: "all 0.2s"
                           }}
                         >
@@ -454,7 +459,7 @@ export default function RequestProduct() {
                             </span>
                           </td>
                           <td style={{ padding: "16px", textAlign: "center" }}>
-                            {qty === 0 ? (
+                            {!isInCart ? (
                               <button
                                 onClick={() => updateCart(product._id, 1)}
                                 style={{
@@ -474,10 +479,16 @@ export default function RequestProduct() {
                               <div style={{
                                 display: "inline-flex",
                                 alignItems: "center",
-                                gap: "10px"
+                                gap: "8px"
                               }}>
                                 <button
-                                  onClick={() => updateCart(product._id, qty - 1)}
+                                  onClick={() => {
+                                    if (qty <= 1) {
+                                      removeFromCart(product._id);
+                                    } else {
+                                      updateCart(product._id, qty - 1);
+                                    }
+                                  }}
                                   style={{
                                     width: "32px",
                                     height: "32px",
@@ -492,15 +503,35 @@ export default function RequestProduct() {
                                 >
                                   −
                                 </button>
-                                <span style={{
-                                  width: "24px",
-                                  textAlign: "center",
-                                  fontSize: "15px",
-                                  fontWeight: "700",
-                                  color: "#333"
-                                }}>
-                                  {qty}
-                                </span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={rawCartVal === undefined ? "" : rawCartVal}
+                                  onChange={(e) => {
+                                    updateCart(product._id, e.target.value);
+                                  }}
+                                  onBlur={(e) => {
+                                    const num = parseInt(e.target.value, 10);
+                                    if (isNaN(num) || num <= 0) {
+                                      removeFromCart(product._id);
+                                    } else {
+                                      updateCart(product._id, num);
+                                    }
+                                  }}
+                                  style={{
+                                    width: "54px",
+                                    height: "32px",
+                                    textAlign: "center",
+                                    fontSize: "15px",
+                                    fontWeight: "700",
+                                    color: "#333",
+                                    border: "1px solid #3B9FD9",
+                                    borderRadius: "6px",
+                                    outline: "none",
+                                    backgroundColor: "white",
+                                    padding: "0 4px"
+                                  }}
+                                />
                                 <button
                                   onClick={() => updateCart(product._id, qty + 1)}
                                   style={{
@@ -620,9 +651,13 @@ export default function RequestProduct() {
                   gap: "8px"
                 }}>
                   <button
-                    onClick={() =>
-                      updateCart(item._id, item.selectedQuantity - 1)
-                    }
+                    onClick={() => {
+                      if (item.selectedQuantity <= 1) {
+                        removeFromCart(item._id);
+                      } else {
+                        updateCart(item._id, item.selectedQuantity - 1);
+                      }
+                    }}
                     style={{
                       width: "28px",
                       height: "28px",
@@ -636,17 +671,37 @@ export default function RequestProduct() {
                   >
                     −
                   </button>
-                  <span style={{
-                    fontSize: "14px",
-                    fontWeight: "700",
-                    minWidth: "24px",
-                    textAlign: "center"
-                  }}>
-                    {item.selectedQuantity}
-                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={cart[item._id] === undefined ? "" : cart[item._id]}
+                    onChange={(e) => {
+                      updateCart(item._id, e.target.value);
+                    }}
+                    onBlur={(e) => {
+                      const num = parseInt(e.target.value, 10);
+                      if (isNaN(num) || num <= 0) {
+                        removeFromCart(item._id);
+                      } else {
+                        updateCart(item._id, num);
+                      }
+                    }}
+                    style={{
+                      width: "48px",
+                      height: "28px",
+                      textAlign: "center",
+                      fontSize: "14px",
+                      fontWeight: "700",
+                      color: "#333",
+                      border: "1px solid #ddd",
+                      borderRadius: "6px",
+                      outline: "none",
+                      padding: "0 4px"
+                    }}
+                  />
                   <button
                     onClick={() =>
-                      updateCart(item._id, item.selectedQuantity + 1)
+                      updateCart(item._id, (Number(cart[item._id]) || 0) + 1)
                     }
                     style={{
                       width: "28px",

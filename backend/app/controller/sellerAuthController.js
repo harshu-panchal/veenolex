@@ -303,6 +303,8 @@ export const loginSeller = async (req, res) => {
             const approvalMessage =
                 applicationStatus === "rejected"
                     ? "Your seller application was rejected. Please contact support."
+                    : seller.isActive === false
+                    ? "Your seller account is currently inactive. Please contact support."
                     : "Your seller account is pending admin approval.";
 
             return handleResponse(res, 403, approvalMessage, {

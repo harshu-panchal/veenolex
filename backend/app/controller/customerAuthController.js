@@ -107,7 +107,7 @@ export const getCustomerProfile = async (req, res) => {
 ================================ */
 export const updateCustomerProfile = async (req, res) => {
     try {
-        const { name, email, addresses } = req.body;
+        const { name, email, addresses, location } = req.body;
 
         const customer = await Customer.findById(req.user.id);
         if (!customer) {
@@ -117,6 +117,17 @@ export const updateCustomerProfile = async (req, res) => {
         if (name) customer.name = name;
         if (email) customer.email = email;
         if (addresses) customer.addresses = addresses;
+        if (location) {
+            customer.location = {
+                latitude: location.latitude ?? customer.location?.latitude ?? null,
+                longitude: location.longitude ?? customer.location?.longitude ?? null,
+                address: location.address ?? customer.location?.address ?? "",
+                city: location.city ?? customer.location?.city ?? "",
+                state: location.state ?? customer.location?.state ?? "",
+                pincode: location.pincode ?? customer.location?.pincode ?? "",
+                updatedAt: location.updatedAt ? new Date(location.updatedAt) : new Date()
+            };
+        }
 
         await customer.save();
 

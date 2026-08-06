@@ -348,14 +348,56 @@ export const OfflineSalesForm = ({ sellerProducts = [], onSaleRecorded = null })
         <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "flex-end" }}>
           <div ref={dropdownRef} style={{ flex: "1 1 250px", position: "relative" }}>
             <label style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "#666" }}>Search & Select Product</label>
+            
+            {/* Direct Select Dropdown */}
+            <select
+              value={currentProductId}
+              onChange={(e) => {
+                const selectedId = e.target.value;
+                setCurrentProductId(selectedId);
+                const selected = sellerProducts.find(p => p._id === selectedId);
+                if (selected) {
+                  setSearchQuery(selected.name);
+                } else {
+                  setSearchQuery("");
+                }
+                setShowDropdown(false);
+                setError(null);
+              }}
+              style={{
+                width: "100%",
+                padding: "10px",
+                border: "1px solid #ddd",
+                borderRadius: "6px",
+                fontSize: "13px",
+                boxSizing: "border-box",
+                backgroundColor: "white",
+                cursor: "pointer",
+                marginBottom: "6px"
+              }}
+              disabled={loading || sellerProducts.length === 0}
+            >
+              <option value="">-- Choose Product --</option>
+              {sellerProducts.map((product) => (
+                <option key={product._id} value={product._id}>
+                  {product.name} (Stock: {product.stock}) - ₹{product.price || product.salePrice}
+                </option>
+              ))}
+            </select>
+
+            {/* Instant Search Input */}
             <input
               type="text"
-              placeholder="🔍 Search by name..."
+              placeholder="🔍 Or type to search product..."
               value={searchQuery}
               onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentProductId(""); // Clear selection if typing
+                const val = e.target.value;
+                setSearchQuery(val);
                 setShowDropdown(true);
+                const exactMatch = sellerProducts.find(p => p.name.toLowerCase() === val.toLowerCase());
+                if (exactMatch) {
+                  setCurrentProductId(exactMatch._id);
+                }
               }}
               onFocus={() => {
                 setShowDropdown(true);
@@ -364,12 +406,12 @@ export const OfflineSalesForm = ({ sellerProducts = [], onSaleRecorded = null })
                 }, 100);
               }}
               onKeyDown={handleKeyDown}
-              style={{ width: "100%", padding: "10px", border: "1px solid #ddd", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box" }}
+              style={{ width: "100%", padding: "8px 10px", border: "1px solid #ddd", borderRadius: "6px", fontSize: "12px", boxSizing: "border-box" }}
               disabled={loading || sellerProducts.length === 0}
             />
             
-            {/* DROPDOWN MENU */}
-            {showDropdown && searchQuery && (
+            {/* DROPDOWN AUTOCOMPLETE MENU */}
+            {showDropdown && (
               <ul className="custom-scrollbar" style={{
                 position: "absolute",
                 top: "100%",
@@ -378,8 +420,8 @@ export const OfflineSalesForm = ({ sellerProducts = [], onSaleRecorded = null })
                 backgroundColor: "white",
                 border: "1px solid #ddd",
                 borderRadius: "6px",
-                boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-                maxHeight: "200px",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                maxHeight: "220px",
                 overflowY: "auto",
                 margin: "4px 0 0 0",
                 padding: 0,
@@ -394,6 +436,7 @@ export const OfflineSalesForm = ({ sellerProducts = [], onSaleRecorded = null })
                       setCurrentProductId(product._id);
                       setSearchQuery(product.name);
                       setShowDropdown(false);
+                      setError(null);
                     }}
                     style={{
                       padding: "10px 12px",
@@ -419,13 +462,22 @@ export const OfflineSalesForm = ({ sellerProducts = [], onSaleRecorded = null })
             )}
           </div>
           
-          <div style={{ width: "80px", flexGrow: 1 }}>
+          <div style={{ width: "90px", flexGrow: 0 }}>
             <label style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "#666" }}>Quantity</label>
             <input
-              type="number" min="1"
-              max={selectedProduct?.stock || 100}
+              type="number"
+              min="1"
+              max={selectedProduct?.stock || 9999}
               value={currentQuantity}
-              onChange={(e) => setCurrentQuantity(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value === "" ? "" : Math.max(1, parseInt(e.target.value, 10) || 1);
+                setCurrentQuantity(val);
+              }}
+              onBlur={(e) => {
+                if (!e.target.value || parseInt(e.target.value, 10) < 1) {
+                  setCurrentQuantity(1);
+                }
+              }}
               style={{ width: "100%", padding: "8px", border: "1px solid #ddd", borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", height: "38px" }}
               disabled={loading || !currentProductId}
             />
@@ -448,7 +500,7 @@ export const OfflineSalesForm = ({ sellerProducts = [], onSaleRecorded = null })
               justifyContent: "center",
               gap: "4px",
               height: "38px",
-              flexGrow: 1,
+              flexGrow: 0,
               minWidth: "100px"
             }}
           >

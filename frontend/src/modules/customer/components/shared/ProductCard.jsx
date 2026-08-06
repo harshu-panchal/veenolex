@@ -397,6 +397,13 @@ const ProductCard = React.memo(
             </div>
           </div>
 
+          {/* Seller Name */}
+          {product.sellerId?.shopName && (
+            <p className="text-[9px] sm:text-[10px] font-medium text-slate-400 truncate">
+              by {product.sellerId.shopName}
+            </p>
+          )}
+
           <div className={cn(compact ? "h-8" : "h-8 sm:h-9")}>
             <h4
               className={cn(
@@ -527,6 +534,13 @@ const ProductCard = React.memo(
               {product.name}
             </h4>
           </div>
+
+          {/* Seller Name */}
+          {product.sellerId?.shopName && (
+            <p className="text-[11px] font-medium text-slate-400 -mt-1">
+              by {product.sellerId.shopName}
+            </p>
+          )}
 
           {/* Tagline/Benefit */}
           <p className="text-[12px] font-medium text-green-600 leading-tight">

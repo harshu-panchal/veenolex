@@ -86,7 +86,9 @@ export const deleteOfflineSale = async (saleId) => {
 // Format date for display
 // ═══════════════════════════════════════════════════════════════
 export const formatSaleDate = (date) => {
-  return new Date(date).toLocaleDateString("en-IN", {
+  const d = date ? new Date(date) : new Date();
+  const validDate = isNaN(d.getTime()) ? new Date() : d;
+  return validDate.toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
     year: "numeric",

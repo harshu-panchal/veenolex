@@ -413,7 +413,8 @@ export async function getActiveSellersData({
       email: seller.email || "",
       phone: seller.phone || "",
       category: seller.category || "General",
-      status: seller.isVerified && seller.isActive ? "active" : "inactive",
+      isActive: seller.isActive !== false,
+      status: seller.isVerified && seller.isActive !== false ? "active" : "inactive",
       verificationStatus: seller.isVerified ? "verified" : "unverified",
       joinedAt,
       joinedDate: new Date(joinedAt).toLocaleDateString("en-GB", {

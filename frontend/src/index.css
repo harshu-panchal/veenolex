@@ -404,24 +404,42 @@ body {
   }
 }
 
-/* ── POS Thermal Receipt Print Isolation ───────────────────────────── */
+/* ── POS Thermal Receipt & Printable Invoice Isolation ───────────────────────────── */
 @media print {
   body * {
     visibility: hidden !important;
   }
   .pos-receipt-print-area,
-  .pos-receipt-print-area * {
+  .pos-receipt-print-area *,
+  .printable-area,
+  .printable-area *,
+  #receipt-content,
+  #receipt-content *,
+  #invoice-content,
+  #invoice-content * {
     visibility: visible !important;
   }
-  .pos-receipt-print-area {
+  .pos-receipt-print-area,
+  .printable-area,
+  #receipt-content,
+  #invoice-content {
     position: absolute !important;
     left: 0 !important;
     top: 0 !important;
-    width: 80mm !important;
+    width: 100% !important;
+    max-width: 100% !important;
     background: white !important;
-    color: black !important;
+    color: #000000 !important;
     display: block !important;
-    padding: 4mm !important;
-    font-family: monospace !important;
+    padding: 10px !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    z-index: 999999 !important;
+  }
+  button,
+  .no-print {
+    display: none !important;
+    visibility: hidden !important;
   }
 }

@@ -109,6 +109,8 @@ export const requireApprovedSeller = async (req, res, next) => {
       const message =
         applicationStatus === "rejected"
           ? "Seller application rejected. Please contact admin support."
+          : seller.isActive === false
+          ? "Seller account is currently inactive. Please contact support."
           : "Seller account is pending admin approval.";
 
       return handleResponse(res, 403, message, {
