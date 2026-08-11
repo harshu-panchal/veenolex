@@ -120,6 +120,9 @@ const parseLatLng = (loc) => {
   if (typeof loc.lat === "number" && typeof loc.lng === "number" && Number.isFinite(loc.lat) && Number.isFinite(loc.lng)) {
     return { lat: loc.lat, lng: loc.lng };
   }
+  if (typeof loc.latitude === "number" && typeof loc.longitude === "number" && Number.isFinite(loc.latitude) && Number.isFinite(loc.longitude)) {
+    return { lat: loc.latitude, lng: loc.longitude };
+  }
   if (Array.isArray(loc.coordinates) && loc.coordinates.length >= 2) {
     const [lng, lat] = loc.coordinates;
     if (typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng)) {
@@ -341,7 +344,12 @@ const OrderDetails = () => {
     ? step >= 5 ? 3 : step >= 3 ? 2 : 1
     : getPublicStatusStage(step);
   const cachedRiderLocation = getCachedDeliveryPartnerLocation(30 * 60 * 1000);
-  const destinationLocation = order?.address?.location;
+  const destinationLocation = parseLatLng(
+    order?.address?.location ||
+    order?.addressSnapshot?.location ||
+    order?.shippingAddress?.location ||
+    order?.deliveryAddress?.location
+  );
 
   const summary = useMemo(() => {
     if (!order) {
@@ -352,7 +360,12 @@ const OrderDetails = () => {
       };
     }
 
-    const destLoc = parseLatLng(order?.address?.location);
+    const destLoc = parseLatLng(
+      order?.address?.location ||
+      order?.addressSnapshot?.location ||
+      order?.shippingAddress?.location ||
+      order?.deliveryAddress?.location
+    );
     const selLoc = parseLatLng(order?.seller?.location);
     const isSellerReq = order?.isSellerRequest || !!order?.requestNumber || order?.orderId?.startsWith("REQ-");
 
@@ -433,7 +446,12 @@ const OrderDetails = () => {
   const totalBill =
     order?.pricing?.total ??
     order?.pricing?.grandTotal ??
+    order?.totalAmount ??
+    order?.grandTotal ??
+    order?.pricingSummary?.totalAmount ??
+    order?.pricingSummary?.total ??
     order?.paymentBreakdown?.grandTotal ??
+    order?.paymentBreakdown?.total ??
     order?.total ??
     order?.amount ??
     0;
@@ -441,6 +459,7 @@ const OrderDetails = () => {
   const walletAmountUsed =
     order?.pricing?.walletAmount ??
     order?.paymentBreakdown?.walletAmount ??
+    order?.pricingSummary?.walletAmount ??
     order?.walletAmount ??
     0;
 
@@ -449,44 +468,96 @@ const OrderDetails = () => {
   const isSellerRequest = order?.isSellerRequest || !!order?.requestNumber || order?.orderId?.startsWith("REQ-");
 
   const customerName =
+    order?.customerName ||
     order?.address?.name ||
     order?.address?.fullName ||
-    order?.customerName ||
-    order?.customer?.name ||
-    order?.seller?.shopName ||
-    order?.seller?.name ||
-    (isSellerRequest ? "Seller Store" : "Customer");
+    order?.addressSnapshot?.name ||
+    order?.addressSnapshot?.fullName ||
+    (typeof order?.customer === "object" ? (order?.customer?.name || order?.customer?.fullName) : null) ||
+    order?.customerEmail ||
+    (typeof order?.customer === "object" ? order?.customer?.email : null) ||
+    (isSellerRequest ? (order?.seller?.shopName || order?.seller?.name || "Seller Store") : "Customer");
 
   const customerPhone =
-    order?.address?.phone ||
     order?.customerPhone ||
-    order?.customer?.phone ||
+    order?.address?.phone ||
+    order?.addressSnapshot?.phone ||
+    (typeof order?.customer === "object" ? order?.customer?.phone : null) ||
     order?.seller?.phone ||
     "";
 
+  const formatAddress = (addr) => {
+    if (!addr) return null;
+    if (typeof addr === "string" && addr.trim()) return addr.trim();
+    if (typeof addr === "object") {
+      if (addr.address && typeof addr.address === "string" && addr.address.trim()) {
+        const base = addr.address.trim();
+        const extra = [addr.landmark, addr.city, addr.state, addr.pincode].filter(Boolean).join(", ");
+        if (extra && !base.includes(extra) && !base.includes(addr.city || "___")) {
+          return `${base}, ${extra}`;
+        }
+        return base;
+      }
+      if (addr.completeAddress && typeof addr.completeAddress === "string" && addr.completeAddress.trim()) return addr.completeAddress.trim();
+      if (addr.fullAddress && typeof addr.fullAddress === "string" && addr.fullAddress.trim()) return addr.fullAddress.trim();
+      if (addr.formattedAddress && typeof addr.formattedAddress === "string" && addr.formattedAddress.trim()) return addr.formattedAddress.trim();
+      if (addr.addressLine1 && typeof addr.addressLine1 === "string" && addr.addressLine1.trim()) {
+        const line2 = addr.addressLine2 || addr.street || addr.landmark || "";
+        const cityState = [addr.city, addr.state, addr.pincode].filter(Boolean).join(", ");
+        return [addr.addressLine1, line2, cityState].filter(Boolean).join(", ");
+      }
+      if (addr.street && typeof addr.street === "string" && addr.street.trim()) {
+        const cityState = [addr.city, addr.state, addr.pincode].filter(Boolean).join(", ");
+        return [addr.street, addr.landmark, cityState].filter(Boolean).join(", ");
+      }
+      const parts = [
+        addr.houseNo || addr.flatNo || addr.building,
+        addr.street || addr.area || addr.locality,
+        addr.landmark,
+        addr.city,
+        addr.state,
+        addr.pincode,
+      ].filter(Boolean);
+      if (parts.length > 0) return parts.join(", ");
+    }
+    return null;
+  };
+
   const customerAddressText =
-    order?.address?.address ||
-    order?.address?.addressLine1 ||
-    order?.address?.street ||
-    order?.address?.completeAddress ||
-    order?.seller?.address ||
+    formatAddress(order?.address) ||
+    formatAddress(order?.addressSnapshot) ||
+    formatAddress(order?.shippingAddress) ||
+    formatAddress(order?.deliveryAddress) ||
+    (typeof order?.customer === "object" ? formatAddress(order?.customer?.address) : null) ||
+    (isSellerRequest ? formatAddress(order?.seller) : null) ||
     "Address not available";
 
+  const getCityOrLocationText = (addr) => {
+    if (!addr || typeof addr !== "object") return "";
+    const parts = [addr.landmark, addr.city, addr.state, addr.pincode].filter(Boolean);
+    return parts.join(", ");
+  };
+
   const customerCityText =
-    order?.address?.city ||
-    order?.address?.pincode ||
+    getCityOrLocationText(order?.address) ||
+    getCityOrLocationText(order?.addressSnapshot) ||
+    getCityOrLocationText(order?.shippingAddress) ||
     order?.seller?.city ||
     "";
 
   const isCodPayment =
     order?.payment?.method?.toLowerCase() === "cash" ||
     order?.payment?.method?.toLowerCase() === "cod" ||
-    order?.paymentMode?.toLowerCase() === "cod";
+    order?.paymentMode?.toLowerCase() === "cod" ||
+    order?.paymentMode?.toLowerCase() === "cash";
 
   const isPaid =
     order?.paymentStatus === "PAID" ||
-    order?.payment?.status === "completed" ||
-    order?.payment?.status === "PAID" ||
+    order?.paymentStatus === "CAPTURED" ||
+    order?.paymentStatus === "SUCCESS" ||
+    order?.paymentStatus === "COMPLETED" ||
+    order?.payment?.status?.toLowerCase() === "completed" ||
+    order?.payment?.status?.toLowerCase() === "paid" ||
     order?.financeFlags?.onlinePaymentCaptured;
 
   const paymentBadgeText = isPaid
@@ -585,8 +656,13 @@ const OrderDetails = () => {
     const sellerLocation =
       Array.isArray(sellerCoords) && sellerCoords.length >= 2
         ? { lat: sellerCoords[1], lng: sellerCoords[0] }
-        : null;
-    const customerLocation = order?.address?.location;
+        : parseLatLng(order?.seller?.location);
+    const customerLocation = parseLatLng(
+      order?.address?.location ||
+      order?.addressSnapshot?.location ||
+      order?.shippingAddress?.location ||
+      order?.deliveryAddress?.location
+    );
 
     const dest = isReturn
       ? step <= 1
@@ -609,6 +685,19 @@ const OrderDetails = () => {
       );
       return;
     }
+
+    const addrQuery = isReturn
+      ? step <= 1 ? customerAddressText : (order?.seller?.address || order?.seller?.shopName)
+      : step >= 3 ? customerAddressText : (order?.seller?.address || order?.seller?.shopName);
+
+    if (addrQuery && addrQuery !== "Address not available") {
+      window.open(
+        `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addrQuery)}`,
+        "_blank"
+      );
+      return;
+    }
+
     window.open("https://maps.google.com", "_blank");
   };
 
@@ -1072,7 +1161,7 @@ const OrderDetails = () => {
                 <div className="p-4 border-b border-gray-100 bg-brand-50/50 flex items-center justify-between">
                   <div className="flex items-center">
                     <div className="p-2 bg-white rounded-full shadow-sm mr-3">
-                      {isReturn ? (
+                      {isReturn || isSellerRequest ? (
                         <Store className="text-brand-600" size={20} />
                       ) : (
                         <User className="text-brand-600" size={20} />
@@ -1102,14 +1191,26 @@ const OrderDetails = () => {
                     </div>
                   </div>
                   <div className="flex space-x-2">
-                    <Button variant="outline" size="icon" className="h-9 w-9">
-                      <MessageSquare size={18} />
-                    </Button>
                     {(isReturn ? order.seller?.phone : customerPhone) && (
                       <Button
                         variant="outline"
                         size="icon"
                         className="h-9 w-9"
+                        title="Send SMS"
+                        onClick={() => {
+                          const ph = isReturn ? order.seller?.phone : customerPhone;
+                          window.location.href = `sms:${ph}`;
+                        }}
+                      >
+                        <MessageSquare size={18} />
+                      </Button>
+                    )}
+                    {(isReturn ? order.seller?.phone : customerPhone) && (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-9 w-9"
+                        title="Call"
                         onClick={() =>
                           (window.location.href = `tel:${isReturn ? order.seller?.phone : customerPhone}`)
                         }
@@ -1121,16 +1222,21 @@ const OrderDetails = () => {
                 </div>
                 <div className="p-4">
                   <h3 className="font-bold text-lg mb-1">
-                    {isReturn
-                      ? order.seller?.shopName || "Seller Store"
+                    {isReturn || isSellerRequest
+                      ? order.seller?.shopName || order.seller?.name || customerName
                       : customerName}
                   </h3>
                   <p className="text-gray-500 text-sm mb-1 leading-relaxed">
-                    {isReturn ? order.seller?.address : customerAddressText}
+                    {customerAddressText}
                   </p>
-                  {customerCityText && !isReturn && (
-                    <p className="text-gray-500 text-sm mb-4 font-medium">
+                  {customerCityText && !isReturn && !customerAddressText.includes(customerCityText) && (
+                    <p className="text-gray-500 text-sm mb-2 font-medium">
                       {customerCityText}
+                    </p>
+                  )}
+                  {customerPhone && !isReturn && (
+                    <p className="text-xs text-slate-500 mb-4 font-semibold flex items-center gap-1.5">
+                      <Phone size={14} className="text-slate-400" /> {customerPhone}
                     </p>
                   )}
                   <Button onClick={handleNavigate} className="w-full bg-black hover:bg-brand-700 text-primary-foreground border-none">

@@ -1485,3 +1485,121 @@ export const uploadReturnPickupProof = async (req, res) => {
     return handleResponse(res, 500, error.message);
   }
 };
+
+/* ===============================
+   GET DELIVERY PARTNERS FOR SELLER SELECTION
+================================ */
+export const getDeliveryPartnersForSeller = async (req, res) => {
+  try {
+    const drivers = await Delivery.find({
+      $or: [{ status: "approved" }, { status: "active" }, { isVerified: true }]
+    })
+      .select("name phone vehicleType status isOnline location avatar")
+      .lean();
+
+    return handleResponse(res, 200, "Delivery partners fetched successfully", drivers || []);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/* ===============================
+   MANUALLY ASSIGN DELIVERY BOY TO ORDER (Seller / Admin)
+================================ */
+export const assignDeliveryBoyToOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { deliveryBoyId } = req.body;
+    const { id: userId, role } = req.user;
+
+    if (!deliveryBoyId) {
+      return handleResponse(res, 400, "deliveryBoyId is required");
+    }
+
+    const orderKey = orderMatchQueryFromRouteParam(orderId);
+    if (!orderKey) {
+      return handleResponse(res, 404, "Order not found");
+    }
+
+    const order = await Order.findOne(orderKey);
+    if (!order) {
+      return handleResponse(res, 404, "Order not found");
+    }
+
+    // Guard: Seller can only assign delivery for their own order
+    if (role === "seller" && order.seller?.toString() !== userId) {
+      return handleResponse(res, 403, "Not authorized to manage this order");
+    }
+
+    const deliveryPartner = await Delivery.findById(deliveryBoyId).lean();
+    if (!deliveryPartner) {
+      return handleResponse(res, 404, "Delivery partner not found");
+    }
+
+    const now = new Date();
+    order.deliveryBoy = deliveryBoyId;
+    order.workflowStatus = WORKFLOW_STATUS.DELIVERY_ASSIGNED;
+    order.status = "confirmed";
+    order.assignedAt = now;
+    order.deliveryRiderStep = 1;
+    await order.save();
+
+    const payload = {
+      orderId: order.orderId,
+      sourceType: "ORDER",
+      workflowStatus: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
+      preview: {
+        pickup: order.seller?.shopName || "Seller Store",
+        drop: order.address?.city || "Customer Address",
+        total: order.pricing?.total || 0,
+      }
+    };
+
+    try {
+      emitToDelivery(deliveryBoyId, { event: "delivery:assigned", payload });
+      emitNotificationEvent(NOTIFICATION_EVENTS.DELIVERY_ASSIGNED, {
+        orderId: order.orderId,
+        deliveryId: deliveryBoyId,
+        customerId: order.customer,
+        sellerId: order.seller,
+      });
+    } catch (e) {
+      console.warn("Socket notification warning during driver assignment:", e.message);
+    }
+
+    return handleResponse(res, 200, "Delivery partner assigned successfully", order);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/* ===============================
+   TRIGGER BROADCAST DELIVERY SEARCH (Seller / Admin)
+================================ */
+export const broadcastDeliveryForOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { id: userId, role } = req.user;
+
+    const orderKey = orderMatchQueryFromRouteParam(orderId);
+    if (!orderKey) {
+      return handleResponse(res, 404, "Order not found");
+    }
+
+    const order = await Order.findOne(orderKey);
+    if (!order) {
+      return handleResponse(res, 404, "Order not found");
+    }
+
+    if (role === "seller" && order.seller?.toString() !== userId) {
+      return handleResponse(res, 403, "Not authorized to manage this order");
+    }
+
+    // Accept order & start broadcast
+    const updated = await sellerAcceptAtomic(order.seller || userId, order.orderId);
+
+    return handleResponse(res, 200, "Delivery search broadcast triggered successfully", updated);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};

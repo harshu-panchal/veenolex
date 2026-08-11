@@ -24,6 +24,8 @@ export default function SellerProductRequests() {
   const [adminNote, setAdminNote] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectModal, setShowRejectModal] = useState(null);
+  const [showApproveModal, setShowApproveModal] = useState(null); // stores request object
+  const [selectedDeliveryMode, setSelectedDeliveryMode] = useState("SHIPROCKET"); // "SHIPROCKET", "BROADCAST", "MANUAL", "NONE"
   
   const handleTriggerBroadcast = async (requestId) => {
     try {
@@ -134,23 +136,24 @@ export default function SellerProductRequests() {
   // ─────────────────────────────────
   // APPROVE REQUEST
   // ─────────────────────────────────
-  const handleApprove = async (requestId, startDelivery = false) => {
+  const handleApprove = async (requestId, startDelivery = false, deliveryMode = "NONE", deliveryBoyId = null) => {
     try {
       setActionLoading(requestId + "_approve");
 
-      await approveRequest(requestId, adminNote, startDelivery);
+      const res = await approveRequest(requestId, adminNote, startDelivery, deliveryMode, deliveryBoyId);
 
       // Update local state
       setRequests(requests.map((r) =>
         r._id === requestId
-          ? { ...r, status: "APPROVED", adminNote }
+          ? (res.data || { ...r, status: "APPROVED", adminNote, deliveryType: deliveryMode === "SHIPROCKET" ? "SHIPROCKET" : r.deliveryType })
           : r
       ));
 
+      setShowApproveModal(null);
       setSelectedRequest(null);
       setAdminNote("");
 
-      toast.success(startDelivery ? "Request approved and Delivery Broadcast started!" : "Request approved successfully!");
+      toast.success(res.message || (deliveryMode === "SHIPROCKET" ? "Request approved & Shiprocket delivery queued!" : "Request approved successfully!"));
 
     } catch (err) {
       const msg = err.response?.data?.message || err.message;
@@ -495,7 +498,7 @@ export default function SellerProductRequests() {
 
               {/* ACTIONS */}
               
-              {request.status === "APPROVED" && !request.deliveryBoy && (!request.deliveryWorkflowStatus || request.deliveryWorkflowStatus === "PENDING" || request.deliveryWorkflowStatus === "DELIVERY_SEARCH") && request.deliveryType !== "SHIPROCKET" && (
+              {request.status === "APPROVED" && (!request.deliveryType || request.deliveryType === "STANDARD" || ["SHIPMENT_FAILED", "CANCELLED"].includes(request.shipRocketDetails?.status)) && !request.deliveryBoy && (
                 <div style={{ display: "flex", gap: "10px" }}>
                   <button
                     onClick={() => handleTriggerBroadcast(request._id)}
@@ -574,7 +577,10 @@ export default function SellerProductRequests() {
                     ❌ Reject
                   </button>
                   <button
-                    onClick={() => handleApprove(request._id)}
+                    onClick={() => {
+                      setShowApproveModal(request);
+                      setSelectedDeliveryMode("SHIPROCKET");
+                    }}
                     disabled={actionLoading === request._id + "_approve"}
                     style={{
                       padding: "8px 16px",
@@ -692,43 +698,76 @@ export default function SellerProductRequests() {
                     {request.deliveryType === "SHIPROCKET" ? (
                       <div style={{
                         display: "flex",
-                        alignItems: "center",
-                        gap: "12px",
+                        flexDirection: "column",
+                        gap: "10px",
                         marginBottom: "12px",
                         padding: "10px",
                         backgroundColor: "#F4ECF7",
                         borderRadius: "8px"
                       }}>
-                        <div style={{
-                          width: "48px",
-                          height: "48px",
-                          borderRadius: "50%",
-                          backgroundColor: "#9B59B6",
-                          color: "white",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: "20px",
-                          fontWeight: "bold"
-                        }}>
-                          🚀
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ margin: "0 0 2px", fontWeight: "700", fontSize: "14px", color: "#9B59B6" }}>
-                            Shiprocket Standard Delivery
-                          </p>
-                          <p style={{ margin: "0", fontSize: "12px", color: "#666" }}>
-                            AWB: {request.shipRocketDetails?.trackingNumber || "Assigning..."}
-                          </p>
-                          <p style={{
-                            margin: "4px 0 0",
-                            fontSize: "11px",
-                            color: "#8E44AD",
-                            fontWeight: "600"
+                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                          <div style={{
+                            width: "48px",
+                            height: "48px",
+                            borderRadius: "50%",
+                            backgroundColor: "#9B59B6",
+                            color: "white",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "20px",
+                            fontWeight: "bold"
                           }}>
-                            Status: {request.shipRocketDetails?.status || "NEW"}
-                          </p>
+                            🚀
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <p style={{ margin: "0 0 2px", fontWeight: "700", fontSize: "14px", color: "#9B59B6" }}>
+                              Shiprocket Standard Delivery
+                            </p>
+                            <p style={{ margin: "0", fontSize: "12px", color: "#666" }}>
+                              AWB: {request.shipRocketDetails?.trackingNumber || "Assigning..."}
+                            </p>
+                            <p style={{
+                              margin: "4px 0 0",
+                              fontSize: "11px",
+                              color: ["SHIPMENT_FAILED", "CANCELLED"].includes(request.shipRocketDetails?.status) ? "#E74C3C" : "#8E44AD",
+                              fontWeight: "700"
+                            }}>
+                              Status: {request.shipRocketDetails?.status || "NEW"}
+                            </p>
+                          </div>
                         </div>
+
+                        {["SHIPMENT_FAILED", "CANCELLED"].includes(request.shipRocketDetails?.status) && (
+                          <div style={{ marginTop: "6px", paddingTop: "8px", borderTop: "1px solid #E8DAEF" }}>
+                            <p style={{ fontSize: "11px", color: "#C0392B", fontWeight: "700", margin: "0 0 6px" }}>
+                              ⚠️ Shiprocket creation failed. Choose a fallback delivery option:
+                            </p>
+                            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                              <button
+                                onClick={() => handleAssignShiprocket(request._id)}
+                                disabled={actionLoading === request._id + "_shiprocket"}
+                                style={{ padding: "6px 12px", fontSize: "11px", backgroundColor: "#9B59B6", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" }}
+                              >
+                                {actionLoading === request._id + "_shiprocket" ? "..." : "🔄 Retry Shiprocket"}
+                              </button>
+                              <button
+                                onClick={() => handleTriggerBroadcast(request._id)}
+                                disabled={actionLoading === request._id + "_broadcast"}
+                                style={{ padding: "6px 12px", fontSize: "11px", backgroundColor: "#3498DB", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" }}
+                              >
+                                {actionLoading === request._id + "_broadcast" ? "..." : "📡 Switch to Local Broadcast"}
+                              </button>
+                              <button
+                                onClick={() => openDriverModal(request._id)}
+                                disabled={actionLoading === request._id + "_assign"}
+                                style={{ padding: "6px 12px", fontSize: "11px", backgroundColor: "#F39C12", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: "bold" }}
+                              >
+                                {actionLoading === request._id + "_assign" ? "..." : "👤 Switch to Manual Driver"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div style={{
@@ -1034,6 +1073,175 @@ export default function SellerProductRequests() {
                 }}
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* APPROVE & DELIVERY OPTIONS MODAL */}
+      {showApproveModal && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center",
+          justifyContent: "center", zIndex: 9999, padding: "20px"
+        }}>
+          <div style={{
+            backgroundColor: "white", borderRadius: "16px", padding: "24px",
+            maxWidth: "480px", width: "100%", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)"
+          }}>
+            <h3 style={{ fontSize: "18px", fontWeight: "700", margin: "0 0 8px", color: "#1F2937" }}>
+              ✅ Approve Seller Product Request
+            </h3>
+            <p style={{ fontSize: "13px", color: "#6B7280", margin: "0 0 16px" }}>
+              Approve request <strong style={{ color: "#111827" }}>{showApproveModal.requestNumber}</strong> and choose how this product will be delivered to the seller:
+            </p>
+
+            {/* Delivery Mode Selection Cards */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "20px" }}>
+              {/* Option 1: Shiprocket */}
+              <div
+                onClick={() => setSelectedDeliveryMode("SHIPROCKET")}
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: "10px",
+                  border: selectedDeliveryMode === "SHIPROCKET" ? "2px solid #9B59B6" : "1px solid #E5E7EB",
+                  backgroundColor: selectedDeliveryMode === "SHIPROCKET" ? "#F4ECF7" : "white",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px"
+                }}
+              >
+                <div style={{ fontSize: "24px" }}>🚀</div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: "0", fontWeight: "700", fontSize: "14px", color: "#4A235A" }}>
+                    Shiprocket Courier Delivery (Recommended)
+                  </p>
+                  <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#6B7280" }}>
+                    Dispatches order via Shiprocket courier with automated AWB & tracking
+                  </p>
+                </div>
+                <input
+                  type="radio"
+                  name="deliveryMode"
+                  checked={selectedDeliveryMode === "SHIPROCKET"}
+                  onChange={() => setSelectedDeliveryMode("SHIPROCKET")}
+                  style={{ accentColor: "#9B59B6" }}
+                />
+              </div>
+
+              {/* Option 2: Broadcast */}
+              <div
+                onClick={() => setSelectedDeliveryMode("BROADCAST")}
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: "10px",
+                  border: selectedDeliveryMode === "BROADCAST" ? "2px solid #3498DB" : "1px solid #E5E7EB",
+                  backgroundColor: selectedDeliveryMode === "BROADCAST" ? "#EBF5FB" : "white",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px"
+                }}
+              >
+                <div style={{ fontSize: "24px" }}>📡</div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: "0", fontWeight: "700", fontSize: "14px", color: "#1B4F72" }}>
+                    Broadcast to Local Delivery Partners
+                  </p>
+                  <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#6B7280" }}>
+                    Notifies nearby active local delivery drivers to pick up and deliver
+                  </p>
+                </div>
+                <input
+                  type="radio"
+                  name="deliveryMode"
+                  checked={selectedDeliveryMode === "BROADCAST"}
+                  onChange={() => setSelectedDeliveryMode("BROADCAST")}
+                  style={{ accentColor: "#3498DB" }}
+                />
+              </div>
+
+              {/* Option 3: Approve Only */}
+              <div
+                onClick={() => setSelectedDeliveryMode("NONE")}
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: "10px",
+                  border: selectedDeliveryMode === "NONE" ? "2px solid #27AE60" : "1px solid #E5E7EB",
+                  backgroundColor: selectedDeliveryMode === "NONE" ? "#E8F8F5" : "white",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px"
+                }}
+              >
+                <div style={{ fontSize: "24px" }}>⏸️</div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: "0", fontWeight: "700", fontSize: "14px", color: "#117A65" }}>
+                    Approve Only (Assign Delivery Later)
+                  </p>
+                  <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#6B7280" }}>
+                    Updates status to APPROVED without triggering immediate delivery dispatch
+                  </p>
+                </div>
+                <input
+                  type="radio"
+                  name="deliveryMode"
+                  checked={selectedDeliveryMode === "NONE"}
+                  onChange={() => setSelectedDeliveryMode("NONE")}
+                  style={{ accentColor: "#27AE60" }}
+                />
+              </div>
+            </div>
+
+            {/* Note Text Area */}
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#374151", marginBottom: "4px" }}>
+                Admin Note (Optional):
+              </label>
+              <input
+                type="text"
+                value={adminNote}
+                onChange={(e) => setAdminNote(e.target.value)}
+                placeholder="Enter approval note..."
+                style={{
+                  width: "100%", padding: "8px 12px", border: "1px solid #D1D5DB",
+                  borderRadius: "8px", fontSize: "13px", boxSizing: "border-box", outline: "none"
+                }}
+              />
+            </div>
+
+            {/* Buttons */}
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button
+                onClick={() => {
+                  setShowApproveModal(null);
+                  setAdminNote("");
+                }}
+                style={{
+                  flex: 1, padding: "10px", backgroundColor: "white", border: "1px solid #D1D5DB",
+                  borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: "600", color: "#374151"
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleApprove(
+                  showApproveModal._id,
+                  selectedDeliveryMode === "BROADCAST",
+                  selectedDeliveryMode
+                )}
+                disabled={actionLoading === showApproveModal._id + "_approve"}
+                style={{
+                  flex: 1, padding: "10px", backgroundColor: "#27AE60", color: "white",
+                  border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: "700"
+                }}
+              >
+                {actionLoading === showApproveModal._id + "_approve"
+                  ? "⏳ Approving..."
+                  : "✅ Approve & Dispatch"}
               </button>
             </div>
           </div>

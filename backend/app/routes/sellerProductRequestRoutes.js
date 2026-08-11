@@ -8,7 +8,9 @@ import {
   rejectSellerRequest,
   triggerDeliveryBroadcast,
   manualAssignDelivery,
-  assignShiprocketDelivery
+  assignShiprocketDelivery,
+  broadcastRequestDeliveryController,
+  assignRequestDeliveryBoyController
 } from "../controller/sellerProductRequestController.js";
 import {
   verifyToken,
@@ -46,6 +48,22 @@ router.get(
   verifyToken,
   allowRoles("seller"),
   getSellerRequestById
+);
+
+// POST /api/seller-requests/:requestId/broadcast-delivery
+router.post(
+  "/:requestId/broadcast-delivery",
+  verifyToken,
+  allowRoles("seller", "admin"),
+  broadcastRequestDeliveryController
+);
+
+// POST /api/seller-requests/:requestId/assign-delivery-boy
+router.post(
+  "/:requestId/assign-delivery-boy",
+  verifyToken,
+  allowRoles("seller", "admin"),
+  assignRequestDeliveryBoyController
 );
 
 // ─────────────────────────────────────────

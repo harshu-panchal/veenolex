@@ -404,8 +404,31 @@ export async function fetchAvailableOrdersForDelivery({
     }));
   }
 
+  let requestedOrders = [];
+  if (showDeliveries) {
+    const requestedOrdersRaw = await SellerProductRequest.find({
+      deliveryWorkflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
+      deliveryBoy: null,
+      skippedBy: { $nin: [userId] },
+    })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit)
+      .populate("sellerId", "shopName address name location")
+      .lean();
+
+    requestedOrders = requestedOrdersRaw.map((req) => ({
+      ...req,
+      orderId: req.requestNumber || `REQ-${req._id}`,
+      seller: req.sellerId,
+      customer: { name: req.sellerName || "Seller Store", phone: req.sellerPhone || "" },
+      isSellerRequest: true,
+      workflowStatus: req.deliveryWorkflowStatus || WORKFLOW_STATUS.DELIVERY_SEARCH,
+      pricing: { total: req.totalAmount || 0 },
+    }));
+  }
+
   const orders = mergeAvailableOrders(
-    v2Orders,
+    [...v2Orders, ...requestedOrders],
     legacyOrders,
     [...assignedReturnPickups, ...returnPickups],
     limit,
@@ -487,11 +510,20 @@ export async function getOrderWithAccess(orderId, userId, role) {
         .lean();
 
       if (request) {
-        const sellerObj = request.sellerId || {};
-        const sellerAddressStr = [sellerObj.address, sellerObj.locality, sellerObj.city, sellerObj.state, sellerObj.pincode].filter(Boolean).join(", ") || sellerObj.address || "Seller Store, Indore";
-        const sellerNameStr = sellerObj.shopName || request.sellerName || sellerObj.name || "Seller Store";
-        const sellerPhoneStr = request.sellerPhone || sellerObj.phone || "";
-        const sellerEmailStr = request.sellerEmail || sellerObj.email || "";
+        let sellerObj = (request.sellerId && typeof request.sellerId === "object" && request.sellerId.shopName) ? request.sellerId : null;
+        if (!sellerObj && request.sellerId) {
+          const sellerIdVal = request.sellerId._id || request.sellerId;
+          sellerObj = await Seller.findById(sellerIdVal).select("shopName name address locality city state pincode phone location email").lean();
+        }
+        sellerObj = sellerObj || {};
+
+        const rawAddr = sellerObj.address || request.sellerAddress || request.address || "";
+        const parts = [rawAddr, sellerObj.locality, sellerObj.city, sellerObj.state, sellerObj.pincode].filter(Boolean);
+        const sellerAddressStr = parts.length > 0 ? parts.join(", ") : (rawAddr || "Seller Store, Indore");
+        const sellerNameStr = sellerObj.shopName || sellerObj.name || request.sellerName || "Seller Store";
+        const sellerPhoneStr = sellerObj.phone || request.sellerPhone || "";
+        const sellerEmailStr = sellerObj.email || request.sellerEmail || "";
+        const totalAmt = request.totalAmount || request.total || request.subtotal || request.amount || 0;
 
         return {
           isGroupSummary: false,
@@ -521,6 +553,8 @@ export async function getOrderWithAccess(orderId, userId, role) {
               phone: sellerPhoneStr,
               email: sellerEmailStr,
             },
+            customerName: sellerNameStr,
+            customerPhone: sellerPhoneStr,
             seller: {
               ...sellerObj,
               name: sellerNameStr,
@@ -532,14 +566,16 @@ export async function getOrderWithAccess(orderId, userId, role) {
             deliveryBoy: request.deliveryBoy,
             deliveryRiderStep: request.deliveryWorkflowStatus === "DELIVERED" ? 4 : request.deliveryWorkflowStatus === "OUT_FOR_DELIVERY" ? 3 : request.deliveryWorkflowStatus === "PICKUP_READY" ? 2 : 1,
             pricing: {
-              subtotal: request.subtotal || 0,
+              subtotal: request.subtotal || totalAmt,
               deliveryFee: 0,
               platformFee: request.tax || 0,
-              total: request.totalAmount || 0,
-              grandTotal: request.totalAmount || 0,
+              total: totalAmt,
+              grandTotal: totalAmt,
             },
-            total: request.totalAmount || 0,
-            amount: request.totalAmount || 0,
+            total: totalAmt,
+            amount: totalAmt,
+            totalAmount: totalAmt,
+            grandTotal: totalAmt,
             items: (request.items || []).map(item => ({
               name: item.productName || "Product",
               productName: item.productName || "Product",
@@ -675,6 +711,71 @@ export async function getOrderWithAccess(orderId, userId, role) {
       403,
     );
   }
+
+  // Enrich order object with consistent customer, address, and pricing fallbacks
+  const custName =
+    order.customerName ||
+    order.address?.name ||
+    order.address?.fullName ||
+    order.addressSnapshot?.name ||
+    (typeof order.customer === "object" ? (order.customer?.name || order.customer?.fullName) : null) ||
+    order.customerEmail ||
+    (typeof order.customer === "object" ? order.customer?.email : null) ||
+    "Customer";
+
+  const custPhone =
+    order.customerPhone ||
+    order.address?.phone ||
+    order.addressSnapshot?.phone ||
+    (typeof order.customer === "object" ? order.customer?.phone : null) ||
+    "";
+
+  order.customerName = custName;
+  order.customerPhone = custPhone;
+
+  if (typeof order.customer === "object" && order.customer !== null) {
+    order.customer.name = order.customer.name || custName;
+    order.customer.phone = order.customer.phone || custPhone;
+  } else {
+    order.customer = {
+      name: custName,
+      phone: custPhone,
+      email: order.customerEmail || "",
+    };
+  }
+
+  if (!order.address || (!order.address.address && !order.address.addressLine1 && !order.address.street && !order.address.completeAddress)) {
+    if (order.addressSnapshot) {
+      order.address = {
+        ...(order.address || {}),
+        ...order.addressSnapshot,
+      };
+    }
+  }
+
+  const calculatedTotal =
+    order.paymentBreakdown?.grandTotal ??
+    order.pricing?.total ??
+    order.pricing?.grandTotal ??
+    order.totalAmount ??
+    order.grandTotal ??
+    order.total ??
+    order.amount ??
+    0;
+
+  order.total = calculatedTotal;
+  order.amount = calculatedTotal;
+  order.totalAmount = calculatedTotal;
+  order.grandTotal = calculatedTotal;
+
+  order.pricing = {
+    subtotal: order.paymentBreakdown?.productSubtotal ?? order.pricing?.subtotal ?? calculatedTotal,
+    deliveryFee: order.paymentBreakdown?.deliveryFeeCharged ?? order.pricing?.deliveryFee ?? 0,
+    platformFee: order.paymentBreakdown?.handlingFeeCharged ?? order.pricing?.platformFee ?? 0,
+    total: calculatedTotal,
+    grandTotal: calculatedTotal,
+    walletAmount: order.paymentBreakdown?.walletAmount ?? order.pricing?.walletAmount ?? order.walletAmount ?? 0,
+  };
 
   return {
     isGroupSummary: false,

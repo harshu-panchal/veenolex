@@ -118,18 +118,28 @@ router.post("/process-order", async (req, res) => {
       };
       await order.save();
 
-      // Queue the creation background job with attempts and exponential backoff config
-      await shiprocketQueue.add(
-        JOB_NAMES.SHIPROCKET_CREATE,
-        { type: "ORDER", id: order._id },
-        {
-          attempts: 5,
-          backoff: {
-            type: "exponential",
-            delay: 5000
-          }
+      // Queue the creation background job or execute directly if Redis is disabled
+      if (process.env.REDIS_DISABLED === "true") {
+        try {
+          const user = await User.findById(order.customer).lean();
+          await createShipRocketOrder(order, user || {}, order.address, order.seller, order.items);
+          console.log("🚀 Direct Shiprocket order created for order:", order._id);
+        } catch (srErr) {
+          console.error("❌ Direct Shiprocket creation failed:", srErr.message);
         }
-      );
+      } else {
+        await shiprocketQueue.add(
+          JOB_NAMES.SHIPROCKET_CREATE,
+          { type: "ORDER", id: order._id },
+          {
+            attempts: 5,
+            backoff: {
+              type: "exponential",
+              delay: 5000
+            }
+          }
+        );
+      }
 
       responseData.deliveryType = "SHIPROCKET";
       responseData.trackingNumber = "Assigning...";

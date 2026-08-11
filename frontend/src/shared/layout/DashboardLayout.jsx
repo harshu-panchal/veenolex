@@ -353,12 +353,33 @@ const DashboardLayout = ({ children, navItems, title }) => {
         return () => clearInterval(timer);
     }, [newOrderAlert]);
 
+    const [deliveryAssignOrder, setDeliveryAssignOrder] = useState(null);
+    const [deliveryPartners, setDeliveryPartners] = useState([]);
+    const [loadingDrivers, setLoadingDrivers] = useState(false);
+    const [selectedDriverId, setSelectedDriverId] = useState('');
+
+    const fetchDrivers = async () => {
+        try {
+            setLoadingDrivers(true);
+            const res = await sellerApi.getDeliveryPartners();
+            const driversList = res.data?.results || res.data?.result || res.data?.data || (Array.isArray(res.data) ? res.data : []);
+            setDeliveryPartners(Array.isArray(driversList) ? driversList : []);
+        } catch (e) {
+            console.error("Failed to load delivery partners:", e);
+        } finally {
+            setLoadingDrivers(false);
+        }
+    };
+
     const handleAcceptOrder = async (orderId) => {
         try {
             await sellerApi.updateOrderStatus(orderId, { status: 'confirmed' });
             toast.success(`Order #${orderId} Accepted!`);
             stopOrderRingtone();
+            const acceptedObj = newOrderAlert;
             setNewOrderAlert(null);
+            setDeliveryAssignOrder(acceptedObj);
+            fetchDrivers();
         } catch (error) {
             const msg =
                 error?.response?.data?.message ||
@@ -373,6 +394,33 @@ const DashboardLayout = ({ children, navItems, title }) => {
                 if (fetchOrdersRef.current) fetchOrdersRef.current();
             }
             toast.error(msg);
+        }
+    };
+
+    const handleBroadcastDelivery = async (orderId) => {
+        try {
+            await sellerApi.broadcastDelivery(orderId);
+            toast.success("📡 Delivery broadcast sent to nearby delivery partners!");
+            setDeliveryAssignOrder(null);
+            if (fetchOrdersRef.current) fetchOrdersRef.current();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || "Failed to broadcast delivery");
+        }
+    };
+
+    const handleManualAssignDriver = async (orderId, driverId) => {
+        if (!driverId) {
+            toast.error("Please select a delivery partner");
+            return;
+        }
+        try {
+            await sellerApi.assignDeliveryBoy(orderId, driverId);
+            toast.success("👤 Delivery partner assigned successfully!");
+            setDeliveryAssignOrder(null);
+            setSelectedDriverId('');
+            if (fetchOrdersRef.current) fetchOrdersRef.current();
+        } catch (error) {
+            toast.error(error?.response?.data?.message || "Failed to assign delivery partner");
         }
     };
 
@@ -481,6 +529,89 @@ const DashboardLayout = ({ children, navItems, title }) => {
                                         Accept
                                     </button>
                                 </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+
+                {/* Global Delivery Partner Assignment Modal (Broadcast vs Manual) */}
+                {deliveryAssignOrder && (
+                    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                            className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-slate-100"
+                        >
+                            <div className="flex flex-col items-center text-center">
+                                <div className="h-16 w-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4 text-primary">
+                                    <Truck className="h-8 w-8" />
+                                </div>
+
+                                <h2 className="text-xl sm:text-2xl font-black text-slate-900 mb-1">Assign Delivery Partner</h2>
+                                <p className="text-slate-600 text-xs sm:text-sm font-medium mb-6">
+                                    Order <span className="text-primary font-bold">#{deliveryAssignOrder.orderId}</span> is confirmed! Choose how you would like to dispatch delivery:
+                                </p>
+
+                                <div className="space-y-4 w-full text-left">
+                                    {/* Option 1: Broadcast */}
+                                    <button
+                                        onClick={() => handleBroadcastDelivery(deliveryAssignOrder.orderId)}
+                                        className="w-full p-4 rounded-2xl border-2 border-primary/20 bg-primary/5 hover:bg-primary/10 transition-all flex items-center justify-between group cursor-pointer"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="h-10 w-10 rounded-xl bg-primary text-white flex items-center justify-center font-bold shrink-0 shadow-md">
+                                                📡
+                                            </div>
+                                            <div>
+                                                <h4 className="text-sm font-black text-slate-900 group-hover:text-primary transition-colors">Broadcast (Automatic)</h4>
+                                                <p className="text-xs text-slate-500 font-medium">Send delivery request alert to all nearby active delivery drivers</p>
+                                            </div>
+                                        </div>
+                                    </button>
+
+                                    {/* Option 2: Manual Select */}
+                                    <div className="p-4 rounded-2xl border-2 border-slate-200 bg-slate-50 space-y-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="h-10 w-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold shrink-0 shadow-md">
+                                                👤
+                                            </div>
+                                            <div>
+                                                <h4 className="text-sm font-black text-slate-900">Assign Manually</h4>
+                                                <p className="text-xs text-slate-500 font-medium">Pick a specific delivery driver directly</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-2">
+                                            <select
+                                                value={selectedDriverId}
+                                                onChange={(e) => setSelectedDriverId(e.target.value)}
+                                                className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                            >
+                                                <option value="">-- Select Active Delivery Driver --</option>
+                                                {(Array.isArray(deliveryPartners) ? deliveryPartners : []).map((driver) => (
+                                                    <option key={driver._id} value={driver._id}>
+                                                        {driver.name} ({driver.phone}) - {driver.isOnline ? "🟢 Online" : "🔴 Offline"}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <button
+                                                onClick={() => handleManualAssignDriver(deliveryAssignOrder.orderId, selectedDriverId)}
+                                                disabled={!selectedDriverId}
+                                                className="w-full mt-3 py-3 rounded-xl bg-slate-900 text-white text-xs font-black uppercase tracking-wider disabled:opacity-50 hover:bg-slate-800 transition-all shadow-md"
+                                            >
+                                                Confirm Manual Assignment
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={() => setDeliveryAssignOrder(null)}
+                                    className="mt-6 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-wider"
+                                >
+                                    Assign Delivery Later
+                                </button>
                             </div>
                         </motion.div>
                     </div>

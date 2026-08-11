@@ -19,9 +19,56 @@ const RequestedOrderDetails = () => {
   const [liveLocation, setLiveLocation] = useState(null);
   const [trackingRoutePhase, setTrackingRoutePhase] = useState("pickup");
 
+  // Delivery Assign Modal state
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [deliveryPartners, setDeliveryPartners] = useState([]);
+  const [selectedDriverId, setSelectedDriverId] = useState('');
+
   useEffect(() => {
     fetchRequestDetails();
   }, [requestId]);
+
+  const fetchDrivers = async () => {
+    try {
+      const res = await sellerApi.getDeliveryPartners();
+      const driversList = res.data?.results || res.data?.result || res.data?.data || (Array.isArray(res.data) ? res.data : []);
+      setDeliveryPartners(Array.isArray(driversList) ? driversList : []);
+    } catch (e) {
+      console.error("Failed to load delivery partners:", e);
+    }
+  };
+
+  const handleOpenAssignModal = () => {
+    setSelectedDriverId('');
+    setIsAssignModalOpen(true);
+    fetchDrivers();
+  };
+
+  const handleBroadcastDelivery = async () => {
+    try {
+      await sellerApi.broadcastRequestDelivery(requestId);
+      toast.success("📡 Delivery broadcast sent to nearby delivery partners!");
+      setIsAssignModalOpen(false);
+      fetchRequestDetails();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Failed to broadcast delivery");
+    }
+  };
+
+  const handleManualAssignDriver = async (driverId) => {
+    if (!driverId) {
+      toast.error("Please select a delivery partner");
+      return;
+    }
+    try {
+      await sellerApi.assignRequestDeliveryBoy(requestId, driverId);
+      toast.success("Delivery partner assigned successfully!");
+      setIsAssignModalOpen(false);
+      fetchRequestDetails();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Failed to assign delivery partner");
+    }
+  };
 
   const fetchRequestDetails = async () => {
     try {
@@ -237,6 +284,86 @@ const RequestedOrderDetails = () => {
           )}
         </div>
       </div>
+
+      {/* Assign Delivery Modal */}
+      {isAssignModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl relative border border-slate-100"
+          >
+            <button 
+              onClick={() => setIsAssignModalOpen(false)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 font-bold text-lg"
+            >
+              ✕
+            </button>
+
+            <div className="text-center mb-6">
+              <div className="h-12 w-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-3 font-black text-xl">
+                🚚
+              </div>
+              <h3 className="text-lg font-black text-slate-900">Assign Delivery Partner</h3>
+              <p className="text-xs text-slate-500 font-medium mt-1">
+                Request #{requestDetails.requestNumber}
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {/* Option A: Broadcast */}
+              <button
+                onClick={handleBroadcastDelivery}
+                className="w-full p-4 rounded-2xl border-2 border-primary/20 bg-primary/5 hover:bg-primary/10 text-left transition-all group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-primary text-white flex items-center justify-center font-bold shrink-0 shadow-md">
+                    📡
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-900 group-hover:text-primary">Broadcast to All Drivers</h4>
+                    <p className="text-[10px] text-slate-500 font-medium">Alert all nearby online drivers instantly</p>
+                  </div>
+                </div>
+              </button>
+
+              {/* Option B: Manual */}
+              <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold shrink-0">
+                    👤
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-900">Select Specific Driver</h4>
+                    <p className="text-[10px] text-slate-500 font-medium">Manually pick from active driver list</p>
+                  </div>
+                </div>
+
+                <select
+                  value={selectedDriverId}
+                  onChange={(e) => setSelectedDriverId(e.target.value)}
+                  className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="">-- Choose Delivery Driver --</option>
+                  {(Array.isArray(deliveryPartners) ? deliveryPartners : []).map((driver) => (
+                    <option key={driver._id} value={driver._id}>
+                      {driver.name} ({driver.phone}) - {driver.isOnline ? "🟢 Online" : "🔴 Offline"}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={() => handleManualAssignDriver(selectedDriverId)}
+                  disabled={!selectedDriverId}
+                  className="w-full py-2.5 bg-slate-900 text-white text-xs font-black rounded-xl uppercase tracking-wider disabled:opacity-50 hover:bg-slate-800 transition-all shadow-md"
+                >
+                  ASSIGN DRIVER
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

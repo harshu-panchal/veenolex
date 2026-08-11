@@ -66,6 +66,54 @@ const Orders = () => {
     const [total, setTotal] = useState(0);
     const hasMountedRef = useRef(false);
 
+    const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+    const [assignTargetOrder, setAssignTargetOrder] = useState(null);
+    const [deliveryPartners, setDeliveryPartners] = useState([]);
+    const [selectedDriverId, setSelectedDriverId] = useState('');
+
+    const fetchDrivers = async () => {
+        try {
+            const res = await sellerApi.getDeliveryPartners();
+            const driversList = res.data?.results || res.data?.result || res.data?.data || (Array.isArray(res.data) ? res.data : []);
+            setDeliveryPartners(Array.isArray(driversList) ? driversList : []);
+        } catch (e) {
+            console.error("Failed to load delivery partners:", e);
+        }
+    };
+
+    const handleOpenAssignModal = (order) => {
+        setAssignTargetOrder(order);
+        setIsAssignModalOpen(true);
+        fetchDrivers();
+    };
+
+    const handleBroadcastDelivery = async (orderId) => {
+        try {
+            await sellerApi.broadcastDelivery(orderId);
+            showToast("📡 Delivery broadcast sent to nearby delivery partners!", "success");
+            setIsAssignModalOpen(false);
+            fetchOrders();
+        } catch (error) {
+            showToast(error?.response?.data?.message || "Failed to broadcast delivery", "error");
+        }
+    };
+
+    const handleManualAssignDriver = async (orderId, driverId) => {
+        if (!driverId) {
+            showToast("Please select a delivery partner", "error");
+            return;
+        }
+        try {
+            await sellerApi.assignDeliveryBoy(orderId, driverId);
+            showToast("👤 Delivery partner assigned successfully!", "success");
+            setIsAssignModalOpen(false);
+            setSelectedDriverId('');
+            fetchOrders();
+        } catch (error) {
+            showToast(error?.response?.data?.message || "Failed to assign delivery partner", "error");
+        }
+    };
+
     // Initial load: show full-page loader once
     useEffect(() => {
         fetchOrders(page, true).finally(() => {
@@ -606,37 +654,29 @@ const Orders = () => {
                                                         </div>
                                                     </td>
                                                     <td className="px-4 lg:px-6 py-3 lg:py-4 text-right">
-                                                        <div className="flex items-center justify-end space-x-1.5">
-                                                            <button
-                                                                onClick={() => handleViewDetails(order)}
-                                                                className="p-1.5 hover:bg-white hover:text-primary rounded-lg transition-all text-slate-600 shadow-sm ring-1 ring-slate-100"
-                                                            >
-                                                                <HiOutlineEye className="h-4 w-4" />
-                                                            </button>
-                                                            {order.status === 'Pending' && (
-                                                                <>
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            handleStatusUpdate(order.id, 'Processing');
-                                                                        }}
-                                                                        className="p-1.5 hover:bg-brand-50 hover:text-brand-600 rounded-lg transition-all text-slate-600 shadow-sm ring-1 ring-slate-100"
-                                                                    >
-                                                                        <HiOutlineCheck className="h-4 w-4" />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            handleStatusUpdate(order.id, 'Cancelled');
-                                                                        }}
-                                                                        className="p-1.5 hover:bg-rose-50 hover:text-rose-600 rounded-lg transition-all text-slate-600 shadow-sm ring-1 ring-slate-100"
-                                                                    >
-                                                                        <HiOutlineXMark className="h-4 w-4" />
-                                                                    </button>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                    </td>
+                                                         <div className="flex items-center justify-end space-x-1.5">
+                                                             <button
+                                                                 onClick={() => handleViewDetails(order)}
+                                                                 className="p-1.5 hover:bg-white hover:text-primary rounded-lg transition-all text-slate-600 shadow-sm ring-1 ring-slate-100"
+                                                                 title="View Details"
+                                                             >
+                                                                 <HiOutlineEye className="h-4 w-4" />
+                                                             </button>
+                                                             {['pending', 'confirmed', 'packed'].includes(order.status.toLowerCase()) && (
+                                                                 <button
+                                                                     onClick={(e) => {
+                                                                         e.stopPropagation();
+                                                                         handleOpenAssignModal(order);
+                                                                     }}
+                                                                     className="px-2.5 py-1 text-[11px] font-bold bg-primary/10 text-primary hover:bg-primary/20 rounded-lg transition-all flex items-center gap-1 shadow-sm"
+                                                                     title="Assign Delivery Partner"
+                                                                 >
+                                                                     <HiOutlineTruck className="h-3.5 w-3.5" />
+                                                                     <span>Assign</span>
+                                                                 </button>
+                                                             )}
+                                                         </div>
+                                                     </td>
                                                 </motion.tr>
                                             ))}
                                         </AnimatePresence>
@@ -921,6 +961,15 @@ const Orders = () => {
                                             </button>
                                         </div>
                                         <div className="flex gap-2 items-center">
+                                            {['pending', 'confirmed', 'packed'].includes(selectedOrder.status.toLowerCase()) && (
+                                                <button
+                                                    onClick={() => handleOpenAssignModal(selectedOrder)}
+                                                    className="px-4 py-2 rounded-xl text-xs font-black uppercase bg-primary text-white hover:bg-primary/90 transition-all flex items-center gap-1.5 shadow-md"
+                                                >
+                                                    <HiOutlineTruck className="h-4 w-4" />
+                                                    Assign Delivery
+                                                </button>
+                                            )}
                                             <button onClick={() => setIsDetailsModalOpen(false)} className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-100 transition-all">CLOSE</button>
                                             <div className="relative inline-block w-40">
                                                 <select
@@ -946,6 +995,94 @@ const Orders = () => {
                                                 </select>
                                                 <HiOutlineChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none opacity-60" />
                                             </div>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* Manual / Broadcast Delivery Assignment Modal */}
+                    <AnimatePresence>
+                        {isAssignModalOpen && assignTargetOrder && (
+                            <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"
+                                    onClick={() => setIsAssignModalOpen(false)}
+                                />
+                                <motion.div
+                                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                                    className="w-full max-w-md relative z-10 bg-white rounded-3xl shadow-2xl p-6 overflow-hidden"
+                                >
+                                    <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="h-10 w-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center font-bold">
+                                                <HiOutlineTruck className="h-5 w-5" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-base font-black text-slate-900">Assign Delivery Partner</h3>
+                                                <p className="text-xs text-slate-500 font-bold uppercase">Order #{assignTargetOrder.id}</p>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => setIsAssignModalOpen(false)} className="p-1.5 hover:bg-slate-100 rounded-full text-slate-500">
+                                            <HiOutlineXMark className="h-5 w-5" />
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        {/* Option A: Broadcast */}
+                                        <button
+                                            onClick={() => handleBroadcastDelivery(assignTargetOrder.id)}
+                                            className="w-full p-4 rounded-2xl border-2 border-primary/20 bg-primary/5 hover:bg-primary/10 transition-all text-left flex items-center justify-between group cursor-pointer"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="h-9 w-9 rounded-xl bg-primary text-white flex items-center justify-center font-bold shrink-0">
+                                                    📡
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-xs font-black text-slate-900 group-hover:text-primary">Broadcast to All Drivers</h4>
+                                                    <p className="text-[10px] text-slate-500 font-medium">Alert all nearby online drivers</p>
+                                                </div>
+                                            </div>
+                                        </button>
+
+                                        {/* Option B: Manual */}
+                                        <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className="h-9 w-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold shrink-0">
+                                                    👤
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-xs font-black text-slate-900">Select Specific Driver</h4>
+                                                    <p className="text-[10px] text-slate-500 font-medium">Manually pick from active driver list</p>
+                                                </div>
+                                            </div>
+
+                                            <select
+                                                value={selectedDriverId}
+                                                onChange={(e) => setSelectedDriverId(e.target.value)}
+                                                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                            >
+                                                <option value="">-- Choose Delivery Driver --</option>
+                                                {(Array.isArray(deliveryPartners) ? deliveryPartners : []).map((driver) => (
+                                                    <option key={driver._id} value={driver._id}>
+                                                        {driver.name} ({driver.phone}) - {driver.isOnline ? "🟢 Online" : "🔴 Offline"}
+                                                    </option>
+                                                ))}
+                                            </select>
+
+                                            <Button
+                                                onClick={() => handleManualAssignDriver(assignTargetOrder.id, selectedDriverId)}
+                                                disabled={!selectedDriverId}
+                                                className="w-full py-2.5 text-xs font-bold uppercase tracking-wider"
+                                            >
+                                                ASSIGN DRIVER
+                                            </Button>
                                         </div>
                                     </div>
                                 </motion.div>

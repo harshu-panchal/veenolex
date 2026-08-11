@@ -102,13 +102,13 @@ export const getAllSellerRequests = async (params = {}) => {
 // ═══════════════════════════════════════════
 // ADMIN: APPROVE REQUEST
 // ═══════════════════════════════════════════
-export const approveRequest = async (requestId, adminNote = "", startDelivery = false) => {
+export const approveRequest = async (requestId, adminNote = "", startDelivery = false, deliveryMode = "NONE", deliveryBoyId = null) => {
   try {
-    console.log("✅ Approving request:", requestId);
+    console.log("✅ Approving request:", requestId, { deliveryMode, deliveryBoyId });
 
     const response = await axiosInstance.patch(
       `${API_BASE}/admin/${requestId}/approve`,
-      { adminNote, startDelivery }
+      { adminNote, startDelivery, deliveryMode, deliveryBoyId }
     );
 
     return response.data;

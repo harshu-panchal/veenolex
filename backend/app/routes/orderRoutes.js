@@ -20,6 +20,9 @@ import {
   rejectReturnPickup,
   updateReturnStatus,
   uploadReturnPickupProof,
+  getDeliveryPartnersForSeller,
+  assignDeliveryBoyToOrder,
+  broadcastDeliveryForOrder,
 } from "../controller/orderController.js";
 import {
   createOrderWithFinancialSnapshot,
@@ -153,6 +156,28 @@ router.put(
   allowRoles("admin", "seller"),
   requireApprovedSeller,
   assignReturnDelivery,
+);
+
+router.get(
+  "/delivery-partners",
+  verifyToken,
+  allowRoles("admin", "seller"),
+  requireApprovedSeller,
+  getDeliveryPartnersForSeller,
+);
+router.post(
+  "/:orderId/assign-delivery-boy",
+  verifyToken,
+  allowRoles("admin", "seller"),
+  requireApprovedSeller,
+  assignDeliveryBoyToOrder,
+);
+router.post(
+  "/:orderId/broadcast-delivery",
+  verifyToken,
+  allowRoles("admin", "seller"),
+  requireApprovedSeller,
+  broadcastDeliveryForOrder,
 );
 
 // Delivery routes
