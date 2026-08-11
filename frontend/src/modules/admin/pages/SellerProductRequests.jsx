@@ -30,14 +30,15 @@ export default function SellerProductRequests() {
   const handleTriggerBroadcast = async (requestId) => {
     try {
       setActionLoading(requestId + "_broadcast");
-      await triggerDeliveryBroadcast(requestId);
+      const res = await triggerDeliveryBroadcast(requestId);
       toast.success("Delivery Broadcast started!");
       
+      const updatedReq = res?.request || res?.data?.request;
       setRequests(requests.map(r => 
-        r._id === requestId ? { ...r, deliveryWorkflowStatus: "DELIVERY_SEARCH" } : r
+        r._id === requestId ? { ...r, ...(updatedReq || {}), deliveryType: "STANDARD", deliveryWorkflowStatus: "DELIVERY_SEARCH" } : r
       ));
     } catch (err) {
-      toast.error("Failed to trigger broadcast: " + err.message);
+      toast.error("Failed to trigger broadcast: " + (err.message || err));
     } finally {
       setActionLoading(null);
     }
@@ -78,7 +79,7 @@ export default function SellerProductRequests() {
       const data = Array.isArray(payload.items) ? payload.items : (response.data.results || response.data.result || []);
       setAvailableDrivers(data);
     } catch (err) {
-      toast.error("Failed to fetch drivers: " + err.message);
+      toast.error("Failed to fetch drivers: " + (err.message || err));
     } finally {
       setIsFetchingDrivers(false);
     }
@@ -88,15 +89,17 @@ export default function SellerProductRequests() {
     try {
       const deliveryBoyId = driver._id || driver.id;
       setActionLoading(requestId + "_assign");
-      await manualAssignDelivery(requestId, deliveryBoyId);
+      const res = await manualAssignDelivery(requestId, deliveryBoyId);
       toast.success("Delivery boy assigned successfully!");
 
+      const updatedReq = res?.request || res?.data?.request;
       // Update local state WITH the full driver object so it doesn't show "Unknown Driver"
       setRequests(requests.map((r) =>
-        r._id === requestId ? { ...r, deliveryBoy: driver, deliveryWorkflowStatus: "DELIVERY_ASSIGNED" } : r
+        r._id === requestId ? { ...r, ...(updatedReq || {}), deliveryType: "STANDARD", deliveryBoy: driver, deliveryWorkflowStatus: "DELIVERY_ASSIGNED" } : r
       ));
+      setShowDriverModal(null);
     } catch (err) {
-      toast.error("Failed to assign delivery: " + err.message);
+      toast.error("Failed to assign delivery: " + (err.message || err));
     } finally {
       setActionLoading(null);
     }
@@ -479,13 +482,13 @@ export default function SellerProductRequests() {
             {/* FOOTER */}
             <div style={{
               padding: "14px 20px",
-              backgroundColor: "#f9f9f9",
+              backgroundColor: "white",
               borderTop: "1px solid #f0f0f0",
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
               flexWrap: "wrap",
-              gap: "10px"
+              gap: "12px"
             }}>
               <p style={{
                 fontSize: "18px",
@@ -497,23 +500,24 @@ export default function SellerProductRequests() {
               </p>
 
               {/* ACTIONS */}
-              
-              {request.status === "APPROVED" && (!request.deliveryType || request.deliveryType === "STANDARD" || ["SHIPMENT_FAILED", "CANCELLED"].includes(request.shipRocketDetails?.status)) && !request.deliveryBoy && (
-                <div style={{ display: "flex", gap: "10px" }}>
+              {["APPROVED", "PENDING"].includes(request.status) && (
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
                   <button
                     onClick={() => handleTriggerBroadcast(request._id)}
                     disabled={actionLoading === request._id + "_broadcast"}
                     style={{
-                      padding: "8px 16px",
-                      backgroundColor: "#3498DB",
+                      padding: "9px 20px",
+                      backgroundColor: "#2b9be3",
                       border: "none",
-                      borderRadius: "6px",
-                      color: "#fff",
-                      fontWeight: "bold",
+                      borderRadius: "10px",
+                      color: "#ffffff",
+                      fontSize: "14px",
+                      fontWeight: "700",
                       cursor: "pointer",
-                      display: "flex",
+                      display: "inline-flex",
                       alignItems: "center",
-                      gap: "6px"
+                      gap: "6px",
+                      transition: "all 0.2s ease"
                     }}
                   >
                     {actionLoading === request._id + "_broadcast" ? "..." : "📡 Broadcast"}
@@ -522,16 +526,18 @@ export default function SellerProductRequests() {
                     onClick={() => openDriverModal(request._id)}
                     disabled={actionLoading === request._id + "_assign" || showDriverModal === request._id}
                     style={{
-                      padding: "8px 16px",
-                      backgroundColor: "#F39C12",
+                      padding: "9px 20px",
+                      backgroundColor: "#ef9b0f",
                       border: "none",
-                      borderRadius: "6px",
-                      color: "#fff",
-                      fontWeight: "bold",
+                      borderRadius: "10px",
+                      color: "#ffffff",
+                      fontSize: "14px",
+                      fontWeight: "700",
                       cursor: "pointer",
-                      display: "flex",
+                      display: "inline-flex",
                       alignItems: "center",
-                      gap: "6px"
+                      gap: "6px",
+                      transition: "all 0.2s ease"
                     }}
                   >
                     {actionLoading === request._id + "_assign" ? "..." : "👤 Manual Assigned"}
@@ -540,63 +546,40 @@ export default function SellerProductRequests() {
                     onClick={() => handleAssignShiprocket(request._id)}
                     disabled={actionLoading === request._id + "_shiprocket"}
                     style={{
-                      padding: "8px 16px",
-                      backgroundColor: "#9B59B6",
+                      padding: "9px 20px",
+                      backgroundColor: "#9b51e0",
                       border: "none",
-                      borderRadius: "6px",
-                      color: "#fff",
-                      fontWeight: "bold",
+                      borderRadius: "10px",
+                      color: "#ffffff",
+                      fontSize: "14px",
+                      fontWeight: "700",
                       cursor: "pointer",
-                      display: "flex",
+                      display: "inline-flex",
                       alignItems: "center",
-                      gap: "6px"
+                      gap: "6px",
+                      transition: "all 0.2s ease"
                     }}
                   >
                     {actionLoading === request._id + "_shiprocket" ? "..." : "🚀 Shiprocket"}
                   </button>
-                </div>
-              )}
-              {request.status === "PENDING" && (
-                <div style={{
-                  display: "flex",
-                  gap: "10px"
-                }}>
-                  <button
-                    onClick={() => setShowRejectModal(request._id)}
-                    style={{
-                      padding: "8px 16px",
-                      backgroundColor: "white",
-                      border: "2px solid #E74C3C",
-                      borderRadius: "8px",
-                      color: "#E74C3C",
-                      cursor: "pointer",
-                      fontSize: "13px",
-                      fontWeight: "600"
-                    }}
-                  >
-                    ❌ Reject
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowApproveModal(request);
-                      setSelectedDeliveryMode("SHIPROCKET");
-                    }}
-                    disabled={actionLoading === request._id + "_approve"}
-                    style={{
-                      padding: "8px 16px",
-                      backgroundColor: "#27AE60",
-                      border: "none",
-                      borderRadius: "8px",
-                      color: "white",
-                      cursor: "pointer",
-                      fontSize: "13px",
-                      fontWeight: "600"
-                    }}
-                  >
-                    {actionLoading === request._id + "_approve"
-                      ? "⏳ Approving..."
-                      : "✅ Approve"}
-                  </button>
+
+                  {request.status === "PENDING" && (
+                    <button
+                      onClick={() => setShowRejectModal(request._id)}
+                      style={{
+                        padding: "9px 18px",
+                        backgroundColor: "white",
+                        border: "2px solid #E74C3C",
+                        borderRadius: "10px",
+                        color: "#E74C3C",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        fontWeight: "700"
+                      }}
+                    >
+                      ❌ Reject
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -610,14 +593,17 @@ export default function SellerProductRequests() {
                   )
                 }
                 style={{
-                  padding: "8px 16px",
+                  padding: "8px 18px",
                   backgroundColor: "white",
-                  border: "2px solid #3B9FD9",
-                  borderRadius: "8px",
-                  color: "#3B9FD9",
+                  border: "2px solid #3898ec",
+                  borderRadius: "10px",
+                  color: "#3898ec",
                   cursor: "pointer",
-                  fontSize: "13px",
-                  fontWeight: "600"
+                  fontSize: "14px",
+                  fontWeight: "700",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px"
                 }}
               >
                 👁 {selectedRequest?._id === request._id

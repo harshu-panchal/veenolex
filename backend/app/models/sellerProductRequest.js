@@ -199,7 +199,7 @@ const sellerProductRequestSchema = new mongoose.Schema(
     },
     deliveryType: {
       type: String,
-      enum: ["SELLER_DIRECT", "SHIPROCKET"],
+      enum: ["SELLER_DIRECT", "SHIPROCKET", "STANDARD", "LOCAL"],
       default: "SELLER_DIRECT"
     },
     shipRocketDetails: {

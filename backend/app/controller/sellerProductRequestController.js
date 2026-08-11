@@ -564,20 +564,34 @@ export const triggerDeliveryBroadcast = async (req, res) => {
       return res.status(404).json({ success: false, message: "Request not found" });
     }
 
-    if (request.status !== "APPROVED") {
-      return res.status(400).json({ success: false, message: "Request must be approved first" });
+    if (request.status === "PENDING") {
+      request.status = "APPROVED";
+      request.approvedAt = new Date();
+      if (!request.invoiceNumber) {
+        request.invoiceNumber = request.requestNumber.replace("REQ", "INV");
+        request.invoiceGeneratedAt = new Date();
+      }
+    } else if (request.status !== "APPROVED") {
+      return res.status(400).json({ success: false, message: `Cannot dispatch request with status: ${request.status}` });
     }
 
     if (request.deliveryBoy) {
       return res.status(400).json({ success: false, message: "Delivery boy is already assigned" });
     }
 
-    if (request.deliveryType === "SHIPROCKET" && !["SHIPMENT_FAILED", "CANCELLED"].includes(request.shipRocketDetails?.status)) {
-      return res.status(400).json({ success: false, message: "Request is assigned to active Shiprocket delivery." });
+    const hasActiveShiprocketInTransit =
+      request.deliveryType === "SHIPROCKET" &&
+      request.shipRocketDetails?.trackingNumber &&
+      request.shipRocketDetails?.trackingNumber !== "Assigning..." &&
+      !["SHIPMENT_FAILED", "CANCELLED", "PENDING", "NEW", "UNASSIGNED"].includes(request.shipRocketDetails?.status);
+
+    if (hasActiveShiprocketInTransit) {
+      return res.status(400).json({ success: false, message: "Request is assigned to an active Shiprocket delivery in transit." });
     }
 
     // Switch/ensure deliveryType is STANDARD for local driver broadcast
     request.deliveryType = "STANDARD";
+    request.deliveryWorkflowStatus = "DELIVERY_SEARCH";
     await request.save();
 
     await startRequestDeliverySearch(request._id);
@@ -614,12 +628,25 @@ export const manualAssignDelivery = async (req, res) => {
       return res.status(404).json({ success: false, message: "Request not found" });
     }
 
-    if (request.status !== "APPROVED") {
-      return res.status(400).json({ success: false, message: "Request must be approved first" });
+    if (request.status === "PENDING") {
+      request.status = "APPROVED";
+      request.approvedAt = new Date();
+      if (!request.invoiceNumber) {
+        request.invoiceNumber = request.requestNumber.replace("REQ", "INV");
+        request.invoiceGeneratedAt = new Date();
+      }
+    } else if (request.status !== "APPROVED") {
+      return res.status(400).json({ success: false, message: `Cannot dispatch request with status: ${request.status}` });
     }
 
-    if (request.deliveryType === "SHIPROCKET" && !["SHIPMENT_FAILED", "CANCELLED"].includes(request.shipRocketDetails?.status)) {
-      return res.status(400).json({ success: false, message: "Request is assigned to active Shiprocket delivery." });
+    const hasActiveShiprocketInTransit =
+      request.deliveryType === "SHIPROCKET" &&
+      request.shipRocketDetails?.trackingNumber &&
+      request.shipRocketDetails?.trackingNumber !== "Assigning..." &&
+      !["SHIPMENT_FAILED", "CANCELLED", "PENDING", "NEW", "UNASSIGNED"].includes(request.shipRocketDetails?.status);
+
+    if (hasActiveShiprocketInTransit) {
+      return res.status(400).json({ success: false, message: "Request is assigned to an active Shiprocket delivery in transit." });
     }
 
     request.deliveryType = "STANDARD";
@@ -724,8 +751,15 @@ export const assignShiprocketDelivery = async (req, res) => {
       return res.status(404).json({ success: false, message: "Request not found" });
     }
 
-    if (request.status !== "APPROVED") {
-      return res.status(400).json({ success: false, message: "Request must be approved first" });
+    if (request.status === "PENDING") {
+      request.status = "APPROVED";
+      request.approvedAt = new Date();
+      if (!request.invoiceNumber) {
+        request.invoiceNumber = request.requestNumber.replace("REQ", "INV");
+        request.invoiceGeneratedAt = new Date();
+      }
+    } else if (request.status !== "APPROVED") {
+      return res.status(400).json({ success: false, message: `Cannot dispatch request with status: ${request.status}` });
     }
 
     if (request.deliveryBoy) {

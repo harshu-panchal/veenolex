@@ -62,6 +62,16 @@ const orderOfReturn = (s) => {
   return 1; // return_approved also = 1
 };
 
+// Helper to unwrap nested order document structure if returned inside { order: ... }
+const extractOrderDoc = (ord) => {
+  if (!ord) return ord;
+  const raw =
+    ord.order && typeof ord.order === "object" && (ord.order.orderId || ord.order._id || ord.order.items)
+      ? { ...ord.order, ...ord, order: undefined }
+      : ord;
+  return raw;
+};
+
 const PUBLIC_STATUS_STEPS = [
   { id: 1, label: "Confirmed" },
   { id: 2, label: "Out for Delivery" },
@@ -204,7 +214,7 @@ const OrderDetails = () => {
     const fetchOrderDetails = async () => {
       try {
         const response = await deliveryApi.getOrderDetails(orderId);
-        const ord = response.data.result;
+        const ord = extractOrderDoc(response.data.result);
         setOrder(ord);
 
         setStep(getPersistedRiderStep(ord));
@@ -237,12 +247,18 @@ const OrderDetails = () => {
       const ws = String(payload?.workflowStatus || "").toUpperCase();
       if (ws === "DELIVERED") {
         setStep(4);
-        setOrder((prev) => prev ? { ...prev, status: "delivered", workflowStatus: "DELIVERED" } : prev);
+        setOrder((prev) => {
+          const base = extractOrderDoc(prev);
+          return base ? { ...base, status: "delivered", workflowStatus: "DELIVERED" } : base;
+        });
       } else if (ws === "RESCHEDULED") {
         toast.error("Customer rescheduled this order. Please return the items to the seller.", {
           duration: 10000,
         });
-        setOrder((prev) => prev ? { ...prev, status: "rescheduled", workflowStatus: "RESCHEDULED" } : prev);
+        setOrder((prev) => {
+          const base = extractOrderDoc(prev);
+          return base ? { ...base, status: "rescheduled", workflowStatus: "RESCHEDULED" } : base;
+        });
         navigate("/delivery/dashboard");
       }
     });
@@ -492,8 +508,9 @@ const OrderDetails = () => {
     if (typeof addr === "object") {
       if (addr.address && typeof addr.address === "string" && addr.address.trim()) {
         const base = addr.address.trim();
-        const extra = [addr.landmark, addr.city, addr.state, addr.pincode].filter(Boolean).join(", ");
-        if (extra && !base.includes(extra) && !base.includes(addr.city || "___")) {
+        const extraParts = [addr.landmark, addr.city, addr.state, addr.pincode].filter(Boolean);
+        const extra = extraParts.join(", ");
+        if (extra && !base.toLowerCase().includes((addr.city || "___").toLowerCase())) {
           return `${base}, ${extra}`;
         }
         return base;
@@ -620,8 +637,8 @@ const OrderDetails = () => {
             lat: location.lat,
             lng: location.lng,
           });
-          const updated = res.data.result;
-          setOrder((prev) => ({ ...(prev || {}), ...updated }));
+          const updated = extractOrderDoc(res.data.result);
+          setOrder((prev) => ({ ...(extractOrderDoc(prev) || {}), ...updated }));
           setStep(2);
           toast.success(`${currentStep.action} Confirmed!`);
         } else if (step === 2) {
@@ -629,8 +646,8 @@ const OrderDetails = () => {
             lat: location.lat,
             lng: location.lng,
           });
-          const updated = res.data.result;
-          setOrder((prev) => ({ ...(prev || {}), ...updated }));
+          const updated = extractOrderDoc(res.data.result);
+          setOrder((prev) => ({ ...(extractOrderDoc(prev) || {}), ...updated }));
           setStep(3);
           toast.success(`${currentStep.action} Confirmed!`);
         } else if (step === 3) {
@@ -717,7 +734,8 @@ const OrderDetails = () => {
   };
 
   const handleOtpValidationSuccess = (data) => {
-    const updatedOrder = data?.result || data?.data?.result;
+    const rawResult = data?.result || data?.data?.result;
+    const updatedOrder = extractOrderDoc(rawResult?.order || rawResult || data);
 
     setShowOtpInput(false);
     setPickupProofSubmitted(false);
@@ -727,17 +745,16 @@ const OrderDetails = () => {
     if (isReturn) {
       // Return pickup OTP → navigate to seller for drop-off
       setStep(3);
-      if (updatedOrder) setOrder(updatedOrder);
+      if (updatedOrder) setOrder((prev) => ({ ...(extractOrderDoc(prev) || {}), ...updatedOrder }));
       window.scrollTo({ top: 0, behavior: "smooth" });
       toast.success("✅ Pickup verified! Navigate to seller for drop-off.");
     } else {
       // Standard delivery OTP → order is delivered, hide map immediately
       setStep(4);
-      if (updatedOrder) {
-        setOrder({ ...updatedOrder, status: "delivered", workflowStatus: "DELIVERED" });
-      } else {
-        setOrder((prev) => prev ? { ...prev, status: "delivered", workflowStatus: "DELIVERED" } : prev);
-      }
+      setOrder((prev) => {
+        const base = extractOrderDoc(updatedOrder) || extractOrderDoc(prev) || {};
+        return { ...base, status: "delivered", workflowStatus: "DELIVERED" };
+      });
       window.scrollTo({ top: 0, behavior: "smooth" });
       toast.success("✅ Order delivered successfully!");
     }
@@ -1058,22 +1075,25 @@ const OrderDetails = () => {
                 }}
                 transition={{ duration: 0.5, ease: "easeInOut" }}
               />
-              {PUBLIC_STATUS_STEPS.map(({ id, label }) => (
-                <motion.div
-                  key={id}
-                  initial={false}
-                  animate={{
-                    scale: id === publicStatusStage ? 1.15 : 1,
-                    backgroundColor: id <= publicStatusStage ? "var(--primary)" : "#ffffff",
-                    borderColor: id <= publicStatusStage ? "var(--primary)" : "#e5e7eb",
-                    color: id <= publicStatusStage ? "#ffffff" : "#9ca3af",
-                  }}
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 z-10 shadow-sm"
-                  aria-label={label}
-                >
-                  {id < publicStatusStage ? <CheckCircle size={16} /> : id}
-                </motion.div>
-              ))}
+              {PUBLIC_STATUS_STEPS.map(({ id, label }) => {
+                const isStepFinished = id < publicStatusStage || (id === publicStatusStage && (publicStatusStage === 3 || step >= 4 || String(order?.workflowStatus).toUpperCase() === "DELIVERED"));
+                return (
+                  <motion.div
+                    key={id}
+                    initial={false}
+                    animate={{
+                      scale: id === publicStatusStage ? 1.15 : 1,
+                      backgroundColor: isStepFinished ? "var(--primary)" : "#ffffff",
+                      borderColor: isStepFinished ? "var(--primary)" : "#e5e7eb",
+                      color: isStepFinished ? "#ffffff" : "#9ca3af",
+                    }}
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 z-10 shadow-sm"
+                    aria-label={label}
+                  >
+                    {isStepFinished ? <CheckCircle size={16} /> : id}
+                  </motion.div>
+                );
+              })}
             </div>
             <div className="flex justify-between mt-2 text-xs text-slate-500 font-medium px-1">
               {PUBLIC_STATUS_STEPS.map(({ id, label }) => (
@@ -1261,7 +1281,7 @@ const OrderDetails = () => {
               <div>
                 <span>Order Items</span>
                 <span className="ml-2 text-xs font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                  {(isReturn ? order.returnItems : order.items)?.length || 0} items
+                  {(isReturn ? order.returnItems : (order.items || order.lineItems || order.paymentBreakdown?.lineItems))?.length || 0} items
                 </span>
               </div>
             </div>
@@ -1280,7 +1300,7 @@ const OrderDetails = () => {
                 className="overflow-hidden"
               >
                 <div className="p-4 border-t border-gray-100 bg-gray-50/50 space-y-3">
-                  {(isReturn ? order.returnItems : order.items)?.map((item, i) => {
+                  {(isReturn ? order.returnItems : (order.items || order.lineItems || order.paymentBreakdown?.lineItems))?.map((item, i) => {
                     const itemName = item.name || item.productName || item.product?.name || "Item";
                     const itemQty = item.quantity || 1;
                     const itemUnitPrice = item.price || item.unitPrice || item.product?.price || 0;
