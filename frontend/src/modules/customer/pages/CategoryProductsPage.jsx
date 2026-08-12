@@ -16,6 +16,7 @@ import MiniCart from '../components/shared/MiniCart';
 import SectionRenderer from "../components/experience/SectionRenderer";
 import { useLocation as useAppLocation } from '../context/LocationContext';
 import { useSettings } from '@core/context/SettingsContext';
+import { getCategoryFallbackImage } from '../constants/homeConstants';
 import { getUserLocation } from '@/utils/geolocationService';
 
 const CategoryProductsPage = () => {
@@ -123,12 +124,16 @@ const CategoryProductsPage = () => {
 
                 if (currentCat) {
                     setCategory(currentCat);
-                    const subs = (currentCat.children || []).map(s => ({
-                        id: s._id,
-                        name: s.name,
-                        icon: s.image || 'https://cdn-icons-png.flaticon.com/128/2321/2321801.png'
-                    }));
-                    setSubCategories([{ id: 'all', name: 'All', icon: 'https://cdn-icons-png.flaticon.com/128/3514/3514491.png' }, ...subs]);
+                    const subs = (currentCat.children || []).map(s => {
+                        const fallback = getCategoryFallbackImage(s.name);
+                        const isPlaceholder = !s.image || String(s.image).includes('Slice-1_9.png') || String(s.image).includes('grofers') || String(s.image).includes('2321801') || String(s.image).includes('3514491');
+                        return {
+                            id: s._id,
+                            name: s.name,
+                            icon: (isPlaceholder ? fallback : s.image) || fallback
+                        };
+                    });
+                    setSubCategories([{ id: 'all', name: 'All', icon: 'https://cdn-icons-png.flaticon.com/512/3081/3081967.png' }, ...subs]);
                 }
             }
         } catch (error) {
@@ -225,10 +230,30 @@ const CategoryProductsPage = () => {
                                     )}
                                 >
                                     <div className={cn(
-                                        "w-14 h-14 rounded-2xl flex items-center justify-center p-1.5 transition-all duration-300",
-                                        selectedSubCategory === cat.id ? "scale-110" : "opacity-100"
+                                        "w-12 h-12 rounded-full flex items-center justify-center p-1 transition-all duration-300 bg-white border border-slate-100 shadow-xs overflow-hidden",
+                                        selectedSubCategory === cat.id ? "scale-110 border-primary ring-2 ring-primary/20 shadow-md" : "opacity-100"
                                     )}>
-                                        <img src={applyCloudinaryTransform(cat.icon)} alt={cat.name} loading="lazy" className="w-full h-full object-contain" />
+                                        {(() => {
+                                            const fallbackImg = getCategoryFallbackImage(cat.name);
+                                            const src = fallbackImg || cat.icon || cat.image;
+                                            return src ? (
+                                                <img 
+                                                    src={src.startsWith('/assets') ? src : applyCloudinaryTransform(src)} 
+                                                    alt="" 
+                                                    loading="lazy" 
+                                                    className="w-full h-full object-contain"
+                                                    onError={(e) => {
+                                                        if (fallbackImg && !e.currentTarget.src.endsWith(fallbackImg)) {
+                                                            e.currentTarget.src = fallbackImg;
+                                                        }
+                                                    }}
+                                                />
+                                            ) : (
+                                                <div className="w-full h-full rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-400">
+                                                    {cat.name?.[0]?.toUpperCase() || 'C'}
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                     <span className={cn(
                                         "text-[10px] text-center font-bold font-sans leading-tight px-1",

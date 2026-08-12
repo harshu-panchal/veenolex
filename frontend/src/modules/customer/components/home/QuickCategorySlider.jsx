@@ -1,6 +1,7 @@
 import React, { useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { getCategoryFallbackImage } from "../../constants/homeConstants";
 import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
 
 const QuickCategorySlider = ({ categories, onCategoryClick }) => {
@@ -53,17 +54,27 @@ const QuickCategorySlider = ({ categories, onCategoryClick }) => {
                 className="flex flex-col items-center cursor-pointer group/item snap-start min-w-[70px] sm:min-w-[88px] max-w-[96px] transition-transform active:scale-95">
                 
                 {/* Styled Circle Container */}
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-[#FFFFFF] border border-[#E7DDD5] flex items-center justify-center transition-all duration-300 group-hover/item:scale-105 group-hover/item:border-[#d0bfb2] shadow group-hover/item:shadow-md">
-                  {cat.icon || cat.image ? (
-                    <img
-                      src={applyCloudinaryTransform(cat.icon || cat.image, "f_auto,q_auto,w_150")}
-                      alt={cat.name}
-                      loading="lazy"
-                      className="h-10 w-10 sm:h-12 sm:w-12 object-contain mix-blend-multiply"
-                    />
-                  ) : (
-                    <div className="h-6 w-6 rounded-full bg-slate-300" />
-                  )}
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white border border-[#E7DDD5] flex items-center justify-center transition-all duration-300 group-hover/item:scale-105 group-hover/item:border-primary/40 shadow group-hover/item:shadow-md overflow-hidden p-2">
+                  {(() => {
+                    const fallbackImg = getCategoryFallbackImage(cat.name);
+                    const isPlaceholder = !cat.image || String(cat.image).includes('Slice-1_9.png') || String(cat.image).includes('grofers');
+                    const imgSrc = (isPlaceholder ? fallbackImg : (cat.icon || cat.image)) || fallbackImg;
+                    return imgSrc ? (
+                      <img
+                        src={imgSrc.startsWith('/assets') || imgSrc.startsWith('http') ? imgSrc : applyCloudinaryTransform(imgSrc, "f_auto,q_auto,w_150")}
+                        alt={cat.name}
+                        loading="lazy"
+                        className="w-full h-full object-contain transition-transform duration-200 group-hover/item:scale-110"
+                        onError={(e) => {
+                          if (fallbackImg && e.currentTarget.src !== fallbackImg) {
+                            e.currentTarget.src = fallbackImg;
+                          }
+                        }}
+                      />
+                    ) : (
+                      <div className="h-6 w-6 rounded-full bg-slate-300" />
+                    );
+                  })()}
                 </div>
 
                 {/* Text Label Below Circle */}

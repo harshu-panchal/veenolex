@@ -21,10 +21,24 @@ import AdminAuth from '../../modules/admin/pages/AdminAuth';
 import DeliveryAuth from '../../modules/delivery/pages/DeliveryAuth';
 import CustomerAuth from '../../modules/customer/pages/CustomerAuth';
 
+function lazyWithRetry(componentImport) {
+  return lazy(async () => {
+    try {
+      return await componentImport();
+    } catch (error) {
+      if (/Failed to fetch dynamically imported module|Importing a module script failed/i.test(error?.message)) {
+        sessionStorage.removeItem('chunk_failed_reload');
+        return await componentImport();
+      }
+      throw error;
+    }
+  });
+}
+
 // Customer Pages (lazy-loaded)
-const Home = lazy(() => import('../../modules/customer/pages/Home'));
-const CategoriesPage = lazy(() => import('../../modules/customer/pages/CategoriesPage'));
-const CategoryProductsPage = lazy(() => import('../../modules/customer/pages/CategoryProductsPage'));
+const Home = lazyWithRetry(() => import('../../modules/customer/pages/Home'));
+const CategoriesPage = lazyWithRetry(() => import('../../modules/customer/pages/CategoriesPage'));
+const CategoryProductsPage = lazyWithRetry(() => import('../../modules/customer/pages/CategoryProductsPage'));
 const WishlistPage = lazy(() => import('../../modules/customer/pages/WishlistPage'));
 const OffersPage = lazy(() => import('../../modules/customer/pages/OffersPage'));
 const ShopByStorePage = lazy(() => import('../../modules/customer/pages/ShopByStorePage'));

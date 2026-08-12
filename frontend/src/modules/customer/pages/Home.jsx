@@ -27,6 +27,7 @@ import SectionRenderer from "../components/experience/SectionRenderer";
 import ExperienceBannerCarousel from "../components/experience/ExperienceBannerCarousel";
 import { useLocation } from "../context/LocationContext";
 import { useSettings } from "@core/context/SettingsContext";
+import { getCategoryFallbackImage } from "../constants/homeConstants";
 import Lottie from "lottie-react";
 import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
 import { getJSON, remove as removeStorage, STORAGE_KEYS } from "@core/utils/storage";
@@ -34,6 +35,7 @@ import { getJSON, remove as removeStorage, STORAGE_KEYS } from "@core/utils/stor
 import {
   MARQUEE_MESSAGES,
   ICON_COMPONENTS,
+  resolveCategoryIcon,
 } from "../constants/homeConstants";
 import QuickCategorySlider from "../components/home/QuickCategorySlider";
 import LowestPriceSection from "../components/home/LowestPriceSection";
@@ -415,7 +417,7 @@ const Home = () => {
         const formattedHeaders = dbCats.filter((cat) => cat.type === "header").map((cat) => {
           const catName = cat.name;
           const meta = CATEGORY_METADATA[catName] || CATEGORY_METADATA[catName.toUpperCase()] || { icon: Sparkles, theme: DEFAULT_CATEGORY_THEME, banner: { title: catName.toUpperCase(), subtitle: "TOP PICKS", floatingElements: "sparkles" } };
-          const IconComp = (cat.iconId && ICON_COMPONENTS[cat.iconId]) || cat.icon || meta.icon || Sparkles;
+          const IconComp = (cat.iconId && ICON_COMPONENTS[cat.iconId]) || resolveCategoryIcon(catName, cat.iconId) || (typeof cat.icon === "function" || (typeof cat.icon === "object" && cat.icon?.$$typeof) ? cat.icon : null) || meta.icon || Sparkles;
           return { ...cat, id: cat._id, icon: IconComp, theme: meta.theme, banner: { ...meta.banner, textColor: "text-white" } };
         });
         nextHomeData.formattedHeaders = formattedHeaders;
@@ -423,7 +425,15 @@ const Home = () => {
         const mergedAllCategory = allHeaderFromAdmin ? { ...ALL_CATEGORY, headerColor: allHeaderFromAdmin.headerColor || ALL_CATEGORY.headerColor, headerFontColor: allHeaderFromAdmin.headerFontColor || ALL_CATEGORY.headerFontColor, headerIconColor: allHeaderFromAdmin.headerIconColor || ALL_CATEGORY.headerIconColor, icon: allHeaderFromAdmin.icon || ALL_CATEGORY.icon } : ALL_CATEGORY;
         nextHomeData.categories = [mergedAllCategory, ...formattedHeaders.filter((h) => !((h.slug?.toLowerCase() === "all") || (h.name?.toLowerCase() === "all")))];
         nextHomeData.activeCategory = mergedAllCategory;
-        nextHomeData.quickCategories = dbCats.filter((cat) => cat.type === "category").map((cat) => ({ id: cat._id, name: cat.name, image: cat.image || "https://cdn-icons-png.flaticon.com/128/3514/3514491.png", icon: cat.icon }));
+        nextHomeData.quickCategories = dbCats.filter((cat) => cat.type === "category").map((cat) => {
+          const fallback = getCategoryFallbackImage(cat.name);
+          return {
+            id: cat._id,
+            name: cat.name,
+            image: fallback || cat.image || "https://cdn-icons-png.flaticon.com/128/3514/3514491.png",
+            icon: cat.icon
+          };
+        });
       }
       if (prodRes.data.success) {
         const rawResult = prodRes.data.result;
@@ -458,7 +468,7 @@ const Home = () => {
     if (!missingIds.length) return;
     try {
       const locationParams = Number.isFinite(currentLocation?.latitude) ? { lat: currentLocation.latitude, lng: currentLocation.longitude } : undefined;
-      const missingResults = await Promise.allSettled(missingIds.map((id) => customerApi.getProductById(id, locationParams)));
+      const missingResults = await Promise.allSettled(missingIds.map((id) => customerApi.getProductById(id, locationParams).catch(() => null)));
       const fetchedMissing = missingResults.filter((r) => r.status === "fulfilled").flatMap((r) => { const p = r.value?.data?.result || r.value?.data?.results; return Array.isArray(p) ? p : (p ? [p] : []); }).map((p) => ({ ...p, id: p._id, image: p.mainImage || p.image || "https://images.unsplash.com/photo-1550989460-0adf9ea622e2?auto=format&fit=crop&q=80&w=400&h=400", price: p.salePrice || p.price, originalPrice: p.price, weight: p.weight || "1 unit", deliveryTime: "8-15 mins" }));
       if (fetchedMissing.length) setProducts((prev) => { const merged = [...prev]; const mergedIds = new Set(merged.map((p) => String(p?._id || p?.id || "").trim())); fetchedMissing.forEach((p) => { const key = String(p?._id || p?.id || "").trim(); if (!mergedIds.has(key)) { merged.push(p); mergedIds.add(key); } }); return merged; });
     } catch (e) { }
@@ -664,12 +674,12 @@ const Home = () => {
               {/* Banner Image Container */}
               <div 
                 onClick={() => handlePopupClick(activePopup)}
-                className="w-full aspect-[4/5] bg-slate-100 overflow-hidden relative cursor-pointer group"
+                className="w-full bg-slate-50 overflow-hidden relative cursor-pointer group flex items-center justify-center min-h-[220px] max-h-[60vh]"
               >
                 <img
                   src={activePopup.imageUrl}
                   alt={activePopup.title}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  className="w-full h-auto max-h-[60vh] object-contain transition-transform duration-700 group-hover:scale-[1.03]"
                 />
                 
                 {/* Elegant overlay gradient on hover */}

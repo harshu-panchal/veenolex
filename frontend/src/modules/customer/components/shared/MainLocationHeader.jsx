@@ -16,6 +16,7 @@ import {
   shiftHex,
 } from "../../utils/headerTheme";
 import LogoImage from "../../../../assets/Logo.png";
+import { resolveCategoryIcon, getCategoryFallbackImage } from "../../constants/homeConstants";
 
 // MUI Icons
 import LocationOnIcon from "@mui/icons-material/LocationOn";
@@ -130,6 +131,11 @@ function CategoryNavColumn({
     }
   };
 
+  const IconComp =
+    typeof cat.icon === "function" || (typeof cat.icon === "object" && cat.icon?.$$typeof)
+      ? cat.icon
+      : resolveCategoryIcon(cat.name, cat.iconId);
+
   return (
     <div
       onClick={handleClick}
@@ -140,9 +146,8 @@ function CategoryNavColumn({
       <div className="relative z-10 flex h-9 w-9 md:h-11 md:w-11 items-center justify-center">
         <div ref={rippleRef} className="absolute inset-0 rounded-full" style={{ backgroundColor: categoryAccent, opacity: 0, pointerEvents: 'none' }} />
         <div ref={iconWrapRef} className="relative z-10 flex h-full w-full items-center justify-center bg-white rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.06)] border border-slate-100">
-          {typeof cat.icon === "function" ||
-            (typeof cat.icon === "object" && cat.icon.$$typeof) ? (
-            <cat.icon
+          {IconComp ? (
+            <IconComp
               sx={{
                 fontSize: { xs: 20, md: 24 },
                 color: iconColor,
@@ -151,13 +156,25 @@ function CategoryNavColumn({
               }}
             />
           ) : (
-            <img
-              src={applyCloudinaryTransform(cat.icon, "f_auto,q_auto,w_100")}
-              alt={cat.name}
-              loading="lazy"
-              className="h-5 w-5 object-contain md:h-6 md:w-6"
-              style={{ opacity: isActive ? 1 : 0.78 }}
-            />
+            (() => {
+              const fallbackImg = getCategoryFallbackImage(cat.name);
+              const isPlaceholder = !cat.image || String(cat.image).includes('Slice-1_9.png') || String(cat.image).includes('grofers');
+              const imgSrc = (isPlaceholder ? fallbackImg : (cat.icon || cat.image)) || fallbackImg;
+              return (
+                <img
+                  src={imgSrc && (imgSrc.startsWith('/assets') || imgSrc.startsWith('http')) ? imgSrc : applyCloudinaryTransform(imgSrc, "f_auto,q_auto,w_100")}
+                  onError={(e) => {
+                    if (fallbackImg && e.currentTarget.src !== fallbackImg) {
+                      e.currentTarget.src = fallbackImg;
+                    }
+                  }}
+                  alt={cat.name}
+                  loading="lazy"
+                  className="h-5 w-5 object-contain md:h-6 md:w-6"
+                  style={{ opacity: isActive ? 1 : 0.78 }}
+                />
+              );
+            })()
           )}
         </div>
       </div>
@@ -451,6 +468,9 @@ const MainLocationHeader = ({
                 <div className="group-hover:scale-110 transition-all duration-300 drop-shadow-[0_2px_8px_rgba(255,255,255,0.15)] shrink-0">
                   <img
                     src={logoUrl}
+                    onError={(e) => {
+                      e.currentTarget.src = LogoImage;
+                    }}
                     alt={`${appName} Logo`}
                     loading="lazy"
                     className="h-16 md:h-20 w-auto object-contain"
@@ -499,6 +519,9 @@ const MainLocationHeader = ({
                 >
                   <img
                     src={logoUrl}
+                    onError={(e) => {
+                      e.currentTarget.src = LogoImage;
+                    }}
                     alt={`${appName} Logo`}
                     loading="lazy"
                     className="h-16 w-auto object-contain transition-all active:scale-95 shrink-0"

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import MainLocationHeader from '../components/shared/MainLocationHeader';
 import { customerApi } from '../services/customerApi';
 import { applyCloudinaryTransform } from '@/core/utils/imageUtils';
+import { getCategoryFallbackImage } from '../constants/homeConstants';
 
 const CategoriesPage = () => {
     const [categories, setCategories] = useState([]);
@@ -84,13 +85,25 @@ const CategoriesPage = () => {
                                     to={`/category/${category.id}`}
                                     className="block w-full"
                                 >
-                                    <div className="w-full aspect-square mb-3.5 relative flex items-center justify-center rounded-full bg-white hover:bg-slate-50/50 border border-slate-100 hover:border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 p-4 sm:p-5 md:p-6">
-                                        <img
-                                            src={applyCloudinaryTransform(category.image)}
-                                            alt={category.name}
-                                            loading="lazy"
-                                            className="w-full h-full object-contain mix-blend-multiply transition-transform duration-300 group-hover:scale-105"
-                                        />
+                                    <div className="w-full aspect-square mb-3.5 relative flex items-center justify-center rounded-full bg-white hover:bg-slate-50/50 border border-slate-100 hover:border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 p-4 sm:p-5 md:p-6 overflow-hidden">
+                                        {(() => {
+                                            const fallbackImg = getCategoryFallbackImage(category.name);
+                                            const isPlaceholder = !category.image || category.image.includes('Slice-1_9.png') || category.image.includes('grofers');
+                                            const imgSrc = (isPlaceholder ? fallbackImg : category.image) || fallbackImg;
+                                            return (
+                                                <img
+                                                    src={imgSrc && (imgSrc.startsWith('/assets') || imgSrc.startsWith('http')) ? imgSrc : applyCloudinaryTransform(imgSrc)}
+                                                    alt={category.name}
+                                                    loading="lazy"
+                                                    className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
+                                                    onError={(e) => {
+                                                        if (fallbackImg && e.currentTarget.src !== fallbackImg) {
+                                                            e.currentTarget.src = fallbackImg;
+                                                        }
+                                                    }}
+                                                />
+                                            );
+                                        })()}
                                     </div>
                                     <span className="text-[11px] sm:text-xs md:text-sm lg:text-base font-bold text-[#2D3F51] tracking-tight leading-snug line-clamp-2 group-hover:text-primary transition-colors font-['Inter']">
                                         {category.name}

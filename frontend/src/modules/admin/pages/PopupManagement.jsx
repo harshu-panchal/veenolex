@@ -436,11 +436,11 @@ export default function PopupManagement() {
                     </div>
 
                     {/* Image */}
-                    <div className="w-full aspect-[4/5] bg-slate-100 overflow-hidden relative">
+                    <div className="w-full bg-slate-50 overflow-hidden relative flex items-center justify-center min-h-[160px] max-h-[300px]">
                       <img
                         src={formData.imageUrl}
                         alt="Preview"
-                        className="w-full h-full object-cover"
+                        className="w-full h-auto max-h-[300px] object-contain"
                       />
                     </div>
 

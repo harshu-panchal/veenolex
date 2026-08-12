@@ -30,6 +30,11 @@ const RootErrorBoundary = () => {
                 const url = new URL(window.location.href);
                 url.searchParams.set('v', Date.now().toString());
                 window.location.assign(url.toString());
+            } else {
+                // Clear session lock so user clicks or future updates reload smoothly
+                setTimeout(() => {
+                    sessionStorage.removeItem(chunkFailedKey);
+                }, 3000);
             }
         }
     }, [errorMessage]);
@@ -42,24 +47,30 @@ const RootErrorBoundary = () => {
                 </div>
 
                 <h1 className="text-3xl font-bold text-gray-900 mb-2">Oops!</h1>
-                <p className="text-gray-500 mb-6"> {errorMessage} </p>
+                <p className="text-gray-500 mb-6 font-medium text-sm leading-relaxed">
+                    {errorMessage}
+                </p>
 
                 <div className="space-y-3">
                     <button
                         onClick={() => {
+                            sessionStorage.removeItem('chunk_failed_reload');
                             const url = new URL(window.location.href);
                             url.searchParams.set('v', Date.now().toString());
                             window.location.assign(url.toString());
                         }}
-                        className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary-200"
+                        className="w-full bg-primary hover:bg-primary/90 text-white font-semibold py-3.5 px-6 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20 active:scale-95"
                     >
                         <RefreshCw className="w-5 h-5" />
                         Refresh Page
                     </button>
 
                     <button
-                        onClick={() => navigate('/')}
-                        className="w-full bg-white border-2 border-gray-100 hover:border-gray-200 text-gray-700 font-semibold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2"
+                        onClick={() => {
+                            sessionStorage.removeItem('chunk_failed_reload');
+                            window.location.href = '/';
+                        }}
+                        className="w-full bg-white border-2 border-gray-100 hover:border-gray-200 text-gray-700 font-semibold py-3.5 px-6 rounded-xl transition-all flex items-center justify-center gap-2 active:scale-95"
                     >
                         <Home className="w-5 h-5" />
                         Back to Home

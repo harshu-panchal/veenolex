@@ -11,6 +11,8 @@ import OrderOtp from "../models/orderOtp.js";
 import handleResponse from "../utils/helper.js";
 import getPagination from "../utils/pagination.js";
 import { WORKFLOW_STATUS, DEFAULT_SELLER_TIMEOUT_MS } from "../constants/orderWorkflow.js";
+import SellerProductRequest from "../models/sellerProductRequest.js";
+import { escapeRegex } from "../utils/regex.js";
 import { ORDER_PAYMENT_STATUS } from "../constants/finance.js";
 import {
   afterPlaceOrderV2,
@@ -1330,6 +1332,26 @@ export const acceptOrder = async (req, res) => {
       return handleResponse(res, 403, "Access denied.");
     }
 
+    const isReq = Boolean(orderId && orderId.toUpperCase().startsWith("REQ-"));
+    if (isReq) {
+      try {
+        const idem = req.headers["idempotency-key"];
+        const { order: updated, duplicate } = await deliveryAcceptAtomic(
+          userId,
+          orderId,
+          idem,
+        );
+        return handleResponse(
+          res,
+          200,
+          duplicate ? "Already accepted" : "Order accepted successfully",
+          updated,
+        );
+      } catch (e) {
+        return handleResponse(res, e.statusCode || 500, e.message);
+      }
+    }
+
     const orderKey = orderMatchQueryFromRouteParam(orderId);
     if (!orderKey) {
       return handleResponse(res, 404, "Order not found");
@@ -1397,6 +1419,22 @@ export const skipOrder = async (req, res) => {
 
     if (role !== "delivery" && role !== "admin") {
       return handleResponse(res, 403, "Access denied.");
+    }
+
+    const isReq = Boolean(orderId && orderId.toUpperCase().startsWith("REQ-"));
+    if (isReq) {
+      const request = await SellerProductRequest.findOne({
+        requestNumber: new RegExp(`^${escapeRegex(orderId)}$`, "i"),
+      });
+      if (!request) {
+        return handleResponse(res, 404, "Order not found");
+      }
+      if (!request.skippedBy) request.skippedBy = [];
+      if (!request.skippedBy.includes(userId)) {
+        request.skippedBy.push(userId);
+        await request.save();
+      }
+      return handleResponse(res, 200, "Order skipped successfully");
     }
 
     const orderKey = orderMatchQueryFromRouteParam(orderId);

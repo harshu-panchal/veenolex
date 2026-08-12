@@ -4,6 +4,7 @@ import ProductCard from "../shared/ProductCard";
 import { cn } from "@/lib/utils";
 import ExperienceBannerCarousel from "./ExperienceBannerCarousel";
 import { setJSON, STORAGE_KEYS } from "@core/utils/storage";
+import { getCategoryFallbackImage } from "../../constants/homeConstants";
 
 const rememberExperienceReturn = (headerId, sectionId) =>
   setJSON(
@@ -212,18 +213,29 @@ const SectionRenderer = ({ sections = [], productsById = {}, categoriesById = {}
                         }
                       }}
                     >
-                      <div className="relative aspect-square w-full rounded-2xl bg-[#F8F9FA] border border-slate-100/80 flex items-center justify-center overflow-hidden p-1 transition-all duration-200 group-hover:border-primary/40 group-hover:bg-white group-hover:shadow-[0_10px_25px_rgba(15,23,42,0.08)]">
-                        {cat.image ? (
-                          <img
-                            src={cat.image}
-                            alt={cat.name}
-                            className="w-full h-full object-contain object-center mix-blend-multiply transition-transform duration-200 group-hover:scale-105"
-                          />
-                        ) : (
-                          <div className="h-6 w-6 rounded-full bg-slate-100" />
-                        )}
+                      <div className="relative aspect-square w-full rounded-full bg-white border border-amber-100/70 shadow-[0_4px_14px_rgba(0,0,0,0.05)] flex items-center justify-center overflow-hidden p-2 transition-all duration-200 group-hover:scale-105 group-hover:border-primary/40 group-hover:shadow-[0_8px_20px_rgba(0,0,0,0.08)]">
+                        {(() => {
+                          const fallbackImg = getCategoryFallbackImage(cat.name);
+                          const imgSrc = fallbackImg || cat.image;
+                          return imgSrc ? (
+                            <img
+                              src={imgSrc}
+                              alt=""
+                              className="w-full h-full object-contain object-center transition-transform duration-200 group-hover:scale-110"
+                              onError={(e) => {
+                                if (fallbackImg && !e.currentTarget.src.endsWith(fallbackImg)) {
+                                  e.currentTarget.src = fallbackImg;
+                                }
+                              }}
+                            />
+                          ) : (
+                            <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-400">
+                              {cat.name?.[0]?.toUpperCase() || "C"}
+                            </div>
+                          );
+                        })()}
                       </div>
-                      <div className="text-[11px] font-semibold text-slate-700 text-center leading-snug line-clamp-2 group-hover:text-primary">
+                      <div className="text-[11px] font-bold text-slate-800 text-center leading-snug line-clamp-2 group-hover:text-primary tracking-tight">
                         {cat.name}
                       </div>
                     </button>
