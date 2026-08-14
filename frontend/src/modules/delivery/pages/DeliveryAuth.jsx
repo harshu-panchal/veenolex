@@ -25,6 +25,7 @@ import { useAuth } from "@core/context/AuthContext";
 import { useSettings } from "@core/context/SettingsContext";
 import { toast } from "sonner";
 import Tesseract from "tesseract.js";
+import LogoImage from "@/assets/Logo.png";
 
 const VEHICLE_TYPES = [
   { value: "bike", label: "Bike" },
@@ -36,7 +37,7 @@ const DeliveryAuth = () => {
   const navigate = useNavigate();
   const { settings } = useSettings();
   const appName = settings?.appName || "App";
-  const logoUrl = settings?.logoUrl || "";
+  const logoUrl = settings?.logoUrl || LogoImage;
   const { login } = useAuth();
 
   // mode: "login" | "signup"

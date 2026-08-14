@@ -1,3 +1,5 @@
+import LogoImage from "@/assets/Logo.png";
+
 /** Default fallbacks when settings are not yet loaded or API fails */
 export const DEFAULT_SETTINGS = {
   appName: "Veenolex",
@@ -6,7 +8,7 @@ export const DEFAULT_SETTINGS = {
   currencySymbol: "₹",
   currencyCode: "INR",
   timezone: "Asia/Kolkata",
-  logoUrl: "",
+  logoUrl: LogoImage,
   faviconUrl: "",
   primaryColor: "var(--primary)",
   secondaryColor: "#64748b",

@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 
 import { useSettings } from '@core/context/SettingsContext';
 import { onNotificationNew } from '@core/services/orderSocket';
+import LogoImage from '@/assets/Logo.png';
 
 const Topbar = ({ onMenuClick }) => {
     const { user, logout, role, token } = useAuth();
@@ -25,7 +26,7 @@ const Topbar = ({ onMenuClick }) => {
     const location = useLocation();
 
     const appName = settings?.appName || 'App';
-    const logoUrl = settings?.logoUrl || '';
+    const logoUrl = settings?.logoUrl || LogoImage;
 
     const [searchQuery, setSearchQuery] = React.useState('');
     const [notifications, setNotifications] = React.useState([]);
@@ -184,15 +185,16 @@ const Topbar = ({ onMenuClick }) => {
 
                 {/* Mobile Logo */}
                 <div className="flex items-center space-x-2 mr-4 md:hidden">
-                    {logoUrl ? (
-                        <div className="h-8 w-8 rounded-lg overflow-hidden shadow-md shadow-primary/10 border border-gray-100">
-                            <img src={logoUrl} alt={appName} className="h-full w-full object-contain" />
-                        </div>
-                    ) : (
-                        <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center text-white font-black text-sm shadow-md">
-                            {appName.charAt(0)}
-                        </div>
-                    )}
+                    <div className="h-11 w-11 flex items-center justify-center shrink-0">
+                        <img 
+                            src={logoUrl} 
+                            onError={(e) => {
+                                e.currentTarget.src = LogoImage;
+                            }}
+                            alt={appName} 
+                            className="h-full w-full object-contain drop-shadow-sm scale-110" 
+                        />
+                    </div>
                 </div>
 
                 <form onSubmit={handleSearchSubmit} className="relative w-full md:w-[400px] group hidden md:block">

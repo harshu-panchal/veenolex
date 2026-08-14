@@ -65,7 +65,12 @@ const CATEGORIES = [
     },
 ];
 
+import LogoImage from '@/assets/Logo.png';
+
 const CustomerAuth = () => {
+    const [step, setStep] = useState('phone'); // 'phone' | 'otp'
+    const [phone, setPhone] = useState('');
+    const [otp, setOtp] = useState(['', '', '', '']);
     const [isLogin, setIsLogin] = useState(true);
     const [isLoading, setIsLoading] = useState(false);
     const [showOtp, setShowOtp] = useState(false);
@@ -74,7 +79,7 @@ const CustomerAuth = () => {
     const { login } = useAuth();
     const { settings } = useSettings();
     const appName = settings?.appName || 'App';
-    const logoUrl = settings?.logoUrl || '';
+    const logoUrl = settings?.logoUrl || LogoImage;
     const navigate = useNavigate();
 
     const [formData, setFormData] = useState({

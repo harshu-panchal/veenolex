@@ -3,7 +3,10 @@ import Delivery from "../models/delivery.js";
 import Seller from "../models/seller.js";
 import CheckoutGroup from "../models/checkoutGroup.js";
 import SellerProductRequest from "../models/sellerProductRequest.js";
-import { WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
+import {
+  WORKFLOW_STATUS,
+  DEFAULT_DELIVERY_TIMEOUT_MS,
+} from "../constants/orderWorkflow.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import {
   orderMatchQueryFlexible,
@@ -247,6 +250,41 @@ async function resolveNearbySellerIds(deliveryPartner, userId) {
   };
 }
 
+/**
+ * Availability filter for seller restock requests broadcast to riders.
+ *
+ * Mirrors the constraints the order and return-pickup queries in this file
+ * already apply. Exported so the rules can be asserted without a database —
+ * each one is load-bearing, and dropping any of them puts stale or unrelated
+ * requests back into every rider's feed:
+ *
+ *   - still broadcasting, with no rider attached
+ *   - not already declined by this rider
+ *   - destined for a seller near this rider
+ *   - inside its broadcast window
+ */
+export function buildAvailableSellerRequestQuery({
+  userId,
+  sellerIds,
+  now = new Date(),
+}) {
+  // Rows written before deliverySearchExpiresAt was persisted have no window of
+  // their own. Bound them by their last update instead of showing them forever,
+  // which is what kept months-old requests alive in the rider pool.
+  const legacyCutoff = new Date(now.getTime() - DEFAULT_DELIVERY_TIMEOUT_MS());
+
+  return {
+    deliveryWorkflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
+    deliveryBoy: null,
+    skippedBy: { $nin: [userId] },
+    sellerId: { $in: sellerIds },
+    $or: [
+      { deliverySearchExpiresAt: { $gt: now } },
+      { deliverySearchExpiresAt: null, updatedAt: { $gt: legacyCutoff } },
+    ],
+  };
+}
+
 function filterV2OrdersByRadius(v2Orders, deliveryCoords) {
   const [dlng, dlat] = deliveryCoords;
   return v2Orders.filter((order) => {
@@ -406,11 +444,9 @@ export async function fetchAvailableOrdersForDelivery({
 
   let requestedOrders = [];
   if (showDeliveries) {
-    const requestedOrdersRaw = await SellerProductRequest.find({
-      deliveryWorkflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
-      deliveryBoy: null,
-      skippedBy: { $nin: [userId] },
-    })
+    const requestedOrdersRaw = await SellerProductRequest.find(
+      buildAvailableSellerRequestQuery({ userId, sellerIds }),
+    )
       .sort({ createdAt: -1, _id: -1 })
       .limit(limit)
       .populate("sellerId", "shopName address name location")

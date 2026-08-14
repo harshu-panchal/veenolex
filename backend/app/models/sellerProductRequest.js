@@ -189,6 +189,22 @@ const sellerProductRequestSchema = new mongoose.Schema(
       enum: ["DELIVERY_SEARCH", "DELIVERY_ASSIGNED", "PICKUP_READY", "OUT_FOR_DELIVERY", "DELIVERED"],
       default: null
     },
+    // Riders who declined this request. Without this path declared, the push in
+    // skipOrder() was dropped on save (strict mode), so a skipped request kept
+    // reappearing in the rider's available list on every poll.
+    skippedBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Delivery"
+      }
+    ],
+    // End of the rider broadcast window. startRequestDeliverySearch() has always
+    // assigned this, but without the path declared it was dropped on save, so a
+    // request left in DELIVERY_SEARCH stayed in the rider pool forever.
+    deliverySearchExpiresAt: {
+      type: Date,
+      default: null
+    },
     otpValidationLocation: {
       lat: Number,
       lng: Number

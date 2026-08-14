@@ -33,6 +33,7 @@ jest.unstable_mockModule("../app/utils/helper.js", () => ({
 jest.unstable_mockModule("../app/constants/orderWorkflow.js", () => ({
   WORKFLOW_STATUS: { SELLER_PENDING: "SELLER_PENDING" },
   DEFAULT_SELLER_TIMEOUT_MS: () => 0,
+  DEFAULT_DELIVERY_TIMEOUT_MS: () => 0,
 }));
 
 jest.unstable_mockModule("../app/services/orderWorkflowService.js", () => ({

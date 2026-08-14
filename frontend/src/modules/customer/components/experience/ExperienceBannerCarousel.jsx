@@ -102,7 +102,9 @@ const ExperienceBannerCarousel = ({ section, items, fullWidth = true, slideGap =
         {visibleItems.map((banner, idx) => {
           const useDesktopRatio = !isMobile;
           const activeImageUrl = (useDesktopRatio && banner.desktopImageUrl) ? banner.desktopImageUrl : banner.imageUrl;
-          const aspectClass = useDesktopRatio ? "aspect-[1448/500] md:aspect-[1448/480]" : "aspect-[1448/700] sm:aspect-[1448/640]";
+          const aspectClass = useDesktopRatio
+            ? "aspect-[21/7] max-h-[460px]"
+            : "aspect-[16/6] sm:aspect-[18/6.5] max-h-[280px]";
 
           return (
             <div
@@ -110,14 +112,14 @@ const ExperienceBannerCarousel = ({ section, items, fullWidth = true, slideGap =
               className={cn(
                 "relative shrink-0 flex items-center justify-center box-border",
                 fullWidth
-                  ? `${aspectClass} w-full overflow-hidden`
-                  : "w-full px-0 overflow-visible pb-6"
+                  ? "w-full overflow-hidden px-3 sm:px-4 md:px-6 lg:px-8"
+                  : "w-full px-3 sm:px-4 overflow-visible pb-4"
               )}
               style={{ width: `${100 / totalItems}%` }}
             >
               {fullWidth ? (
-                <div className="w-full h-full px-0 py-0 box-border">
-                  <div className="w-full h-full rounded-2xl md:rounded-[2rem] overflow-hidden shadow-md border border-slate-100 bg-slate-50 flex items-center justify-center">
+                <div className={cn("w-full box-border flex items-center justify-center", aspectClass)}>
+                  <div className="w-full h-full rounded-2xl md:rounded-[2rem] overflow-hidden shadow-md border border-slate-100/80 bg-slate-50 flex items-center justify-center relative">
                     <img
                       src={getBannerOptimizedSrc(activeImageUrl)}
                       srcSet={
@@ -141,9 +143,7 @@ const ExperienceBannerCarousel = ({ section, items, fullWidth = true, slideGap =
                       }
                       sizes="100vw"
                       alt={banner.title || section?.title || "Banner"}
-                      className="w-full h-full object-cover object-center pointer-events-none rounded-2xl md:rounded-[2rem]"
-                      width={1448}
-                      height={useDesktopRatio ? 480 : 700}
+                      className="w-full h-full object-fill pointer-events-none rounded-2xl md:rounded-[2rem] block"
                       loading={idx === 0 ? "eager" : "lazy"}
                       fetchPriority={idx === 0 ? "high" : "low"}
                       decoding="async"
@@ -151,7 +151,7 @@ const ExperienceBannerCarousel = ({ section, items, fullWidth = true, slideGap =
                   </div>
                 </div>
               ) : (
-                <div className={cn("w-full rounded-2xl md:rounded-3xl shadow-[0_8px_24px_rgba(0,0,0,0.05),_0_2px_8px_rgba(0,0,0,0.03)] bg-slate-50 relative flex items-center justify-center", aspectClass)}>
+                <div className={cn("w-full rounded-2xl md:rounded-3xl shadow-[0_8px_24px_rgba(0,0,0,0.05),_0_2px_8px_rgba(0,0,0,0.03)] bg-slate-50 relative flex items-center justify-center overflow-hidden", aspectClass)}>
                   <img
                     src={getBannerOptimizedSrc(activeImageUrl)}
                     srcSet={
@@ -173,9 +173,7 @@ const ExperienceBannerCarousel = ({ section, items, fullWidth = true, slideGap =
                     }
                     sizes="(max-width: 768px) 100vw, 1448px"
                     alt={banner.title || section?.title || "Banner"}
-                    className="w-full h-full object-cover object-center pointer-events-none rounded-2xl md:rounded-3xl"
-                    width={1448}
-                    height={useDesktopRatio ? 480 : 700}
+                    className="w-full h-full object-fill pointer-events-none rounded-2xl md:rounded-3xl block"
                     loading={idx === 0 ? "eager" : "lazy"}
                     fetchPriority={idx === 0 ? "high" : "low"}
                     decoding="async"

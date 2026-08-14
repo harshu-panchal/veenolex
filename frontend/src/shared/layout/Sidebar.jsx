@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { HiChevronDown } from "react-icons/hi2";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
+import LogoImage from "@/assets/Logo.png";
 
 const SidebarItem = ({
   item,
@@ -195,20 +196,22 @@ const SidebarItem = ({
 const SidebarContent = ({ items, title, onClose, openMenu, handleToggle, hoveredIdx, setHoveredIdx }) => {
   const { settings } = useSettings();
   const appName = settings?.appName || 'App';
+  const logoUrl = settings?.logoUrl || LogoImage;
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-[#f5f3ff] border-r border-purple-100/80">
       <div className="flex-shrink-0 flex h-16 items-center justify-between px-5 border-b border-purple-100/80 bg-purple-100/40 z-10">
-        <div className="flex items-center space-x-2.5">
-          {settings?.logoUrl ? (
-            <div className="h-9 w-9 rounded-xl overflow-hidden shadow-xs ring-1 ring-purple-200 group-hover:scale-105 transition-all duration-300">
-              <img src={settings.logoUrl} alt={appName} className="h-full w-full object-contain" />
-            </div>
-          ) : (
-            <div className="h-9 w-9 rounded-xl bg-purple-700 flex items-center justify-center text-white shadow-xs transform -rotate-6 hover:rotate-0 transition-all duration-300">
-              <span className="text-lg font-black italic">{appName.charAt(0)}</span>
-            </div>
-          )}
+        <div className="flex items-center space-x-3">
+          <div className="h-12 w-12 flex items-center justify-center shrink-0">
+            <img 
+              src={logoUrl} 
+              onError={(e) => {
+                e.currentTarget.src = LogoImage;
+              }}
+              alt={appName} 
+              className="h-full w-full object-contain drop-shadow-sm scale-110" 
+            />
+          </div>
           <div>
             <h1 className="text-base font-black tracking-tight text-slate-900 leading-none">
               {appName}
@@ -258,16 +261,17 @@ const SidebarContent = ({ items, title, onClose, openMenu, handleToggle, hovered
       <div className="p-4 border-t border-purple-100/80 bg-purple-100/40 flex-shrink-0">
         <div className="bg-white/90 rounded-xl p-3 shadow-xs border border-purple-200/80 hover:bg-white hover:border-purple-300 transition-all group cursor-pointer">
           <div className="flex items-center space-x-2.5">
-            <div className="relative group">
-              {settings?.logoUrl ? (
-                <div className="h-8 w-8 rounded-lg overflow-hidden border border-purple-200 shadow-xs group-hover:scale-105 transition-all duration-300">
-                  <img src={settings.logoUrl} alt={appName} className="h-full w-full object-contain" />
-                </div>
-              ) : (
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-purple-700 via-purple-800 to-indigo-900 flex items-center justify-center text-white font-black text-xs shadow-xs group-hover:scale-105 transition-all duration-300">
-                  {appName.charAt(0)}
-                </div>
-              )}
+            <div className="relative group shrink-0">
+              <div className="h-10 w-10 flex items-center justify-center">
+                <img 
+                  src={logoUrl} 
+                  onError={(e) => {
+                    e.currentTarget.src = LogoImage;
+                  }}
+                  alt={appName} 
+                  className="h-full w-full object-contain scale-105" 
+                />
+              </div>
               <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 bg-emerald-500 rounded-full border-2 border-white shadow-xs animate-pulse"></div>
             </div>
             <div className="flex-1 min-w-0">

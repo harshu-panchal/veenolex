@@ -576,7 +576,7 @@ const Home = () => {
           <PromoMarquee />
 
           {heroConfig.banners?.items?.length > 0 && (
-            <motion.div ref={heroRef} className="block mt-5 md:mt-8 will-change-transform" style={isMobile ? { opacity: 1 } : { opacity, scale, pointerEvents }}>
+            <motion.div ref={heroRef} className="block mt-1 md:mt-1.5 will-change-transform" style={isMobile ? { opacity: 1 } : { opacity, scale, pointerEvents }}>
               <div className="relative w-full overflow-hidden">
                 <ExperienceBannerCarousel
                   section={{ title: "" }}
@@ -674,12 +674,12 @@ const Home = () => {
               {/* Banner Image Container */}
               <div 
                 onClick={() => handlePopupClick(activePopup)}
-                className="w-full bg-slate-50 overflow-hidden relative cursor-pointer group flex items-center justify-center min-h-[220px] max-h-[60vh]"
+                className="w-full overflow-hidden relative cursor-pointer group flex items-center justify-center"
               >
                 <img
                   src={activePopup.imageUrl}
                   alt={activePopup.title}
-                  className="w-full h-auto max-h-[60vh] object-contain transition-transform duration-700 group-hover:scale-[1.03]"
+                  className="w-full h-auto max-h-[72vh] object-cover block transition-transform duration-700 group-hover:scale-[1.02]"
                 />
                 
                 {/* Elegant overlay gradient on hover */}

@@ -28,6 +28,7 @@ import {
 import { toast } from "sonner";
 import Lottie from "lottie-react";
 import sellerAnimation from "../../../assets/INSTANT_6.json";
+import LogoImage from "@/assets/Logo.png";
 import { sellerApi } from "../services/sellerApi";
 import MapPicker from "../../../shared/components/MapPicker";
 
@@ -57,7 +58,7 @@ const Auth = () => {
   const { settings } = useSettings();
   const navigate = useNavigate();
   const appName = settings?.appName || "App";
-  const logoUrl = settings?.logoUrl || "";
+  const logoUrl = settings?.logoUrl || LogoImage;
   const [verifications, setVerifications] = useState({
     email: createInitialVerificationState(),
     phone: createInitialVerificationState(),
@@ -481,15 +482,14 @@ const Auth = () => {
           style={{ WebkitOverflowScrolling: "touch" }}>
           <div className="hidden md:flex absolute top-8 right-8 z-20">
             <div className="w-20 h-20 rounded-2xl bg-slate-50 border border-slate-200 shadow-sm flex items-center justify-center overflow-hidden">
-              {logoUrl ? (
-                <img
-                  src={logoUrl}
-                  alt={`${appName} logo`}
-                  className="w-14 h-14 object-contain"
-                />
-              ) : (
-                <Store size={30} className="text-slate-700" />
-              )}
+              <img
+                src={logoUrl}
+                onError={(e) => {
+                  e.currentTarget.src = LogoImage;
+                }}
+                alt={`${appName} logo`}
+                className="w-16 h-16 object-contain"
+              />
             </div>
           </div>
           <AnimatePresence mode="wait">

@@ -1,71 +1,133 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { MapPin, Search, Navigation, Loader2, Check, X, Edit3 } from 'lucide-react';
 import { toast } from 'sonner';
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { GoogleMap, MarkerF } from '@react-google-maps/api';
+import { loadGoogleMaps } from '@/core/services/googleMapsLoader';
 import { useLocation } from './../modules/customer/context/LocationContext';
 
-// Fix Leaflet's default icon issue in React
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
+const MAP_CONTAINER_STYLE = { height: '100%', width: '100%' };
 
-const LocationMarker = ({ position, setPosition }) => {
-  const map = useMapEvents({
-    click(e) {
-      setPosition(e.latlng);
-      map.flyTo(e.latlng, map.getZoom());
-    },
-  });
+const MAP_OPTIONS = {
+  disableDefaultUI: true,
+  zoomControl: true,
+  gestureHandling: 'greedy',
+  clickableIcons: false,
+};
 
-  const markerRef = useRef(null);
-  
-  useEffect(() => {
-    if (position) {
-      map.flyTo(position, map.getZoom());
-    }
-  }, [position, map]);
+const SEARCH_DEBOUNCE_MS = 500;
+const MAX_SUGGESTIONS = 5;
+const COORD_EPSILON = 0.000001;
 
-  return position === null ? null : (
-    <Marker
-      draggable={true}
-      eventHandlers={{
-        dragend() {
-          const marker = markerRef.current;
-          if (marker != null) {
-            setPosition(marker.getLatLng());
-          }
-        },
-      }}
-      position={position}
-      ref={markerRef}
-    />
-  );
+// Pull a named address component (e.g. "locality") out of a Geocoder result.
+const getComponent = (components, types) =>
+  components?.find((c) => types.every((t) => c.types.includes(t)))?.long_name;
+
+const buildLocationFromGeocode = (result, lat, lng) => {
+  const components = result?.address_components || [];
+  return {
+    latitude: lat,
+    longitude: lng,
+    address: result?.formatted_address || '',
+    city:
+      getComponent(components, ['locality']) ||
+      getComponent(components, ['sublocality_level_1']) ||
+      getComponent(components, ['postal_town']) ||
+      getComponent(components, ['administrative_area_level_2']) ||
+      '',
+    state: getComponent(components, ['administrative_area_level_1']) || '',
+    pincode: getComponent(components, ['postal_code']) || '',
+  };
 };
 
 const ChangeLocationModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
   const [activeTab, setActiveTab] = useState('search'); // 'search', 'gps', 'map'
-  
+
+  // Google Maps readiness
+  const [mapsReady, setMapsReady] = useState(false);
+  const [mapsError, setMapsError] = useState('');
+  const geocoderRef = useRef(null);
+  const autocompleteServiceRef = useRef(null);
+  const sessionTokenRef = useRef(null);
+  const mapRef = useRef(null);
+
   // Option 1: GPS
   const [isGpsLoading, setIsGpsLoading] = useState(false);
-  
+
   // Option 2: Search
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const searchTimeoutRef = useRef(null);
+  const latestSearchIdRef = useRef(0);
 
   // Option 3: Map
   const [mapPosition, setMapPosition] = useState({ lat: 20.5937, lng: 78.9629 }); // Default India
+  const [mapCenter, setMapCenter] = useState({ lat: 20.5937, lng: 78.9629 });
 
   // Selected State
   const [selectedLocation, setSelectedLocation] = useState(null);
   const { currentLocation } = useLocation();
+
+  // --- Google Maps bootstrap (singleton loader, shared with LocationDrawer) ---
+  useEffect(() => {
+    if (!isOpen || mapsReady) return;
+
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      setMapsError('Google Maps API key is missing');
+      return;
+    }
+
+    let cancelled = false;
+    loadGoogleMaps(apiKey)
+      .then(() => {
+        if (cancelled) return;
+        geocoderRef.current = new window.google.maps.Geocoder();
+        if (window.google?.maps?.places?.AutocompleteService) {
+          autocompleteServiceRef.current =
+            new window.google.maps.places.AutocompleteService();
+        }
+        setMapsError('');
+        setMapsReady(true);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setMapsError(err?.message || 'Unable to load Google Maps');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, mapsReady]);
+
+  // A fresh session token per search session keeps Places autocomplete billing low.
+  const getSessionToken = useCallback(() => {
+    if (
+      !sessionTokenRef.current &&
+      window.google?.maps?.places?.AutocompleteSessionToken
+    ) {
+      sessionTokenRef.current =
+        new window.google.maps.places.AutocompleteSessionToken();
+    }
+    return sessionTokenRef.current;
+  }, []);
+
+  const reverseGeocode = useCallback((lat, lng) => {
+    return new Promise((resolve, reject) => {
+      if (!geocoderRef.current) {
+        reject(new Error('Geocoder not ready'));
+        return;
+      }
+      geocoderRef.current.geocode({ location: { lat, lng } }, (results, status) => {
+        if (status === 'OK' && Array.isArray(results) && results[0]) {
+          resolve(buildLocationFromGeocode(results[0], lat, lng));
+        } else {
+          reject(new Error(`Geocoder failed: ${status}`));
+        }
+      });
+    });
+  }, []);
 
   // On Open: Hydrate default selected location
   useEffect(() => {
@@ -83,18 +145,32 @@ const ChangeLocationModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
     }
   }, [isOpen, currentLocation]);
 
+  // Reset the transient search state whenever the modal closes.
   useEffect(() => {
-    if (selectedLocation?.latitude && selectedLocation?.longitude) {
-      setMapPosition({ lat: selectedLocation.latitude, lng: selectedLocation.longitude });
-    }
-  }, [selectedLocation]);
+    if (isOpen) return;
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsSearching(false);
+    sessionTokenRef.current = null;
+  }, [isOpen]);
 
-  // Cleanup map container resize bug on tab switch
+  // Keep the map in sync when a location is chosen via GPS or search.
+  // Skipped when the coords already match the marker (i.e. the change came from
+  // the map itself), so dragging the pin never yanks the viewport back.
   useEffect(() => {
-    if (activeTab === 'map') {
-      window.dispatchEvent(new Event('resize'));
+    if (!selectedLocation?.latitude || !selectedLocation?.longitude) return;
+    const { latitude, longitude } = selectedLocation;
+    if (
+      Math.abs(latitude - mapPosition.lat) < COORD_EPSILON &&
+      Math.abs(longitude - mapPosition.lng) < COORD_EPSILON
+    ) {
+      return;
     }
-  }, [activeTab]);
+    const next = { lat: latitude, lng: longitude };
+    setMapPosition(next);
+    setMapCenter(next);
+    mapRef.current?.panTo(next);
+  }, [selectedLocation, mapPosition.lat, mapPosition.lng]);
 
   // --- Option 1: GPS Fetch ---
   const handleUseGps = () => {
@@ -104,17 +180,8 @@ const ChangeLocationModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
       async (pos) => {
         const { latitude, longitude } = pos.coords;
         try {
-          const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`);
-          if (!response.ok) throw new Error("Network response was not ok");
-          const data = await response.json();
-          setSelectedLocation({
-            latitude,
-            longitude,
-            address: data.display_name,
-            city: data.address?.city || data.address?.town || data.address?.village || '',
-            state: data.address?.state || '',
-            pincode: data.address?.postcode || ''
-          });
+          const location = await reverseGeocode(latitude, longitude);
+          setSelectedLocation(location);
         } catch (error) {
           console.error("GPS Reverse Geocode Error", error);
           toast.error("Unable to fetch address. Please check your connection.");
@@ -130,72 +197,127 @@ const ChangeLocationModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
     );
   };
 
-  // --- Option 2: Search ---
+  // --- Option 2: Search (Google Places Autocomplete) ---
   useEffect(() => {
-    if (!searchQuery.trim()) {
+    const query = searchQuery.trim();
+    if (!query) {
       setSearchResults([]);
+      setIsSearching(false);
       return;
     }
-    
+    if (!mapsReady || !autocompleteServiceRef.current) return;
+
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-    
+
     setIsSearching(true);
-    searchTimeoutRef.current = setTimeout(async () => {
-      try {
-        const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&limit=5`);
-        const data = await response.json();
-        setSearchResults(data);
-      } catch (err) {
-        console.error("Search API Error", err);
-      } finally {
-        setIsSearching(false);
-      }
-    }, 500);
+    searchTimeoutRef.current = setTimeout(() => {
+      const requestId = latestSearchIdRef.current + 1;
+      latestSearchIdRef.current = requestId;
+
+      autocompleteServiceRef.current.getPlacePredictions(
+        {
+          input: query,
+          componentRestrictions: { country: 'in' },
+          sessionToken: getSessionToken(),
+        },
+        (predictions, status) => {
+          // Ignore stale responses from older keystrokes.
+          if (requestId !== latestSearchIdRef.current) return;
+
+          setIsSearching(false);
+          if (
+            status === window.google.maps.places.PlacesServiceStatus.OK &&
+            Array.isArray(predictions)
+          ) {
+            setSearchResults(predictions.slice(0, MAX_SUGGESTIONS));
+            return;
+          }
+          setSearchResults([]);
+        }
+      );
+    }, SEARCH_DEBOUNCE_MS);
 
     return () => clearTimeout(searchTimeoutRef.current);
-  }, [searchQuery]);
+  }, [searchQuery, mapsReady, getSessionToken]);
 
-  const handleSelectSearchResult = (result) => {
-    setSelectedLocation({
-      latitude: parseFloat(result.lat),
-      longitude: parseFloat(result.lon),
-      address: result.display_name,
-      city: result.address?.city || result.address?.town || result.address?.village || '', 
-      state: result.address?.state || '',
-      pincode: result.address?.postcode || ''
-    });
+  const handleSelectSearchResult = (prediction) => {
+    if (!geocoderRef.current) return;
+
     setSearchResults([]);
-    setSearchQuery(result.display_name);
+    setSearchQuery(prediction.description);
     setActiveTab('search');
+
+    geocoderRef.current.geocode(
+      { placeId: prediction.place_id },
+      (results, status) => {
+        // The session ends once a prediction is resolved.
+        sessionTokenRef.current = null;
+
+        if (status !== 'OK' || !Array.isArray(results) || !results[0]) {
+          toast.error("Could not resolve selected location");
+          return;
+        }
+        const geometry = results[0].geometry?.location;
+        if (!geometry) {
+          toast.error("Location coordinates not available");
+          return;
+        }
+        const location = buildLocationFromGeocode(
+          results[0],
+          geometry.lat(),
+          geometry.lng()
+        );
+        setSelectedLocation({
+          ...location,
+          address: location.address || prediction.description,
+        });
+      }
+    );
   };
 
-  // --- Option 3: Map Drag ---
-  useEffect(() => {
-    if (activeTab === 'map' && mapPosition) {
-      const fetchMapAddress = async () => {
-        try {
-          const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${mapPosition.lat}&lon=${mapPosition.lng}&format=json`);
-          const data = await response.json();
-          setSelectedLocation({
-            latitude: mapPosition.lat,
-            longitude: mapPosition.lng,
-            address: data.display_name,
-            city: data.address?.city || data.address?.town || data.address?.village || '',
-            state: data.address?.state || '',
-            pincode: data.address?.postcode || ''
-          });
-        } catch (error) {
-          console.error("Map Reverse Geocode Error", error);
-        }
-      };
-      
-      const debounce = setTimeout(() => {
-        fetchMapAddress();
-      }, 500);
-      
-      return () => clearTimeout(debounce);
-    }
-  }, [mapPosition, activeTab]);
+  // --- Option 3: Map click / marker drag ---
+  const handleMapPick = useCallback(
+    async (lat, lng) => {
+      setMapPosition({ lat, lng });
+      try {
+        const location = await reverseGeocode(lat, lng);
+        setSelectedLocation(location);
+      } catch (error) {
+        console.error("Map Reverse Geocode Error", error);
+        // Keep the picked coordinates even if the address lookup fails.
+        setSelectedLocation((prev) => ({
+          ...(prev || {}),
+          latitude: lat,
+          longitude: lng,
+        }));
+      }
+    },
+    [reverseGeocode]
+  );
+
+  const handleMapClick = useCallback(
+    (e) => {
+      if (activeTab !== 'map' || !e.latLng) return;
+      handleMapPick(e.latLng.lat(), e.latLng.lng());
+    },
+    [activeTab, handleMapPick]
+  );
+
+  const handleMarkerDragEnd = useCallback(
+    (e) => {
+      if (!e.latLng) return;
+      handleMapPick(e.latLng.lat(), e.latLng.lng());
+    },
+    [handleMapPick]
+  );
+
+  const onMapLoad = useCallback((map) => {
+    mapRef.current = map;
+  }, []);
+
+  const onMapUnmount = useCallback(() => {
+    mapRef.current = null;
+  }, []);
 
   const handleConfirm = () => {
     if (selectedLocation && onConfirm) {
@@ -210,22 +332,21 @@ const ChangeLocationModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="p-0 overflow-hidden bg-white flex flex-col 
+      <DialogContent className="p-0 overflow-hidden bg-white flex flex-col
         !top-auto !bottom-0 !left-0 !right-0 !translate-y-0 !translate-x-0 w-full rounded-t-2xl rounded-b-none max-h-[90vh] data-[state=open]:!slide-in-from-bottom data-[state=closed]:!slide-out-to-bottom
         sm:!top-[50%] sm:!left-[50%] sm:!-translate-x-1/2 sm:!-translate-y-1/2 sm:!rounded-2xl sm:max-w-[520px] sm:w-[calc(100%-2rem)] md:max-h-[85vh]">
-        <style>{`.leaflet-container { z-index: 10 !important; }`}</style>
-        
+
         <DialogHeader className="px-6 py-4 border-b border-slate-100 shrink-0 flex flex-row items-center justify-between">
           <DialogTitle className="text-xl font-bold text-slate-800">Change Your Location</DialogTitle>
           <button onClick={onClose} className="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">
             <X size={18} />
           </button>
         </DialogHeader>
-        
+
         <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-50/50">
-          
+
           {/* Option 1: GPS */}
-          <button 
+          <button
             onClick={handleUseGps}
             disabled={isGpsLoading}
             className="w-full flex items-center justify-between p-3.5 bg-primary/5 border border-primary/20 rounded-xl hover:bg-primary/10 transition-colors disabled:opacity-50"
@@ -272,7 +393,7 @@ const ChangeLocationModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
                 </div>
               )}
             </div>
-            
+
             {/* Search Results Dropdown */}
             {activeTab === 'search' && searchResults.length > 0 && (
               <div className="bg-white border border-slate-100 rounded-xl shadow-lg overflow-hidden max-h-[200px] overflow-y-auto z-50 relative">
@@ -283,7 +404,7 @@ const ChangeLocationModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
                     onClick={() => handleSelectSearchResult(result)}
                   >
                     <MapPin size={16} className="text-slate-400 mt-0.5 shrink-0" />
-                    <p className="text-xs text-slate-700 line-clamp-2 leading-snug">{result.display_name}</p>
+                    <p className="text-xs text-slate-700 line-clamp-2 leading-snug">{result.description}</p>
                   </button>
                 ))}
               </div>
@@ -294,37 +415,47 @@ const ChangeLocationModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Pick on Map</label>
-              <button 
+              <button
                 onClick={() => setActiveTab('map')}
                 className={`text-xs font-bold ${activeTab === 'map' ? 'text-primary' : 'text-slate-400'}`}
               >
                 {activeTab === 'map' ? 'Map Active' : 'Activate Map'}
               </button>
             </div>
-            
+
             <div className={`h-[180px] w-full rounded-xl overflow-hidden border transition-all ${activeTab === 'map' ? 'border-primary ring-2 ring-primary/20 shadow-md' : 'border-slate-200 shadow-sm opacity-80'} relative`}>
               {activeTab !== 'map' && (
-                <div 
-                  className="absolute inset-0 bg-transparent z-50 cursor-pointer" 
+                <div
+                  className="absolute inset-0 bg-transparent z-50 cursor-pointer"
                   onClick={() => setActiveTab('map')}
                 />
               )}
-              
-              <MapContainer 
-                center={[mapPosition.lat, mapPosition.lng]} 
-                zoom={13} 
-                scrollWheelZoom={true} 
-                style={{ height: '100%', width: '100%' }}
-              >
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-                <LocationMarker 
-                  position={mapPosition} 
-                  setPosition={setMapPosition} 
-                />
-              </MapContainer>
+
+              {mapsReady ? (
+                <GoogleMap
+                  mapContainerStyle={MAP_CONTAINER_STYLE}
+                  center={mapCenter}
+                  zoom={13}
+                  options={MAP_OPTIONS}
+                  onLoad={onMapLoad}
+                  onUnmount={onMapUnmount}
+                  onClick={handleMapClick}
+                >
+                  <MarkerF
+                    position={mapPosition}
+                    draggable
+                    onDragEnd={handleMarkerDragEnd}
+                  />
+                </GoogleMap>
+              ) : (
+                <div className="h-full w-full flex items-center justify-center bg-slate-100 text-center px-4">
+                  {mapsError ? (
+                    <p className="text-xs text-slate-500">{mapsError}</p>
+                  ) : (
+                    <Loader2 size={20} className="animate-spin text-slate-400" />
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -381,12 +512,12 @@ const ChangeLocationModal = ({ isOpen, onClose, onConfirm, isLoading }) => {
         {/* Selected Location Confirmation Footer */}
         {selectedLocation && (
           <div className="shrink-0 border-t border-slate-200 bg-white p-4 flex flex-col gap-2 shadow-[0_-10px_20px_rgba(0,0,0,0.03)] z-20">
-            <button 
+            <button
               onClick={handleConfirm}
               disabled={isLoading}
               className="w-full py-3.5 bg-primary text-white font-bold rounded-xl shadow-md shadow-primary/20 hover:bg-[#0b721b] transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-70 disabled:pointer-events-none"
             >
-              {isLoading ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />} 
+              {isLoading ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
               {isLoading ? 'Saving...' : 'Confirm & Save Location'}
             </button>
           </div>

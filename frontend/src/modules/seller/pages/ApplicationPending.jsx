@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { CheckCircle2, Clock3, ShieldAlert, Store } from "lucide-react";
 import { useAuth } from "@core/context/AuthContext";
 import { useSettings } from "@core/context/SettingsContext";
+import LogoImage from "@/assets/Logo.png";
 
 const ApplicationPending = () => {
   const location = useLocation();
@@ -11,7 +12,7 @@ const ApplicationPending = () => {
   const { settings } = useSettings();
 
   const appName = settings?.appName || "App";
-  const logoUrl = settings?.logoUrl || "";
+  const logoUrl = settings?.logoUrl || LogoImage;
 
   const applicationStatus =
     location.state?.applicationStatus ||
@@ -48,11 +49,14 @@ const ApplicationPending = () => {
         >
           <div className="mb-8 flex items-center justify-between gap-4">
             <div className="inline-flex items-center gap-3 rounded-xl border border-white/15 bg-white/5 px-4 py-2">
-              {logoUrl ? (
-                <img src={logoUrl} alt={`${appName} logo`} className="h-8 w-8 object-contain" />
-              ) : (
-                <Store className="h-5 w-5 text-white/80" />
-              )}
+              <img 
+                src={logoUrl} 
+                onError={(e) => {
+                  e.currentTarget.src = LogoImage;
+                }}
+                alt={`${appName} logo`} 
+                className="h-8 w-8 object-contain" 
+              />
               <span className="text-sm font-bold text-white/90">{appName} Seller</span>
             </div>
             <div

@@ -22,7 +22,7 @@ const PromoMarquee = () => {
   }
 
   return (
-    <div className="w-full -mt-[2px] md:-mt-[2px] mb-4">
+    <div className="w-full -mt-[2px] md:-mt-[2px] mb-1.5 md:mb-2">
       <div 
         style={{ backgroundColor: "#2E7D32", borderColor: "#236326" }}
         className="relative overflow-hidden border-y shadow-[0_10px_30px_rgba(15,23,42,0.08)]"
