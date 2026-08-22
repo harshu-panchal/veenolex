@@ -5,6 +5,9 @@ export const sellerApi = {
     signup: (data) => axiosInstance.post('/seller/signup', data),
     sendVerificationOtp: (data) => axiosInstance.post('/seller/verification/send-otp', data),
     verifyVerificationOtp: (data) => axiosInstance.post('/seller/verification/verify-otp', data),
+    requestForgotPassword: (data) => axiosInstance.post('/seller/forgot-password/request', data),
+    checkForgotPasswordStatus: (data) => axiosInstance.post('/seller/forgot-password/status', data),
+    setNewPassword: (data) => axiosInstance.post('/seller/forgot-password/set-password', data),
     // Products
     getProducts: (params) => axiosInstance.get('/products/seller/me', { params }),
     getProductById: (id) => axiosInstance.get(`/products/${id}`),

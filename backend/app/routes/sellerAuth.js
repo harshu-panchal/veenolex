@@ -4,6 +4,9 @@ import {
     loginSeller,
     sendSellerSignupOtp,
     verifySellerSignupOtp,
+    requestSellerForgotPassword,
+    checkSellerForgotPasswordStatus,
+    setSellerNewPasswordAfterApproval,
 } from "../controller/sellerAuthController.js";
 import { getSellerProfile, updateSellerProfile, requestWithdrawal, getNearbySellers } from "../controller/sellerController.js";
 import { getSellerStats, getSellerEarnings } from "../controller/sellerStatsController.js";
@@ -38,6 +41,26 @@ router.post(
     verifySellerSignupOtp
 );
 
+// Seller Forgot Password (OTP-free / Admin approval flow)
+router.post(
+    "/forgot-password/request",
+    authRouteRateLimiter,
+    sellerOtpPayloadGuard,
+    requestSellerForgotPassword
+);
+router.post(
+    "/forgot-password/status",
+    authRouteRateLimiter,
+    sellerOtpPayloadGuard,
+    checkSellerForgotPasswordStatus
+);
+router.post(
+    "/forgot-password/set-password",
+    authRouteRateLimiter,
+    sellerOtpPayloadGuard,
+    setSellerNewPasswordAfterApproval
+);
+
 router.post(
     "/signup",
     upload.any(),
@@ -45,6 +68,8 @@ router.post(
 );
 router.post("/login", loginSeller);
 router.get("/nearby", getNearbySellers);
+
+
 
 // Profile routes
 router.get(

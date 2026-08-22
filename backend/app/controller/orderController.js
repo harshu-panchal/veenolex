@@ -18,6 +18,7 @@ import {
   afterPlaceOrderV2,
   sellerAcceptAtomic,
   sellerRejectAtomic,
+  triggerOrderDeliveryBroadcast,
   deliveryAcceptAtomic,
   customerCancelV2,
   startReturnPickupBroadcast,
@@ -1559,13 +1560,13 @@ export const assignDeliveryBoyToOrder = async (req, res) => {
       return handleResponse(res, 404, "Order not found");
     }
 
-    const order = await Order.findOne(orderKey);
+    const order = await Order.findOne(orderKey).populate("seller", "shopName address name location");
     if (!order) {
       return handleResponse(res, 404, "Order not found");
     }
 
     // Guard: Seller can only assign delivery for their own order
-    if (role === "seller" && order.seller?.toString() !== userId) {
+    if (role === "seller" && order.seller?._id?.toString() !== userId && order.seller?.toString() !== userId) {
       return handleResponse(res, 403, "Not authorized to manage this order");
     }
 
@@ -1588,7 +1589,7 @@ export const assignDeliveryBoyToOrder = async (req, res) => {
       workflowStatus: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
       preview: {
         pickup: order.seller?.shopName || "Seller Store",
-        drop: order.address?.city || "Customer Address",
+        drop: order.address?.address || order.address?.city || "Customer Address",
         total: order.pricing?.total || 0,
       }
     };
@@ -1599,7 +1600,7 @@ export const assignDeliveryBoyToOrder = async (req, res) => {
         orderId: order.orderId,
         deliveryId: deliveryBoyId,
         customerId: order.customer,
-        sellerId: order.seller,
+        sellerId: order.seller?._id || order.seller,
       });
     } catch (e) {
       console.warn("Socket notification warning during driver assignment:", e.message);
@@ -1633,11 +1634,12 @@ export const broadcastDeliveryForOrder = async (req, res) => {
       return handleResponse(res, 403, "Not authorized to manage this order");
     }
 
-    // Accept order & start broadcast
-    const updated = await sellerAcceptAtomic(order.seller || userId, order.orderId);
+    // Trigger delivery search broadcast to active nearby delivery partners
+    const updated = await triggerOrderDeliveryBroadcast(order.seller || userId, order.orderId);
 
     return handleResponse(res, 200, "Delivery search broadcast triggered successfully", updated);
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }
 };
+

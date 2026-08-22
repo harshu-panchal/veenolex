@@ -259,7 +259,11 @@ const DeliveryAuth = () => {
               <div className="w-14 h-14 rounded-2xl bg-white/85 backdrop-blur-sm border border-brand-100 shadow-sm flex items-center justify-center overflow-hidden">
                 {logoUrl ? (
                   <img
-                    src={logoUrl}
+                    src={logoUrl || LogoImage}
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = LogoImage;
+                    }}
                     alt={`${appName} logo`}
                     className="w-10 h-10 object-contain"
                   />

@@ -144,3 +144,147 @@ export async function rejectSellerApplicationById({
 
   return formatSellerApplication(seller);
 }
+
+/* ===============================
+   SELLER PASSWORD RESET APPROVALS
+================================ */
+
+function formatPasswordResetRequest(seller) {
+  const requestedAt = seller.pendingPasswordReset?.requestedAt
+    ? new Date(seller.pendingPasswordReset.requestedAt)
+    : null;
+
+  return {
+    id: String(seller._id),
+    shopName: seller.shopName || "Unnamed Store",
+    ownerName: seller.name || "Unnamed Owner",
+    email: seller.email || "",
+    phone: seller.phone || "",
+    status: seller.pendingPasswordReset?.status || "none",
+    requestedAt: requestedAt ? requestedAt.toISOString() : null,
+    requestedDate: requestedAt
+      ? requestedAt.toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+      : "",
+    requestedTime: requestedAt
+      ? requestedAt.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "",
+  };
+}
+
+export async function getPendingPasswordResetRequestList({
+  q = "",
+  page,
+  limit,
+  skip,
+}) {
+  const conditions = [{ "pendingPasswordReset.status": "pending" }];
+
+  const search = String(q || "").trim();
+  if (search) {
+    const regex = new RegExp(escapeRegExp(search), "i");
+    conditions.push({
+      $or: [
+        { name: regex },
+        { shopName: regex },
+        { email: regex },
+        { phone: regex },
+      ],
+    });
+  }
+
+  const query = conditions.length > 1 ? { $and: conditions } : conditions[0];
+
+  const [sellers, total] = await Promise.all([
+    Seller.find(query)
+      .sort({ "pendingPasswordReset.requestedAt": -1 })
+      .skip(skip)
+      .limit(limit)
+      .select("name shopName email phone pendingPasswordReset")
+      .lean(),
+    Seller.countDocuments(query),
+  ]);
+
+  return {
+    items: sellers.map(formatPasswordResetRequest),
+    page,
+    limit,
+    total,
+    totalPages: Math.ceil(total / limit) || 1,
+  };
+}
+
+export async function approveSellerPasswordResetById({ sellerId, reviewedBy }) {
+  const seller = await Seller.findById(sellerId);
+
+  if (!seller) {
+    return { notFound: true };
+  }
+
+  if (seller.pendingPasswordReset?.status !== "pending") {
+    return { notPending: true };
+  }
+
+  await Seller.updateOne(
+    { _id: seller._id },
+    {
+      $set: {
+        "pendingPasswordReset.status": "approved",
+        "pendingPasswordReset.reviewedAt": new Date(),
+        "pendingPasswordReset.reviewedBy": reviewedBy,
+      },
+      $unset: {
+        "pendingPasswordReset.rejectionReason": "",
+      },
+    },
+  );
+
+  const updated = await Seller.findById(sellerId)
+    .select("name shopName email phone pendingPasswordReset")
+    .lean();
+
+  return { request: formatPasswordResetRequest(updated) };
+}
+
+export async function rejectSellerPasswordResetById({
+  sellerId,
+  reviewedBy,
+  reason,
+}) {
+  const seller = await Seller.findById(sellerId).select("pendingPasswordReset");
+
+  if (!seller) {
+    return { notFound: true };
+  }
+
+  if (seller.pendingPasswordReset?.status !== "pending") {
+    return { notPending: true };
+  }
+
+  await Seller.updateOne(
+    { _id: seller._id },
+    {
+      $set: {
+        "pendingPasswordReset.status": "rejected",
+        "pendingPasswordReset.reviewedAt": new Date(),
+        "pendingPasswordReset.reviewedBy": reviewedBy,
+        "pendingPasswordReset.rejectionReason":
+          String(reason || "").trim() || null,
+      },
+      // Discard the candidate hash so a rejected password is never retained.
+      $unset: { "pendingPasswordReset.requestedPasswordHash": "" },
+    },
+  );
+
+  const updated = await Seller.findById(sellerId)
+    .select("name shopName email phone pendingPasswordReset")
+    .lean();
+
+  return { request: formatPasswordResetRequest(updated) };
+}

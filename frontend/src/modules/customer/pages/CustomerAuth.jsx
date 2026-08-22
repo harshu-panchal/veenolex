@@ -232,11 +232,19 @@ const CustomerAuth = () => {
 
                         {/* Top Branding Bar */}
                         <div className="absolute top-8 left-0 w-full px-6 flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className="w-10 h-10 bg-white/20 backdrop-blur-xl rounded-xl flex items-center justify-center border border-white/30">
-                                    <ShoppingBag size={20} className="text-white" />
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-10 h-10 bg-white/20 backdrop-blur-xl rounded-xl flex items-center justify-center border border-white/30 overflow-hidden p-1.5 shadow-sm">
+                                    <img
+                                        src={logoUrl || LogoImage}
+                                        onError={(e) => {
+                                            e.currentTarget.onerror = null;
+                                            e.currentTarget.src = LogoImage;
+                                        }}
+                                        alt={`${appName} logo`}
+                                        className="w-full h-full object-contain"
+                                    />
                                 </div>
-                                <span className="text-white font-black tracking-tighter text-xl">{appName.toUpperCase()}</span>
+                                <span className="text-white font-black tracking-tighter text-xl drop-shadow-sm">{appName.toUpperCase()}</span>
                             </div>
                         </div>
 
@@ -264,31 +272,28 @@ const CustomerAuth = () => {
                         </div>
                     </motion.div>
 
-                    {/* Circular Carousel Control */}
+                    {/* Circular Logo Badge */}
                     <div className="relative -mt-14 flex justify-center z-20">
-                        <div className="w-28 h-28 rounded-full bg-white border-4 border-white shadow-[0_15px_40px_rgba(97,218,251,0.2)] flex items-center justify-center overflow-hidden transition-shadow duration-1000" style={{ boxShadow: `0 15px 40px ${activeCategory.shadow}` }}>
+                        <div className="w-28 h-28 rounded-full bg-white border-4 border-white shadow-[0_15px_40px_rgba(0,0,0,0.12)] flex items-center justify-center overflow-hidden transition-shadow duration-1000 p-3" style={{ boxShadow: `0 15px 40px ${activeCategory.shadow}` }}>
                             <AnimatePresence mode="wait">
-                                    <motion.div
-                                        key={carouselIndex}
-                                        initial={{ opacity: 0, scale: 0.5, rotate: -20 }}
-                                        animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                                        exit={{ opacity: 0, scale: 1.5, rotate: 20 }}
-                                        className="w-full h-full"
-                                        style={{ color: activeCategory.text }}
-                                    >
-                                        {logoUrl ? (
-                                            <img
-                                                src={logoUrl}
-                                                alt={`${appName} logo`}
-                                                loading="lazy"
-                                                className="w-full h-full object-cover"
-                                            />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: activeCategory.color }}>
-                                                {activeCategory.icon}
-                                            </div>
-                                        )}
-                                    </motion.div>
+                                <motion.div
+                                    key={carouselIndex}
+                                    initial={{ opacity: 0.8, scale: 0.95 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0.8, scale: 0.95 }}
+                                    transition={{ duration: 0.4 }}
+                                    className="w-full h-full flex items-center justify-center"
+                                >
+                                    <img
+                                        src={logoUrl || LogoImage}
+                                        onError={(e) => {
+                                            e.currentTarget.onerror = null;
+                                            e.currentTarget.src = LogoImage;
+                                        }}
+                                        alt={`${appName} logo`}
+                                        className="w-full h-full object-contain drop-shadow-sm"
+                                    />
+                                </motion.div>
                             </AnimatePresence>
                         </div>
                     </div>

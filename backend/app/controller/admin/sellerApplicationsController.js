@@ -5,6 +5,9 @@ import {
   approveSellerApplicationById,
   getPendingSellerApplications,
   rejectSellerApplicationById,
+  getPendingPasswordResetRequestList,
+  approveSellerPasswordResetById,
+  rejectSellerPasswordResetById,
 } from "../../services/admin/sellerApplicationService.js";
 
 export const getPendingSellers = async (req, res) => {
@@ -87,6 +90,93 @@ export const updateSellerStatus = async (req, res) => {
       200,
       `Seller status updated to ${seller.isActive ? "Active" : "Inactive"}`,
       seller
+    );
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/* ===============================
+   SELLER PASSWORD RESET APPROVALS
+================================ */
+
+export const getPendingPasswordResetRequests = async (req, res) => {
+  try {
+    const { q = "" } = req.query;
+    const { page, limit, skip } = getPagination(req, {
+      defaultLimit: 25,
+      maxLimit: 100,
+    });
+
+    const data = await getPendingPasswordResetRequestList({
+      q,
+      page,
+      limit,
+      skip,
+    });
+
+    return handleResponse(res, 200, "Password reset requests fetched", data);
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+export const approveSellerPasswordReset = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await approveSellerPasswordResetById({
+      sellerId: id,
+      reviewedBy: req.user.id,
+    });
+
+    if (result.notFound) {
+      return handleResponse(res, 404, "Seller not found");
+    }
+    if (result.notPending) {
+      return handleResponse(
+        res,
+        409,
+        "No pending password reset request for this seller",
+      );
+    }
+
+    return handleResponse(
+      res,
+      200,
+      "Password reset request approved. The seller can now set their new password.",
+      result.request,
+    );
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+export const rejectSellerPasswordReset = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body || {};
+    const result = await rejectSellerPasswordResetById({
+      sellerId: id,
+      reviewedBy: req.user.id,
+      reason,
+    });
+
+    if (result.notFound) {
+      return handleResponse(res, 404, "Seller not found");
+    }
+    if (result.notPending) {
+      return handleResponse(
+        res,
+        409,
+        "No pending password reset request for this seller",
+      );
+    }
+
+    return handleResponse(
+      res,
+      200,
+      "Password reset request rejected",
+      result.request,
     );
   } catch (error) {
     return handleResponse(res, 500, error.message);

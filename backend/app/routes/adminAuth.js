@@ -22,6 +22,9 @@ import {
     approveSellerApplication,
     updateSellerStatus,
     rejectSellerApplication,
+    getPendingPasswordResetRequests,
+    approveSellerPasswordReset,
+    rejectSellerPasswordReset,
     getSellerWithdrawals,
     getDeliveryWithdrawals,
     updateWithdrawalStatus,
@@ -153,6 +156,9 @@ router.get("/sellers", verifyToken, allowRoles("admin"), getSellers);
 router.get("/sellers/locations", verifyToken, allowRoles("admin"), getSellerLocations);
 router.get("/sellers/active", verifyToken, allowRoles("admin"), getActiveSellers);
 router.get("/sellers/pending", verifyToken, allowRoles("admin"), getPendingSellers);
+router.get("/sellers/password-resets", verifyToken, allowRoles("admin"), getPendingPasswordResetRequests);
+router.patch("/sellers/password-resets/:id/approve", verifyToken, allowRoles("admin"), approveSellerPasswordReset);
+router.patch("/sellers/password-resets/:id/reject", verifyToken, allowRoles("admin"), rejectSellerPasswordReset);
 router.patch("/sellers/approve/:id", verifyToken, allowRoles("admin"), approveSellerApplication);
 router.patch("/sellers/:id/status", verifyToken, allowRoles("admin"), updateSellerStatus);
 router.delete("/sellers/reject/:id", verifyToken, allowRoles("admin"), rejectSellerApplication);

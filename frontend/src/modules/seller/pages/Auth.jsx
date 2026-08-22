@@ -48,8 +48,306 @@ const REQUIRED_DOCUMENT_CONFIG = [
   { id: "idProof", label: "ID Proof" },
 ];
 
+/**
+ * Seller-initiated password reset without OTP.
+ * Step 1: Seller submits email -> request goes to Admin for approval.
+ * Step 2: Once Admin approves, seller enters email, sees password fields, and saves new password.
+ */
+const ForgotPasswordPanel = ({ onBackToLogin }) => {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState("idle"); // "idle" | "pending" | "approved" | "rejected"
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [isChecking, setIsChecking] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+
+  const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || "");
+
+  const handleCheckOrRequest = async (e) => {
+    if (e) e.preventDefault();
+    if (!isEmailValid) {
+      toast.error("Please enter a valid registered email address.");
+      return;
+    }
+
+    setIsChecking(true);
+    try {
+      const response = await sellerApi.requestForgotPassword({ email });
+      const result = response.data?.result || {};
+      const nextStatus = result.status || "pending";
+      setStatus(nextStatus);
+      if (result.rejectionReason) setRejectionReason(result.rejectionReason);
+
+      if (nextStatus === "approved") {
+        toast.success("Admin has approved your request! Set your new password below.");
+      } else if (nextStatus === "pending") {
+        toast.info(response.data?.message || "Reset request is awaiting Admin approval.");
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to submit reset request");
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
+  const handleCheckStatusOnly = async () => {
+    if (!isEmailValid) return;
+    setIsChecking(true);
+    try {
+      const response = await sellerApi.checkForgotPasswordStatus({ email });
+      const result = response.data?.result || {};
+      const nextStatus = result.status || "none";
+      setStatus(nextStatus);
+      if (result.rejectionReason) setRejectionReason(result.rejectionReason);
+
+      if (nextStatus === "approved") {
+        toast.success("Admin approved your request! Enter your new password below.");
+      } else if (nextStatus === "pending") {
+        toast.info("Request is still pending Admin approval.");
+      } else if (nextStatus === "rejected") {
+        toast.error("Request was rejected by Admin.");
+      } else {
+        toast.info("No active reset request found. You can submit one.");
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to check status");
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
+  const handleSaveNewPassword = async (e) => {
+    e.preventDefault();
+    if (String(newPassword).length < 6) {
+      toast.error("Password must be at least 6 characters long.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await sellerApi.setNewPassword({
+        email,
+        newPassword,
+        confirmPassword,
+      });
+      setIsSuccess(true);
+      toast.success("Password updated successfully!");
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to update password");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (isSuccess) {
+    return (
+      <div className="space-y-6 py-4 md:py-6">
+        <div className="flex flex-col items-center text-center gap-4">
+          <div className="rounded-full bg-emerald-50 p-4 text-emerald-600">
+            <CheckCircle size={36} />
+          </div>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tighter">
+            Password Updated!
+          </h1>
+          <p className="text-slate-600 font-medium text-sm leading-relaxed max-w-sm">
+            Your new password has been saved. You can now log in to your seller dashboard.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onBackToLogin}
+          className="w-full bg-slate-900 text-white rounded-lg py-4 text-sm font-black tracking-[2px] hover:bg-black transition-all active:scale-[0.98]">
+          GO TO LOGIN
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 py-4 md:py-6">
+      <div className="space-y-2">
+        <span className="inline-block px-3 py-1 bg-slate-100 text-slate-800 rounded-full text-[10px] font-black uppercase tracking-widest border border-slate-200">
+          {status === "approved" ? "Step 2: Set New Password" : "Step 1: Admin Approval"}
+        </span>
+        <h1 className="text-3xl font-black text-slate-900 tracking-tighter">
+          Reset <span className="text-slate-900">Password</span>
+        </h1>
+        <p className="text-slate-600 font-medium text-sm leading-relaxed">
+          {status === "approved"
+            ? "Your request was approved by Admin. Enter and save your new password."
+            : "Enter your registered email. An approval request will be sent to Admin."}
+        </p>
+      </div>
+
+      {/* Email input field */}
+      <div className="space-y-4">
+        <div className="relative group">
+          <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-600 transition-colors">
+            <Mail size={18} />
+          </div>
+          <input
+            type="email"
+            required
+            disabled={status === "approved"}
+            placeholder="Registered business email"
+            className="w-full pl-12 pr-5 py-4 bg-slate-50 border-2 border-transparent rounded-lg text-sm font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-200 transition-all placeholder:text-slate-300 disabled:opacity-80"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (status !== "idle") setStatus("idle");
+            }}
+          />
+        </div>
+
+        {/* Status notice card */}
+        {status === "pending" && (
+          <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
+            <div className="flex items-center gap-2 text-amber-800 text-xs font-black uppercase tracking-wider">
+              <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
+              <span>Pending Admin Approval</span>
+            </div>
+            <p className="text-xs text-amber-700 font-medium leading-relaxed">
+              Your password reset request has been sent to Admin. Once approved on the Admin Panel, you can set your new password here.
+            </p>
+            <button
+              type="button"
+              onClick={handleCheckStatusOnly}
+              disabled={isChecking}
+              className="text-[11px] font-bold text-amber-900 underline hover:text-amber-700 pt-1">
+              {isChecking ? "Checking status..." : "Refresh Approval Status"}
+            </button>
+          </div>
+        )}
+
+        {status === "rejected" && (
+          <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 space-y-2">
+            <div className="text-rose-800 text-xs font-black uppercase tracking-wider">
+              Request Rejected by Admin
+            </div>
+            {rejectionReason && (
+              <p className="text-xs text-rose-700 font-medium">
+                Reason: {rejectionReason}
+              </p>
+            )}
+            <p className="text-xs text-rose-600">
+              You can submit a new request if needed.
+            </p>
+          </div>
+        )}
+
+        {status === "approved" && (
+          <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-2.5 text-emerald-800 text-xs font-bold">
+            <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+            <span>Admin Approved! Enter your new password below.</span>
+          </div>
+        )}
+
+        {/* Set password form when status === approved */}
+        {status === "approved" ? (
+          <form onSubmit={handleSaveNewPassword} className="space-y-4 pt-2">
+            <div className="relative group">
+              <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-600 transition-colors">
+                <Lock size={18} />
+              </div>
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                minLength={6}
+                autoComplete="new-password"
+                placeholder="New password (min 6 characters)"
+                className="w-full pl-12 pr-14 py-4 bg-slate-50 border-2 border-transparent rounded-lg text-sm font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-200 transition-all placeholder:text-slate-300"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-600 transition-colors px-2"
+                tabIndex="-1">
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+
+            <div className="relative group">
+              <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-600 transition-colors">
+                <Lock size={18} />
+              </div>
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                minLength={6}
+                autoComplete="new-password"
+                placeholder="Confirm new password"
+                className="w-full pl-12 pr-5 py-4 bg-slate-50 border-2 border-transparent rounded-lg text-sm font-bold text-slate-700 outline-none focus:bg-white focus:border-slate-200 transition-all placeholder:text-slate-300"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={onBackToLogin}
+                className="w-1/3 bg-slate-100 text-slate-600 rounded-lg py-4 text-sm font-black tracking-[2px] transition-all hover:bg-slate-200">
+                CANCEL
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-2/3 bg-slate-900 text-white rounded-lg py-4 text-sm font-black tracking-[2px] hover:bg-black transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2">
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    SAVING...
+                  </>
+                ) : (
+                  "SAVE PASSWORD"
+                )}
+              </button>
+            </div>
+          </form>
+        ) : (
+          /* Initial Request Buttons */
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onBackToLogin}
+              className="w-1/3 bg-slate-100 text-slate-600 rounded-lg py-4 text-sm font-black tracking-[2px] transition-all hover:bg-slate-200">
+              BACK
+            </button>
+            <button
+              type="button"
+              onClick={handleCheckOrRequest}
+              disabled={!isEmailValid || isChecking}
+              className="w-2/3 bg-slate-900 text-white rounded-lg py-4 text-sm font-black tracking-[2px] hover:bg-black transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2">
+              {isChecking ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  SUBMITTING...
+                </>
+              ) : status === "pending" ? (
+                "CHECK APPROVAL"
+              ) : (
+                "REQUEST RESET"
+              )}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [signupStep, setSignupStep] = useState(1);
@@ -493,6 +791,21 @@ const Auth = () => {
             </div>
           </div>
           <AnimatePresence mode="wait">
+            {isForgotPassword ? (
+              <motion.div
+                key="forgot-password"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}>
+                <ForgotPasswordPanel
+                  onBackToLogin={() => {
+                    setIsForgotPassword(false);
+                    setIsLogin(true);
+                  }}
+                />
+              </motion.div>
+            ) : (
             <motion.div
               key={isLogin ? "login" : `signup-step-${signupStep}`}
               initial={{ opacity: 0, x: 20 }}
@@ -727,6 +1040,17 @@ const Auth = () => {
                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
+
+                    {isLogin && (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setIsForgotPassword(true)}
+                          className="text-[11px] font-black uppercase tracking-wider text-slate-500 hover:text-slate-900 transition-colors">
+                          Forgot Password?
+                        </button>
+                      </div>
+                    )}
                   </>
                 )}
 
@@ -949,6 +1273,7 @@ const Auth = () => {
                 </p>
               </div>
             </motion.div>
+            )}
           </AnimatePresence>
         </div>
       </motion.div>

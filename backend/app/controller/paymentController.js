@@ -18,13 +18,19 @@ function resolvePaymentErrorMessage(error) {
   const directMessage = String(error?.message || "").trim();
   if (directMessage) return directMessage;
 
+  // Provider adapters tag their errors, so avoid naming the wrong gateway.
+  const gateway = String(error?.gateway || "").trim() || "Payment";
+
+  const gatewayDescription = String(error?.gatewayDescription || "").trim();
+  if (gatewayDescription) return `${gateway} gateway error: ${gatewayDescription}`;
+
   const responseStatusText = String(error?.response?.statusText || "").trim();
-  if (responseStatusText) return `PhonePe gateway error: ${responseStatusText}`;
+  if (responseStatusText) return `${gateway} gateway error: ${responseStatusText}`;
 
   const causeCode = String(error?.cause?.code || error?.code || "").trim();
-  if (causeCode) return `PhonePe gateway request failed (${causeCode})`;
+  if (causeCode) return `${gateway} gateway request failed (${causeCode})`;
 
-  return "Unable to initiate payment with PhonePe right now";
+  return "Unable to initiate payment right now";
 }
 
 export const createPaymentOrder = async (req, res) => {
@@ -56,6 +62,10 @@ export const createPaymentOrder = async (req, res) => {
       code: error?.code || error?.cause?.code || null,
       responseStatus: error?.response?.status || null,
       responseStatusText: error?.response?.statusText || null,
+      gateway: error?.gateway || null,
+      gatewayStatus: error?.gatewayStatus || null,
+      gatewayCode: error?.gatewayCode || null,
+      gatewayDescription: error?.gatewayDescription || null,
       orderRef: req.body?.orderRef || req.body?.orderId || null,
       userId: req.user?.id || null,
       correlationId: req.correlationId || null,

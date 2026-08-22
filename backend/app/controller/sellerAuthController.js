@@ -1,5 +1,6 @@
 import Seller from "../models/seller.js";
 import jwt from "jsonwebtoken";
+import bcrypt from "bcrypt";
 import handleResponse from "../utils/helper.js";
 import {
     issueSellerVerificationOtp,
@@ -267,6 +268,164 @@ export const verifySellerSignupOtp = async (req, res) => {
         return handleResponse(res, error.statusCode || 500, error.message);
     }
 };
+
+/* ===============================
+   SELLER FORGOT PASSWORD (OTP-FREE / ADMIN APPROVAL FLOW)
+================================ */
+
+/**
+ * Seller requests password reset by entering registered email.
+ * No OTP needed. Queues the request with status: "pending" for Admin approval.
+ */
+export const requestSellerForgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body || {};
+        const normalizedEmail = String(email || "").trim().toLowerCase();
+
+        if (!normalizedEmail) {
+            return handleResponse(res, 400, "Please enter your registered email address");
+        }
+
+        const seller = await Seller.findOne({ email: normalizedEmail });
+        if (!seller) {
+            return handleResponse(res, 404, "No seller registered with this email address");
+        }
+
+        const currentStatus = seller.pendingPasswordReset?.status || "none";
+
+        if (currentStatus === "approved") {
+            return handleResponse(res, 200, "Your password reset request has been approved! You can now set your new password.", {
+                status: "approved",
+                email: normalizedEmail,
+            });
+        }
+
+        if (currentStatus === "pending") {
+            return handleResponse(res, 200, "Your request is already submitted and awaiting Admin approval.", {
+                status: "pending",
+                email: normalizedEmail,
+                requestedAt: seller.pendingPasswordReset?.requestedAt,
+            });
+        }
+
+        // Set status to pending
+        await Seller.updateOne(
+            { _id: seller._id },
+            {
+                $set: {
+                    "pendingPasswordReset.status": "pending",
+                    "pendingPasswordReset.requestedAt": new Date(),
+                },
+                $unset: {
+                    "pendingPasswordReset.reviewedAt": "",
+                    "pendingPasswordReset.reviewedBy": "",
+                    "pendingPasswordReset.rejectionReason": "",
+                },
+            }
+        );
+
+        return handleResponse(res, 200, "Password reset request submitted successfully. Awaiting Admin approval.", {
+            status: "pending",
+            email: normalizedEmail,
+        });
+    } catch (error) {
+        return handleResponse(res, error.statusCode || 500, error.message);
+    }
+};
+
+/**
+ * Checks status of password reset request for a seller's email.
+ */
+export const checkSellerForgotPasswordStatus = async (req, res) => {
+    try {
+        const { email } = req.body || {};
+        const normalizedEmail = String(email || "").trim().toLowerCase();
+
+        if (!normalizedEmail) {
+            return handleResponse(res, 400, "Email is required");
+        }
+
+        const seller = await Seller.findOne({ email: normalizedEmail });
+        if (!seller) {
+            return handleResponse(res, 404, "No seller registered with this email");
+        }
+
+        const resetData = seller.pendingPasswordReset || { status: "none" };
+
+        return handleResponse(res, 200, "Status fetched", {
+            status: resetData.status || "none",
+            email: normalizedEmail,
+            requestedAt: resetData.requestedAt,
+            reviewedAt: resetData.reviewedAt,
+            rejectionReason: resetData.rejectionReason || "",
+        });
+    } catch (error) {
+        return handleResponse(res, error.statusCode || 500, error.message);
+    }
+};
+
+/**
+ * Once Admin approves the request (status === 'approved'), the seller
+ * sets and saves their new password here.
+ */
+export const setSellerNewPasswordAfterApproval = async (req, res) => {
+    try {
+        const { email, newPassword, confirmPassword } = req.body || {};
+        const normalizedEmail = String(email || "").trim().toLowerCase();
+
+        if (!normalizedEmail || !newPassword) {
+            return handleResponse(res, 400, "Email and new password are required");
+        }
+
+        if (String(newPassword).length < 6) {
+            return handleResponse(res, 400, "Password must be at least 6 characters long");
+        }
+
+        if (confirmPassword !== undefined && newPassword !== confirmPassword) {
+            return handleResponse(res, 400, "Passwords do not match");
+        }
+
+        const seller = await Seller.findOne({ email: normalizedEmail }).select("+password");
+        if (!seller) {
+            return handleResponse(res, 404, "Seller not found");
+        }
+
+        if (seller.pendingPasswordReset?.status !== "approved") {
+            return handleResponse(
+                res,
+                403,
+                "Password reset has not been approved by Admin yet. Please wait for approval or submit a request."
+            );
+        }
+
+        // Hash new password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(String(newPassword), salt);
+
+        await Seller.updateOne(
+            { _id: seller._id },
+            {
+                $set: {
+                    password: hashedPassword,
+                    "pendingPasswordReset.status": "none",
+                },
+                $unset: {
+                    "pendingPasswordReset.requestedAt": "",
+                    "pendingPasswordReset.reviewedAt": "",
+                    "pendingPasswordReset.reviewedBy": "",
+                    "pendingPasswordReset.rejectionReason": "",
+                },
+            }
+        );
+
+        return handleResponse(res, 200, "Password updated successfully! You can now log in with your new password.", {
+            success: true,
+        });
+    } catch (error) {
+        return handleResponse(res, error.statusCode || 500, error.message);
+    }
+};
+
 
 /* ===============================
    SELLER LOGIN

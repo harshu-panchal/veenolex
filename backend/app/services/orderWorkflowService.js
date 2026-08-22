@@ -144,13 +144,14 @@ export async function removeReturnPickupTimeoutJob(orderId, attempt = 1) {
 }
 
 /**
- * Seller accepts: SELLER_PENDING -> DELIVERY_SEARCH (atomic).
+ * Seller accepts: SELLER_PENDING -> SELLER_ACCEPTED (atomic).
+ * Stops the seller timeout countdown and marks order as accepted by seller.
+ * Does NOT broadcast to delivery partners yet — seller can either choose
+ * "Broadcast (Automatic)", "Assign Manually", or "Assign Later".
  */
 export async function sellerAcceptAtomic(sellerId, orderId) {
   orderId = await requireCanonicalOrderId(orderId);
   const now = new Date();
-  const sellerMs = DEFAULT_SELLER_TIMEOUT_MS();
-  const deliveryMs = DEFAULT_DELIVERY_TIMEOUT_MS();
 
   const updated = await Order.findOneAndUpdate(
     {
@@ -166,17 +167,11 @@ export async function sellerAcceptAtomic(sellerId, orderId) {
     },
     {
       $set: {
-        workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
-        status: legacyStatusFromWorkflow(WORKFLOW_STATUS.DELIVERY_SEARCH),
+        workflowStatus: WORKFLOW_STATUS.SELLER_ACCEPTED,
+        status: legacyStatusFromWorkflow(WORKFLOW_STATUS.SELLER_ACCEPTED),
         sellerAcceptedAt: now,
-        deliverySearchExpiresAt: new Date(now.getTime() + deliveryMs),
-        deliverySearchMeta: {
-          radiusMeters: INITIAL_DELIVERY_RADIUS_M(),
-          attempt: 1,
-          lastBroadcastAt: now,
-        },
       },
-      // CRITICAL FIX: Remove expiresAt to prevent TTL index from auto-deleting the order
+      // Remove expiresAt to prevent TTL index from auto-deleting the order
       $unset: { expiresAt: 1 },
     },
     { new: true },
@@ -191,10 +186,79 @@ export async function sellerAcceptAtomic(sellerId, orderId) {
   }
 
   await removeSellerTimeoutJob(orderId);
+
+  emitOrderStatusUpdate(
+    updated.orderId,
+    {
+      workflowStatus: WORKFLOW_STATUS.SELLER_ACCEPTED,
+    },
+    updated.customer?._id || updated.customer,
+  );
+
+  emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_CONFIRMED, {
+    orderId: updated.orderId,
+    customerId: updated.customer?._id || updated.customer,
+    userId: updated.customer?._id || updated.customer,
+    sellerId: updated.seller?._id || updated.seller,
+  });
+
+  return updated;
+}
+
+/**
+ * Trigger Delivery Broadcast for order: SELLER_ACCEPTED / SELLER_PENDING -> DELIVERY_SEARCH.
+ * Broadcasts delivery request alert to all nearby active delivery partners.
+ */
+export async function triggerOrderDeliveryBroadcast(sellerId, orderId) {
+  orderId = await requireCanonicalOrderId(orderId);
+  const now = new Date();
+  const deliveryMs = DEFAULT_DELIVERY_TIMEOUT_MS();
+
+  const updated = await Order.findOneAndUpdate(
+    {
+      orderId,
+      seller: sellerId,
+      workflowVersion: { $gte: 2 },
+      workflowStatus: {
+        $in: [
+          WORKFLOW_STATUS.SELLER_PENDING,
+          WORKFLOW_STATUS.SELLER_ACCEPTED,
+          WORKFLOW_STATUS.DELIVERY_SEARCH,
+        ],
+      },
+      deliveryBoy: null,
+    },
+    {
+      $set: {
+        workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
+        status: legacyStatusFromWorkflow(WORKFLOW_STATUS.DELIVERY_SEARCH),
+        deliverySearchExpiresAt: new Date(now.getTime() + deliveryMs),
+        deliverySearchMeta: {
+          radiusMeters: INITIAL_DELIVERY_RADIUS_M(),
+          attempt: 1,
+          lastBroadcastAt: now,
+        },
+      },
+      $unset: { expiresAt: 1 },
+    },
+    { new: true },
+  )
+    .populate("customer", "name phone")
+    .populate("seller", "shopName address name location serviceRadius");
+
+  if (!updated) {
+    const err = new Error("Order not available for delivery broadcast");
+    err.statusCode = 409;
+    throw err;
+  }
+
+  await removeSellerTimeoutJob(orderId);
   await scheduleDeliveryTimeoutJob(orderId, 1);
 
   await DeliveryAssignment.create({
-    orderMongoId: updated._id, sourceId: updated._id, sourceType: "ORDER",
+    orderMongoId: updated._id,
+    sourceId: updated._id,
+    sourceType: "ORDER",
     orderId: updated.orderId,
     status: "broadcasting",
     radiusMeters: INITIAL_DELIVERY_RADIUS_M(),
@@ -215,15 +279,9 @@ export async function sellerAcceptAtomic(sellerId, orderId) {
     deliveryBroadcastPayloadFromOrder(updated),
   );
 
-  emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_CONFIRMED, {
-    orderId: updated.orderId,
-    customerId: updated.customer?._id || updated.customer,
-    userId: updated.customer?._id || updated.customer,
-    sellerId: updated.seller?._id || updated.seller,
-  });
-
   return updated;
 }
+
 
 /**
  * Seller rejects: SELLER_PENDING -> CANCELLED + compensation.

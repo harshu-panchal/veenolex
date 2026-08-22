@@ -109,7 +109,11 @@ const Header = () => {
                         <Link to="/" className="flex items-center gap-2.5 group shrink-0 relative z-30">
                             {logoUrl && (
                                 <img
-                                    src={logoUrl}
+                                    src={logoUrl || LogoImage}
+                                    onError={(e) => {
+                                        e.currentTarget.onerror = null;
+                                        e.currentTarget.src = LogoImage;
+                                    }}
                                     alt={`${settings?.appName || 'App'} Logo`}
                                     className="h-14 md:h-16 w-auto object-contain transition-all duration-300 group-hover:scale-105"
                                 />

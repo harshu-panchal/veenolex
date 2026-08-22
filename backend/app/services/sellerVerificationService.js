@@ -154,6 +154,29 @@ function normalizePhone(value) {
   return phone;
 }
 
+const SELLER_FORGOT_PASSWORD_PURPOSE = "seller_forgot_password";
+
+async function ensureSellerExists(channel, target) {
+  const query = channel === "email" ? { email: target } : { phone: target };
+  const existingSeller = await Seller.findOne(query).select("_id email phone isVerified applicationStatus").lean();
+  if (!existingSeller) {
+    const error = new Error(
+      channel === "email"
+        ? "No seller registered with this email address"
+        : "No seller registered with this phone number",
+    );
+    error.statusCode = 404;
+    throw error;
+  }
+  return existingSeller;
+}
+
+function resolvePurpose(purpose) {
+  return purpose === "forgot_password" || purpose === "forgot-password" || purpose === SELLER_FORGOT_PASSWORD_PURPOSE
+    ? SELLER_FORGOT_PASSWORD_PURPOSE
+    : SELLER_SIGNUP_PURPOSE;
+}
+
 function normalizeTarget(channel, rawValue) {
   if (channel === "email") {
     return normalizeEmail(rawValue);
@@ -206,10 +229,10 @@ async function dispatchPhoneOtp({ phone, otp }) {
   console.log(`[SellerPhoneOTP][mock] ${phone} -> ${otp}`);
 }
 
-function signVerificationToken({ channel, target }) {
+function signVerificationToken({ channel, target, purpose = SELLER_SIGNUP_PURPOSE }) {
   return jwt.sign(
     {
-      purpose: SELLER_SIGNUP_PURPOSE,
+      purpose: resolvePurpose(purpose),
       channel,
       target,
       verified: true,
@@ -221,15 +244,16 @@ function signVerificationToken({ channel, target }) {
   );
 }
 
-export function verifySellerVerificationToken({ channel, rawValue, token }) {
+export function verifySellerVerificationToken({ channel, rawValue, token, purpose = "signup" }) {
   const normalizedChannel = String(channel || "").trim().toLowerCase();
   const normalizedTarget = normalizeTarget(normalizedChannel, rawValue);
+  const expectedPurpose = resolvePurpose(purpose);
 
   if (!token) {
     const error = new Error(
       normalizedChannel === "email"
-        ? "Email verification is required before signup"
-        : "Phone verification is required before signup",
+        ? "Email verification is required"
+        : "Phone verification is required",
     );
     error.statusCode = 400;
     throw error;
@@ -245,7 +269,7 @@ export function verifySellerVerificationToken({ channel, rawValue, token }) {
   }
 
   if (
-    payload?.purpose !== SELLER_SIGNUP_PURPOSE ||
+    payload?.purpose !== expectedPurpose ||
     payload?.channel !== normalizedChannel ||
     payload?.target !== normalizedTarget ||
     payload?.verified !== true
@@ -265,11 +289,17 @@ export async function issueSellerVerificationOtp({
   channel,
   rawValue,
   ipAddress = "unknown",
+  purpose = "signup",
 }) {
   const normalizedChannel = String(channel || "").trim().toLowerCase();
   const target = normalizeTarget(normalizedChannel, rawValue);
+  const resolvedPurpose = resolvePurpose(purpose);
 
-  await ensureTargetAvailable(normalizedChannel, target);
+  if (resolvedPurpose === SELLER_FORGOT_PASSWORD_PURPOSE) {
+    await ensureSellerExists(normalizedChannel, target);
+  } else {
+    await ensureTargetAvailable(normalizedChannel, target);
+  }
 
   const sendAllowed = await incrementWindowCounter(
     `seller:otp:send:${normalizedChannel}:${target}`,
@@ -368,10 +398,12 @@ export async function verifySellerOtpCode({
   rawValue,
   otp,
   ipAddress = "unknown",
+  purpose = "signup",
 }) {
   const normalizedChannel = String(channel || "").trim().toLowerCase();
   const target = normalizeTarget(normalizedChannel, rawValue);
   const code = String(otp || "").trim();
+  const resolvedPurpose = resolvePurpose(purpose);
 
   if (!/^\d{4}$/.test(code)) {
     const error = new Error("Please enter a valid OTP");
@@ -393,7 +425,7 @@ export async function verifySellerOtpCode({
   }
 
   const session = await OtpVerification.findOne({
-    purpose: SELLER_SIGNUP_PURPOSE,
+    purpose: resolvedPurpose,
     channel: normalizedChannel,
     target,
   }).select("+otpHash +expiresAt");
@@ -426,7 +458,7 @@ export async function verifySellerOtpCode({
     JSON.stringify({
       level: "info",
       ts: new Date().toISOString(),
-      event: "seller_signup_otp_verified",
+      event: `${resolvedPurpose}_otp_verified`,
       channel: normalizedChannel,
       target: normalizedChannel === "email" ? maskEmail(target) : maskPhone(target),
       ipAddress,
@@ -439,6 +471,8 @@ export async function verifySellerOtpCode({
     verificationToken: signVerificationToken({
       channel: normalizedChannel,
       target,
+      purpose: resolvedPurpose,
     }),
   };
 }
+

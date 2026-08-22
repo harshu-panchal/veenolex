@@ -23,6 +23,13 @@ export const adminUsersApi = {
         axiosInstance.patch(`/admin/sellers/${id}/status`, { isActive }),
     rejectSeller: (id, data) =>
         axiosInstance.delete(`/admin/sellers/reject/${id}`, { data }),
+
+    getPasswordResetRequests: (params) =>
+        axiosInstance.get('/admin/sellers/password-resets', { params }),
+    approvePasswordReset: (id) =>
+        axiosInstance.patch(`/admin/sellers/password-resets/${id}/approve`),
+    rejectPasswordReset: (id, data) =>
+        axiosInstance.patch(`/admin/sellers/password-resets/${id}/reject`, data),
 };
 
 export default adminUsersApi;

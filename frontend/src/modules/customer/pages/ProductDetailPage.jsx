@@ -942,7 +942,11 @@ const ProductDetailPage = () => {
                     <div className="flex-1 flex justify-center min-w-0">
                         {logoUrl && (
                             <img
-                                src={logoUrl}
+                                src={logoUrl || LogoImage}
+                                onError={(e) => {
+                                    e.currentTarget.onerror = null;
+                                    e.currentTarget.src = LogoImage;
+                                }}
                                 alt="Veenolex Logo"
                                 className="h-10 w-auto object-contain"
                             />

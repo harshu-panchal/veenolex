@@ -115,6 +115,23 @@ const sellerSchema = new mongoose.Schema(
       trim: true,
     },
 
+    // Seller-initiated password resets are queued here and only applied to
+    // `password` once an admin approves. `requestedPasswordHash` is already a
+    // bcrypt hash, so it must be written with an update that bypasses the
+    // pre-save hashing hook below.
+    pendingPasswordReset: {
+      requestedPasswordHash: { type: String, select: false },
+      requestedAt: { type: Date },
+      status: {
+        type: String,
+        enum: ["none", "pending", "approved", "rejected"],
+        default: "none",
+      },
+      reviewedAt: { type: Date },
+      reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
+      rejectionReason: { type: String, trim: true },
+    },
+
     isActive: {
       type: Boolean,
       default: false,
@@ -160,6 +177,7 @@ const sellerSchema = new mongoose.Schema(
 
 sellerSchema.index({ location: "2dsphere" });
 sellerSchema.index({ isActive: 1, isVerified: 1 });
+sellerSchema.index({ "pendingPasswordReset.status": 1, "pendingPasswordReset.requestedAt": -1 });
 
 // Hash password before saving
 sellerSchema.pre("save", async function (next) {

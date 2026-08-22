@@ -17,7 +17,8 @@ import {
     HiOutlineClock,
     HiOutlineXMark,
     HiOutlineArrowPath,
-    HiOutlineArrowTopRightOnSquare
+    HiOutlineArrowTopRightOnSquare,
+    HiOutlineLockClosed
 } from 'react-icons/hi2';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -38,6 +39,10 @@ const PendingSellers = () => {
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
     const [viewingSeller, setViewingSeller] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [activeTab, setActiveTab] = useState('applications');
+    const [passwordResets, setPasswordResets] = useState([]);
+    const [isLoadingResets, setIsLoadingResets] = useState(true);
+    const [processingResetId, setProcessingResetId] = useState(null);
 
     const fetchPendingSellers = async () => {
         setIsLoading(true);
@@ -62,6 +67,7 @@ const PendingSellers = () => {
 
     useEffect(() => {
         fetchPendingSellers();
+        fetchPasswordResets();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -132,6 +138,64 @@ const PendingSellers = () => {
         }
     };
 
+    const fetchPasswordResets = async () => {
+        setIsLoadingResets(true);
+        try {
+            const response = await adminApi.getPasswordResetRequests();
+            const payload = response.data.result || {};
+            setPasswordResets(Array.isArray(payload.items) ? payload.items : []);
+        } catch (error) {
+            console.error('Failed to fetch password reset requests', error);
+            toast.error(error.response?.data?.message || 'Failed to load password reset requests');
+        } finally {
+            setIsLoadingResets(false);
+        }
+    };
+
+    const filteredResets = useMemo(() => {
+        const term = searchTerm.toLowerCase();
+        return passwordResets.filter((r) =>
+            String(r.shopName || '').toLowerCase().includes(term) ||
+            String(r.ownerName || '').toLowerCase().includes(term) ||
+            String(r.email || '').toLowerCase().includes(term)
+        );
+    }, [passwordResets, searchTerm]);
+
+    const handleApproveReset = async (id) => {
+        if (!window.confirm('Approve this password reset request? Once approved, the seller can enter and set their new password.')) {
+            return;
+        }
+        setProcessingResetId(id);
+        try {
+            await adminApi.approvePasswordReset(id);
+            toast.success('Password reset request approved successfully');
+            await fetchPasswordResets();
+        } catch (error) {
+            console.error('Failed to approve password reset', error);
+            toast.error(error.response?.data?.message || 'Failed to approve password reset');
+        } finally {
+            setProcessingResetId(null);
+        }
+    };
+
+    const handleRejectReset = async (id) => {
+        if (!window.confirm('Reject this password reset request?')) {
+            return;
+        }
+        setProcessingResetId(id);
+        try {
+            const reason = window.prompt('Optional rejection reason (leave blank if not needed):') || '';
+            await adminApi.rejectPasswordReset(id, { reason });
+            toast.success('Password reset request rejected');
+            await fetchPasswordResets();
+        } catch (error) {
+            console.error('Failed to reject password reset', error);
+            toast.error(error.response?.data?.message || 'Failed to reject password reset');
+        } finally {
+            setProcessingResetId(null);
+        }
+    };
+
     return (
         <div className="ds-section-spacing animate-in fade-in slide-in-from-bottom-2 duration-700 pb-16">
             {/* Page Header */}
@@ -149,7 +213,37 @@ const PendingSellers = () => {
                 </div>
             </div>
 
+            {/* Tabs */}
+            <div className="flex items-center gap-2 border-b border-slate-100">
+                {[
+                    { id: 'applications', label: 'New Store Applications', count: pendingSellers.length },
+                    { id: 'password-resets', label: 'Password Reset Requests', count: passwordResets.length }
+                ].map((tab) => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={cn(
+                            'relative flex items-center gap-2 px-4 py-3 text-xs font-bold transition-colors -mb-px border-b-2',
+                            activeTab === tab.id
+                                ? 'border-primary text-slate-900'
+                                : 'border-transparent text-slate-400 hover:text-slate-600'
+                        )}
+                    >
+                        <span>{tab.label}</span>
+                        {tab.count > 0 && (
+                            <span className={cn(
+                                'min-w-[20px] px-1.5 py-0.5 rounded-full text-[9px] font-black',
+                                activeTab === tab.id ? 'bg-primary text-white' : 'bg-slate-100 text-slate-500'
+                            )}>
+                                {tab.count}
+                            </span>
+                        )}
+                    </button>
+                ))}
+            </div>
+
             {/* Quick Stats */}
+            {activeTab === 'applications' && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {[
                     { label: 'Total Applications', val: stats.total, icon: HiOutlineDocumentText, color: 'text-brand-600', bg: 'bg-brand-50' },
@@ -169,8 +263,10 @@ const PendingSellers = () => {
                     </Card>
                 ))}
             </div>
+            )}
 
             {/* Content Area */}
+            {activeTab === 'applications' && (
             <Card className="border-none shadow-xl ring-1 ring-slate-100 overflow-hidden rounded-xl">
                 <div className="p-6 border-b border-slate-50 flex flex-col md:flex-row gap-4 items-center justify-between bg-white">
                     <div className="relative flex-1 w-full max-w-md">
@@ -285,6 +381,126 @@ const PendingSellers = () => {
                     </table>
                 </div>
             </Card>
+            )}
+
+            {/* Password Reset Requests */}
+            {activeTab === 'password-resets' && (
+            <Card className="border-none shadow-xl ring-1 ring-slate-100 overflow-hidden rounded-xl">
+                <div className="p-6 border-b border-slate-50 flex flex-col md:flex-row gap-4 items-center justify-between bg-white">
+                    <div className="relative flex-1 w-full max-w-md">
+                        <HiOutlineMagnifyingGlass className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder="Search by shop, owner or email..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-none rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-primary/10"
+                        />
+                    </div>
+                    <button
+                        onClick={fetchPasswordResets}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-white ring-1 ring-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
+                    >
+                        <HiOutlineArrowPath className="h-4 w-4" />
+                        <span>Refresh</span>
+                    </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="bg-slate-50/50 border-b border-slate-100">
+                                <th className="ds-table-header-cell px-6">Seller</th>
+                                <th className="ds-table-header-cell px-6">Contact</th>
+                                <th className="ds-table-header-cell px-6">Requested On</th>
+                                <th className="ds-table-header-cell px-6">Status</th>
+                                <th className="ds-table-header-cell px-6 !text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {isLoadingResets ? (
+                                <tr>
+                                    <td colSpan="5" className="px-6 py-20 text-center">
+                                        <div className="flex flex-col items-center justify-center gap-3">
+                                            <HiOutlineArrowPath className="h-8 w-8 text-slate-300 animate-spin" />
+                                            <p className="text-slate-500 font-bold text-sm">Loading password reset requests...</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : filteredResets.length > 0 ? filteredResets.map((r) => (
+                                <tr key={r.id} className="hover:bg-slate-50/30 transition-colors group">
+                                    <td className="px-6 py-5 align-middle">
+                                        <div className="flex items-center gap-4">
+                                            <div className="h-10 w-10 rounded-xl flex items-center justify-center bg-amber-50 text-amber-600 ring-2 ring-amber-100">
+                                                <HiOutlineLockClosed className="h-5 w-5" />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-900">{r.shopName}</p>
+                                                <p className="text-[10px] font-bold text-slate-400">{r.ownerName}</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-5 align-middle">
+                                        <div className="flex flex-col justify-center gap-1">
+                                            <span className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                                                <HiOutlineEnvelope className="h-3.5 w-3.5 text-slate-400" />
+                                                {r.email || '—'}
+                                            </span>
+                                            <span className="flex items-center gap-1.5 text-[10px] font-medium text-slate-400">
+                                                <HiOutlinePhone className="h-3 w-3" />
+                                                {r.phone || '—'}
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-5 align-middle">
+                                        <div className="flex flex-col justify-center">
+                                            <span className="text-xs font-bold text-slate-700">{r.requestedDate || '—'}</span>
+                                            <span className="text-[9px] font-medium text-slate-400">at {r.requestedTime || '—'}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-5 align-middle">
+                                        <Badge variant="warning" className="admin-tiny px-2 py-0.5 font-bold uppercase">
+                                            {r.status}
+                                        </Badge>
+                                    </td>
+                                    <td className="px-6 py-5 text-right align-middle">
+                                        <div className="flex items-center justify-end gap-2 h-full">
+                                            <button
+                                                onClick={() => handleApproveReset(r.id)}
+                                                disabled={processingResetId === r.id}
+                                                className="h-9 px-4 bg-emerald-600 text-white rounded-xl text-[10px] font-bold hover:bg-emerald-700 transition-all shadow-md hover:-translate-y-0.5 flex items-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
+                                            >
+                                                <HiOutlineCheckCircle className="h-4 w-4" />
+                                                {processingResetId === r.id ? 'WORKING...' : 'APPROVE RESET'}
+                                            </button>
+                                            <button
+                                                onClick={() => handleRejectReset(r.id)}
+                                                disabled={processingResetId === r.id}
+                                                className="h-9 px-4 bg-rose-50 text-rose-600 ring-1 ring-rose-100 rounded-xl text-[10px] font-bold hover:bg-rose-600 hover:text-white transition-all flex items-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
+                                            >
+                                                <HiOutlineXCircle className="h-4 w-4" />
+                                                REJECT
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            )) : (
+                                <tr>
+                                    <td colSpan="5" className="px-6 py-20 text-center">
+                                        <div className="flex flex-col items-center justify-center">
+                                            <div className="h-16 w-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+                                                <HiOutlineLockClosed className="h-8 w-8 text-slate-200" />
+                                            </div>
+                                            <p className="text-slate-500 font-bold text-sm">No pending password reset requests.</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </Card>
+            )}
 
             {/* Review Modal */}
             <AnimatePresence>
