@@ -81,6 +81,23 @@ const settingSchema = new mongoose.Schema(
             index: true,
         },
 
+        /**
+         * Order-level charges surfaced in Admin → Fees & Charges.
+         * `platformFee` is the flat handling fee added to every order;
+         * `freeDeliveryThreshold` waives the delivery fee above this
+         * cart value (0 = never waive).
+         */
+        platformFee: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        freeDeliveryThreshold: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+
         // Returns / logistics configuration
         returnDeliveryCommission: {
             // Flat amount per return pickup, paid by seller

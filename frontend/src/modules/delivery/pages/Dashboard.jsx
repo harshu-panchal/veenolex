@@ -19,6 +19,7 @@ import Card from "@/shared/components/ui/Card";
 
 import { useAuth } from "@core/context/AuthContext";
 import { deliveryApi } from "../services/deliveryApi";
+import DeliveryAvatar from "../components/DeliveryAvatar";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -35,6 +36,21 @@ const Dashboard = () => {
     cashCollected: 0,
   });
 
+  // Short, stable partner reference. The Delivery documents have no
+  // human-facing partner code, so the tail of the ObjectId is what both
+  // the rider and support can quote.
+  const partnerId = user?._id
+    ? String(user._id).slice(-6).toUpperCase()
+    : "--";
+
+  const partnerInitials = (user?.name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join("") || "DP";
+
   // Sync isOnline with user profile from context
   useEffect(() => {
     if (user) {
@@ -46,7 +62,6 @@ const Dashboard = () => {
     try {
       const response = await deliveryApi.getStats();
       if (response.data.success) {
-        console.log("Stats Fetched:", response.data.result);
         setEarnings((prev) => ({
           ...prev,
           ...response.data.result,
@@ -141,15 +156,13 @@ const Dashboard = () => {
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 px-6 pt-12 pb-4 flex justify-between items-center sticky top-0 z-30 transition-all duration-300">
         <div className="flex items-center space-x-3">
-          <div
-            className="w-12 h-12 rounded-full overflow-hidden border-2 border-primary ring-2 ring-primary/20 shadow-sm cursor-pointer"
-            onClick={() => navigate("/delivery/profile")}>
-            <img
-              src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix"
-              alt="Profile"
-              className="w-full h-full object-cover"
-            />
-          </div>
+          <DeliveryAvatar
+            src={user?.profileImage}
+            name={user?.name}
+            size="md"
+            className="border-2 border-primary ring-2 ring-primary/20 shadow-sm"
+            onClick={() => navigate("/delivery/profile")}
+          />
           <div
             onClick={() => navigate("/delivery/profile")}
             className="cursor-pointer">
@@ -157,12 +170,19 @@ const Dashboard = () => {
               {user?.name || "Delivery Partner"}
             </h2>
             <div className="flex items-center text-sm font-medium">
-              <span className="flex items-center bg-yellow-50 text-yellow-600 px-1.5 py-0.5 rounded border border-yellow-100">
-                <Star size={12} fill="currentColor" className="mr-1" />
-                4.8
-              </span>
+              {user?.isVerified ? (
+                <span className="flex items-center bg-brand-50 text-brand-600 px-1.5 py-0.5 rounded border border-brand-100 text-xs font-bold uppercase tracking-wide">
+                  <CheckCircle size={12} className="mr-1" />
+                  Verified
+                </span>
+              ) : (
+                <span className="flex items-center bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded border border-amber-100 text-xs font-bold uppercase tracking-wide">
+                  <AlertCircle size={12} className="mr-1" />
+                  Pending
+                </span>
+              )}
               <span className="text-gray-300 mx-2">•</span>
-              <span className="ds-caption text-gray-500">ID: 882190</span>
+              <span className="ds-caption text-gray-500">ID: {partnerId}</span>
             </div>
           </div>
         </div>
@@ -285,14 +305,18 @@ const Dashboard = () => {
       {/* Main Content */}
       <div className="px-6 space-y-6">
         {/* Earnings Card */}
-        <Card className="bg-white shadow-sm border border-gray-100 overflow-hidden relative">
-          {/* Background Decoration */}
-          <div className="absolute -right-6 -top-6 w-24 h-24 bg-primary/5 rounded-full blur-2xl"></div>
-
-          <div className="flex justify-between items-center mb-4 relative z-10">
-            <h3 className="ds-caption font-bold tracking-wider">
-              Today's Earnings
-            </h3>
+        <Card className="p-6 relative overflow-hidden bg-white border-none shadow-sm">
+          <div className="flex justify-between items-center mb-2">
+            <div>
+              <h3 className="font-bold text-gray-800 text-sm uppercase tracking-wider">
+                Today's Earnings
+              </h3>
+              {earnings.totalLifetimeEarnings > 0 && (
+                <p className="text-[11px] text-gray-500 font-medium mt-0.5">
+                  All-time total: <span className="font-bold text-gray-700">₹{Number(earnings.totalLifetimeEarnings || 0).toLocaleString("en-IN")}</span>
+                </p>
+              )}
+            </div>
             <Button
               variant="ghost"
               size="sm"
@@ -305,27 +329,36 @@ const Dashboard = () => {
           <div className="flex items-baseline mb-6 relative z-10">
             <span className="text-2xl font-bold text-gray-400 mr-1">₹</span>
             <span className="text-4xl font-extrabold text-gray-900 tracking-tight">
-              {earnings.today}
+              {Number(earnings.today || 0).toLocaleString("en-IN")}
             </span>
             <span className="ml-3 text-brand-600 text-xs font-bold flex items-center bg-brand-50 border border-brand-100 px-2 py-1 rounded-full">
-              <TrendingUp size={12} className="mr-1" /> +12%
+              <TrendingUp size={12} className="mr-1" /> Today
             </span>
           </div>
 
           <div className="grid grid-cols-3 gap-4 border-t border-gray-50 pt-4 relative z-10">
-            <div className="text-center group cursor-pointer">
+            <div className="text-center group cursor-pointer" onClick={() => navigate("/delivery/history")}>
               <div className="flex justify-center mb-2 text-brand-600 bg-brand-50 group-hover:bg-brand-100 transition-colors w-10 h-10 rounded-full items-center mx-auto">
                 <Package size={18} />
               </div>
               <p className="ds-caption mb-0.5">Orders</p>
-              <p className="font-bold text-gray-900">{earnings.deliveries}</p>
+              <p className="font-bold text-gray-900">
+                {Number(earnings.todayDeliveries || 0)}
+                <span className="text-gray-400 font-medium"> today</span>
+              </p>
+              <p className="text-[10px] text-gray-400 font-medium">
+                {Number(earnings.deliveries || 0)} lifetime
+              </p>
             </div>
-            <div className="text-center border-l border-r border-gray-50 group cursor-pointer">
+            <div className="text-center border-l border-r border-gray-50 group cursor-pointer" onClick={() => navigate("/delivery/earnings")}>
               <div className="flex justify-center mb-2 text-amber-500 bg-amber-50 group-hover:bg-amber-100 transition-colors w-10 h-10 rounded-full items-center mx-auto">
                 <Star size={18} />
               </div>
               <p className="ds-caption mb-0.5">Incentives</p>
-              <p className="font-bold text-gray-900">₹{earnings.incentives}</p>
+              <p className="font-bold text-gray-900">
+                ₹{Number(earnings.incentives || 0).toLocaleString("en-IN")}
+              </p>
+              <p className="text-[10px] text-gray-400 font-medium">today</p>
             </div>
             <div
               className="text-center group cursor-pointer"
@@ -341,8 +374,9 @@ const Dashboard = () => {
               </div>
               <p className="ds-caption mb-0.5">COD Cash</p>
               <p className="font-bold text-gray-900">
-                ₹{earnings.cashCollected}
+                ₹{Number(earnings.cashCollected || 0).toLocaleString("en-IN")}
               </p>
+              <p className="text-[10px] text-gray-400 font-medium">in hand</p>
             </div>
           </div>
         </Card>

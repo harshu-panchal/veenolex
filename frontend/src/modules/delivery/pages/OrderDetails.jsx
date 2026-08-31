@@ -30,6 +30,7 @@ import ReturnPickupProofUpload from "../components/ReturnPickupProofUpload";
 import {
   getCachedDeliveryPartnerLocation,
   getCurrentPositionWithCache,
+  getQuickDeliveryPosition,
 } from "../utils/deliveryLastLocation";
 import { createSocketTokenReader } from "@core/utils/authStorage";
 import { STORAGE_KEYS } from "@core/utils/storage";
@@ -206,6 +207,7 @@ const OrderDetails = () => {
   const [cancelReason, setCancelReason] = useState("");
   const [isCancelOtpFlow, setIsCancelOtpFlow] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [isProcessingStep, setIsProcessingStep] = useState(false);
 
   const isReturn = order?.returnStatus && order.returnStatus !== "none";
   const isShiprocket = order?.isOutOfZone || order?.deliveryType === "SHIPROCKET";
@@ -599,9 +601,12 @@ const OrderDetails = () => {
       : "";
 
   const handleNextStep = async () => {
+    if (isProcessingStep) return;
     const currentStep = steps[step - 1];
 
     try {
+      setIsProcessingStep(true);
+
       // Return pickup flow: slide button only advances UI steps (1→2, 3→4)
       // OTP flows handle actual status transitions
       if (order?.returnStatus && order.returnStatus !== "none") {
@@ -626,11 +631,8 @@ const OrderDetails = () => {
           return;
         }
       } else {
-        const location = await new Promise((resolve, reject) => {
-          getCurrentPositionWithCache(resolve, reject, {
-            maxCacheAgeMs: 20 * 60 * 1000,
-          });
-        });
+        // Fast non-blocking location resolution (max 1.2s timeout, uses cached rider coords if available)
+        const location = await getQuickDeliveryPosition({ timeoutMs: 1200 });
 
         if (step === 1) {
           const res = await deliveryApi.markArrivedAtStore(order.orderId, {
@@ -665,6 +667,10 @@ const OrderDetails = () => {
       console.error("Failed to update status", error);
       const message = error?.response?.data?.message || error?.message || "Failed to update status";
       toast.error(message);
+      setIsSlideComplete(false);
+      setDragX(0);
+    } finally {
+      setIsProcessingStep(false);
     }
   };
 
@@ -1580,17 +1586,21 @@ const OrderDetails = () => {
               />
 
               <motion.div
-                className={`absolute top-1 bottom-1 left-1 w-14 rounded-full flex items-center justify-center shadow-md cursor-grab active:cursor-grabbing z-20 ${steps[step - 1].color || "bg-primary"
-                  }`}
-                drag="x"
+                className={`absolute top-1 bottom-1 left-1 w-14 rounded-full flex items-center justify-center shadow-md ${
+                  isProcessingStep ? "cursor-wait opacity-90" : "cursor-grab active:cursor-grabbing"
+                } z-20 ${steps[step - 1].color || "bg-primary"}`}
+                drag={isProcessingStep ? false : "x"}
                 dragConstraints={{ left: 0, right: 280 }}
                 dragElastic={0.05}
                 dragMomentum={false}
                 onDrag={(event, info) => {
-                  setDragX(info.point.x);
+                  if (!isProcessingStep) {
+                    setDragX(info.point.x);
+                  }
                 }}
                 onDragEnd={(event, info) => {
-                  if (info.offset.x > 150) {
+                  if (isProcessingStep) return;
+                  if (info.offset.x > 140) {
                     setIsSlideComplete(true);
                     handleNextStep();
                   } else {
@@ -1598,10 +1608,14 @@ const OrderDetails = () => {
                   }
                 }}
                 animate={{ x: isSlideComplete ? 280 : 0 }}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: isProcessingStep ? 1 : 1.05 }}
+                whileTap={{ scale: isProcessingStep ? 1 : 0.95 }}
               >
-                <ChevronRight className="text-white" size={24} />
+                {isProcessingStep ? (
+                  <Loader2 className="text-white animate-spin" size={22} />
+                ) : (
+                  <ChevronRight className="text-white" size={24} />
+                )}
               </motion.div>
             </div>
           </div>

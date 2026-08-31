@@ -33,7 +33,7 @@ router.post("/verify-otp", verifyDeliveryOTP);
 
 // Profile routes
 router.get("/profile", verifyToken, getDeliveryProfile);
-router.put("/profile", verifyToken, updateDeliveryProfile);
+router.put("/profile", verifyToken, upload.any(), updateDeliveryProfile);
 router.get("/stats", verifyToken, getDeliveryStats);
 router.get("/earnings", verifyToken, getDeliveryEarnings);
 router.get("/cod/summary", verifyToken, allowRoles("delivery"), getDeliveryCodCashSummary);

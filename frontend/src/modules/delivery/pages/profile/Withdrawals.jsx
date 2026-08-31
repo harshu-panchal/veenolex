@@ -32,27 +32,20 @@ const Withdrawals = () => {
         try {
             setFetching(true);
             const res = await deliveryApi.getEarnings();
-            if (res.data.success) {
+            if (res.data?.success && res.data?.result) {
+                const txns = res.data.result.transactions || res.data.result.recentTransactions || [];
+                const withdrawalTxns = txns.filter(t => (t.type || "").includes('Withdrawal') || t.kind === 'withdrawal');
                 setStats({
                     availableBalance: res.data.result.totalEarnings || 0,
-                    pendingWithdrawals: (res.data.result.recentTransactions || [])
-                        .filter(t => t.type.includes('Withdrawal') && (t.status === 'Pending' || t.status === 'Processing'))
-                        .reduce((acc, t) => acc + Math.abs(t.amount), 0),
-                    history: (res.data.result.recentTransactions || [])
-                        .filter(t => t.type.includes('Withdrawal'))
+                    pendingWithdrawals: withdrawalTxns
+                        .filter(t => t.status === 'Pending' || t.status === 'Processing')
+                        .reduce((acc, t) => acc + Math.abs(t.amount || 0), 0),
+                    history: withdrawalTxns
                 });
             }
         } catch (error) {
             console.error("Fetch Error:", error);
-            // Fallback with mock data for frontend demo if API fails
-            setStats({
-                availableBalance: 1250,
-                pendingWithdrawals: 0,
-                history: [
-                    { id: 'WDR123', amount: 500, status: 'Settled', date: '2024-03-20', type: 'Withdrawal' },
-                    { id: 'WDR124', amount: 300, status: 'Pending', date: '2024-03-21', type: 'Withdrawal' }
-                ]
-            });
+            toast.error("Failed to load withdrawal history");
         } finally {
             setFetching(false);
         }
@@ -191,7 +184,7 @@ const Withdrawals = () => {
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ delay: idx * 0.05 }}
-                                    key={item.id}
+                                    key={item._id || item.id || `wdr-${idx}`}
                                     className="bg-white p-4 rounded-2xl shadow-sm border border-gray-50 flex items-center justify-between"
                                 >
                                     <div className="flex items-center">
@@ -206,14 +199,14 @@ const Withdrawals = () => {
                                                     <Clock size={18} />}
                                         </div>
                                         <div>
-                                            <p className="font-bold text-gray-900">₹{Math.abs(item.amount).toLocaleString()}</p>
+                                            <p className="font-bold text-gray-900">₹{Math.abs(item.amount || 0).toLocaleString()}</p>
                                             <p className="text-[10px] font-medium text-gray-400 mt-0.5">
-                                                {new Date(item.date).toLocaleDateString()} • {item.id}
+                                                {item.date ? new Date(item.date).toLocaleDateString() : ""} • {item.reference || item.id || (item._id ? String(item._id).slice(-6).toUpperCase() : "WDR")}
                                             </p>
                                         </div>
                                     </div>
                                     <Badge variant={item.status === 'Settled' ? 'success' : item.status === 'Failed' ? 'destructive' : 'warning'}>
-                                        {item.status.toUpperCase()}
+                                        {(item.status || "PENDING").toUpperCase()}
                                     </Badge>
                                 </motion.div>
                             ))

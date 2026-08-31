@@ -112,6 +112,10 @@ const AppRouter = () => {
                     element: <Auth />,
                 },
                 {
+                    path: 'seller/login',
+                    element: <Auth />,
+                },
+                {
                     path: 'seller/pending-approval',
                     element: <ApplicationPending />,
                 },
@@ -120,7 +124,15 @@ const AppRouter = () => {
                     element: <AdminAuth />,
                 },
                 {
+                    path: 'admin/login',
+                    element: <AdminAuth />,
+                },
+                {
                     path: 'delivery/auth',
+                    element: <DeliveryAuth />,
+                },
+                {
+                    path: 'delivery/login',
                     element: <DeliveryAuth />,
                 },
                 {

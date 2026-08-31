@@ -44,7 +44,14 @@ const BillingCharges = () => {
                 ]);
 
                 if (platformRes.data?.success && platformRes.data.result) {
-                    setReturnDeliveryCommission(platformRes.data.result.returnDeliveryCommission ?? 0);
+                    const p = platformRes.data.result;
+                    setReturnDeliveryCommission(p.returnDeliveryCommission ?? 0);
+                    setConfig((prev) => ({
+                        ...prev,
+                        platformFee: p.platformFee ?? prev.platformFee,
+                        freeDeliveryThreshold:
+                            p.freeDeliveryThreshold ?? prev.freeDeliveryThreshold,
+                    }));
                 }
 
                 if (deliveryRes.data?.success && deliveryRes.data.result) {
@@ -73,27 +80,32 @@ const BillingCharges = () => {
     const handleSave = async () => {
         try {
             setIsSaving(true);
-            await Promise.all([
-                adminApi.updatePlatformSettings({
-                    returnDeliveryCommission,
-                }),
-                adminApi.updateDeliveryFinanceSettings({
-                    deliveryPricingMode: deliveryMode === 'fixed' ? 'fixed_price' : 'distance_based',
-                    customerBaseDeliveryFee: config.baseCharge,
-                    riderBasePayout: config.riderBasePayout,
-                    baseDeliveryCharge: config.baseCharge,
-                    baseDistanceCapacityKm: config.baseDistance,
-                    incrementalKmSurcharge: config.extraPerKm,
-                    deliveryPartnerRatePerKm: config.deliveryPartnerRatePerKm,
-                    fleetCommissionRatePerKm: config.deliveryPartnerRatePerKm,
-                    fixedDeliveryFee: config.fixedCharge,
-                    handlingFeeStrategy: config.handlingFeeStrategy,
-                    codEnabled: config.codEnabled,
-                    onlineEnabled: config.onlineEnabled,
-                }),
-            ]);
 
-            showToast('Delivery finance settings updated', 'success');
+            // Sequential, not Promise.all: both endpoints upsert the same
+            // singleton Setting document, and concurrent upserts can race
+            // into two documents when none exists yet.
+            await adminApi.updatePlatformSettings({
+                returnDeliveryCommission,
+                platformFee: config.platformFee,
+                freeDeliveryThreshold: config.freeDeliveryThreshold,
+            });
+
+            await adminApi.updateDeliveryFinanceSettings({
+                deliveryPricingMode: deliveryMode === 'fixed' ? 'fixed_price' : 'distance_based',
+                customerBaseDeliveryFee: config.baseCharge,
+                riderBasePayout: config.riderBasePayout,
+                baseDeliveryCharge: config.baseCharge,
+                baseDistanceCapacityKm: config.baseDistance,
+                incrementalKmSurcharge: config.extraPerKm,
+                deliveryPartnerRatePerKm: config.deliveryPartnerRatePerKm,
+                fleetCommissionRatePerKm: config.deliveryPartnerRatePerKm,
+                fixedDeliveryFee: config.fixedCharge,
+                handlingFeeStrategy: config.handlingFeeStrategy,
+                codEnabled: config.codEnabled,
+                onlineEnabled: config.onlineEnabled,
+            });
+
+            showToast('Fees & charges updated', 'success');
         } catch (error) {
             console.error('Failed to update platform settings', error);
             showToast('Failed to update fees settings', 'error');
@@ -293,6 +305,18 @@ const BillingCharges = () => {
                                     </div>
                                 </div>
                             )}
+
+                            <div className="mt-8 bg-slate-50 border border-slate-100 rounded-2xl p-4 flex gap-4">
+                                <Truck className="h-5 w-5 text-slate-400 shrink-0 mt-0.5" />
+                                <div className="space-y-1">
+                                    <p className="text-[11px] font-black text-slate-800 uppercase tracking-tight">Rider payout formula</p>
+                                    <p className="text-[10px] font-bold text-slate-500 leading-relaxed">
+                                        Payout = Rider Base Payout + (km beyond base radius x Delivery Partner Rate) + customer tip.
+                                        These values are applied at settlement and shown to the partner as a Base + Distance + Tip
+                                        breakdown on their Earnings screen.
+                                    </p>
+                                </div>
+                            </div>
 
                             <div className="mt-8 pt-6 border-t border-dashed border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-8">
                                 <div className="space-y-3">

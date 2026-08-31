@@ -18,7 +18,28 @@ const roundCurrency = (num) => Math.round((num + Number.EPSILON) * 100) / 100;
 
 function payoutTypeToOwnerType(payoutType) {
   if (payoutType === PAYOUT_TYPE.SELLER) return OWNER_TYPE.SELLER;
-  if (payoutType === PAYOUT_TYPE.DELIVERY_PARTNER) return OWNER_TYPE.RIDER;
+  // `OWNER_TYPE.RIDER` does not exist — the constant is DELIVERY_PARTNER.
+  // Returning the missing key handed `undefined` to getOrCreateWallet,
+  // which fails the Wallet `ownerType` enum and aborts the settlement.
+  if (payoutType === PAYOUT_TYPE.DELIVERY_PARTNER) {
+    return OWNER_TYPE.DELIVERY_PARTNER;
+  }
+  throw new Error(`Unsupported payout type: ${payoutType}`);
+}
+
+/**
+ * Ledger type for a newly queued payout. `LEDGER_TRANSACTION_TYPE` has no
+ * generic PAYOUT_QUEUED member — it models the two beneficiaries
+ * separately — so referencing one wrote `type: undefined` and every
+ * delivery settlement died on `LedgerEntry validation failed`.
+ */
+function payoutTypeToPendingLedgerType(payoutType) {
+  if (payoutType === PAYOUT_TYPE.SELLER) {
+    return LEDGER_TRANSACTION_TYPE.SELLER_PAYOUT_PENDING;
+  }
+  if (payoutType === PAYOUT_TYPE.DELIVERY_PARTNER) {
+    return LEDGER_TRANSACTION_TYPE.RIDER_PAYOUT_PENDING;
+  }
   throw new Error(`Unsupported payout type: ${payoutType}`);
 }
 
@@ -83,7 +104,7 @@ export async function createPendingPayoutForOrder({
         walletId: wallet._id,
         actorType: ownerType,
         actorId: beneficiaryId,
-        type: LEDGER_TRANSACTION_TYPE.PAYOUT_QUEUED,
+        type: payoutTypeToPendingLedgerType(payoutType),
         direction: LEDGER_DIRECTION.CREDIT,
         amount: roundCurrency(amount),
         description: `${payoutType} payout queued for order ${order.orderId}`,

@@ -23,6 +23,18 @@ import { useAuth } from "@core/context/AuthContext";
 import { useSettings } from "@core/context/SettingsContext";
 import axiosInstance from '@core/api/axios';
 import { useEffect } from 'react';
+import { deliveryApi } from "../services/deliveryApi";
+import DeliveryAvatar from "../components/DeliveryAvatar";
+
+const RUPEE = "\u20B9";
+const DOT = "\u2022";
+
+/** Last 4 digits, or a placeholder when the rider has not added an account. */
+const maskAccountNumber = (accountNumber) => {
+  const digits = String(accountNumber || "").replace(/\D/g, "");
+  if (!digits) return null;
+  return `**** ${digits.slice(-4)}`;
+};
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -30,6 +42,7 @@ const Profile = () => {
   const { settings } = useSettings();
   const appName = settings?.appName || "App";
   const [faqs, setFaqs] = useState([]);
+  const [stats, setStats] = useState(null);
 
   useEffect(() => {
     const fetchFaqs = async () => {
@@ -43,25 +56,65 @@ const Profile = () => {
     fetchFaqs();
   }, []);
 
+  // Lifetime trip count lives on the stats endpoint, not the profile.
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await deliveryApi.getStats();
+        if (response.data?.success) setStats(response.data.result);
+      } catch (error) {
+        console.error("Error fetching delivery stats:", error);
+      }
+    };
+    fetchStats();
+  }, []);
+
+  const partnerId = user?._id ? String(user._id).slice(-6).toUpperCase() : "--";
+
+  const initials = (user?.name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join("") || "DP";
+
+  const joinedLabel = user?.createdAt
+    ? new Date(user.createdAt).toLocaleDateString("en-IN", {
+        month: "short",
+        year: "2-digit",
+      })
+    : "--";
+
+  const maskedAccount = maskAccountNumber(user?.accountNumber);
+
+  const documentCount = user?.documents
+    ? Object.values(user.documents).filter(Boolean).length
+    : 0;
+
   const menuItems = [
     {
       icon: User,
       label: "Personal Details",
-      sub: "Name, Address, Email",
+      sub: user?.email || "Name, Address, Email",
       color: "text-brand-600 bg-brand-50",
       path: "/delivery/profile/personal-details",
     },
     {
       icon: Truck,
       label: "Vehicle Information",
-      sub: "Bike, License, Insurance",
+      sub: user?.vehicleNumber
+        ? `${user.vehicleType || "Vehicle"} ${DOT} ${user.vehicleNumber}`
+        : "Add your vehicle details",
       color: "text-orange-600 bg-orange-50",
       path: "/delivery/profile/vehicle-info",
     },
     {
       icon: CreditCard,
       label: "Bank Account",
-      sub: "HDFC Bank **** 8921",
+      sub: maskedAccount
+        ? `Payout account ${maskedAccount}`
+        : "Add your payout account",
       color: "text-brand-600 bg-brand-50",
       path: "/delivery/profile/bank-account",
     },
@@ -75,7 +128,7 @@ const Profile = () => {
     {
       icon: FileText,
       label: "Documents",
-      sub: "Aadhar, PAN, DL (Verified)",
+      sub: `Aadhar, PAN, DL (${documentCount}/3 uploaded)`,
       color: "text-purple-600 bg-purple-50",
       path: "/delivery/profile/documents",
     },
@@ -125,21 +178,25 @@ const Profile = () => {
             variant="ghost"
             size="icon"
             className="text-white hover:bg-white/20"
-            onClick={() => toast.info("No new notifications")}>
+            onClick={() => navigate("/delivery/notifications")}>
             <Bell size={24} />
           </Button>
         </div>
 
         <div className="flex items-center space-x-4">
           <div className="relative">
-            <div className="w-20 h-20 bg-white rounded-full p-1 shadow-lg">
-              <img
-                src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix"
-                alt="Profile"
-                className="w-full h-full rounded-full object-cover bg-gray-100"
-              />
-            </div>
-            <div className="absolute bottom-0 right-0 w-6 h-6 bg-brand-500 border-2 border-white rounded-full"></div>
+            <DeliveryAvatar
+              src={user?.profileImage}
+              name={user?.name}
+              size="lg"
+              className="p-1 bg-white shadow-lg"
+              onClick={() => navigate("/delivery/profile/personal-details")}
+            />
+            <div
+              className={`absolute bottom-0 right-0 w-6 h-6 border-2 border-white rounded-full ${
+                user?.isOnline ? "bg-brand-500" : "bg-gray-400"
+              }`}
+            ></div>
           </div>
           <div className="text-white">
             <h2 className="font-bold text-xl">{user?.name || "Delivery Partner"}</h2>
@@ -148,11 +205,17 @@ const Profile = () => {
             </p>
             <div className="flex items-center space-x-2">
               <span className="bg-white/20 px-2 py-0.5 rounded text-xs font-medium backdrop-blur-sm">
-                ID: 882190
+                ID: {partnerId}
               </span>
-              <span className="bg-brand-500 text-primary-foreground px-2 py-0.5 rounded text-xs font-bold shadow-sm">
-                VERIFIED
-              </span>
+              {user?.isVerified ? (
+                <span className="bg-brand-500 text-primary-foreground px-2 py-0.5 rounded text-xs font-bold shadow-sm">
+                  VERIFIED
+                </span>
+              ) : (
+                <span className="bg-amber-400 text-amber-950 px-2 py-0.5 rounded text-xs font-bold shadow-sm">
+                  PENDING VERIFICATION
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -168,22 +231,25 @@ const Profile = () => {
           <p className="text-gray-400 text-[10px] uppercase font-bold tracking-wider">
             Joined
           </p>
-          <p className="font-bold text-gray-900 text-lg">Jan '24</p>
+          <p className="font-bold text-gray-900 text-lg">{joinedLabel}</p>
         </div>
         <div className="w-px bg-gray-100"></div>
         <div className="flex-1">
           <p className="text-gray-400 text-[10px] uppercase font-bold tracking-wider">
             Trips
           </p>
-          <p className="font-bold text-gray-900 text-lg">1,240</p>
+          <p className="font-bold text-gray-900 text-lg">
+            {Number(stats?.deliveries || 0).toLocaleString("en-IN")}
+          </p>
         </div>
         <div className="w-px bg-gray-100"></div>
         <div className="flex-1">
           <p className="text-gray-400 text-[10px] uppercase font-bold tracking-wider">
-            Rating
+            Lifetime
           </p>
-          <p className="font-bold text-gray-900 text-lg flex justify-center items-center">
-            4.8 <span className="text-yellow-400 text-sm ml-1">★</span>
+          <p className="font-bold text-gray-900 text-lg">
+            {RUPEE}
+            {Number(stats?.totalLifetimeEarnings || 0).toLocaleString("en-IN")}
           </p>
         </div>
       </motion.div>

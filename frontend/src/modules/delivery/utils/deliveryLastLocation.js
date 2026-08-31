@@ -97,3 +97,70 @@ export function getCurrentPositionWithCache(onSuccess, onHardFail, options = {})
     strictOpts,
   );
 }
+
+/**
+ * Fast resolution for interactive UI actions (e.g., slider swipe).
+ * Checks cached location first; if valid, immediately returns it while triggering
+ * a background live GPS refresh. If no cache, waits up to timeoutMs (default 1500ms).
+ */
+export async function getQuickDeliveryPosition(options = {}) {
+  const maxCacheAgeMs = options.maxCacheAgeMs ?? DEFAULT_MAX_CACHE_AGE_MS;
+  const timeoutMs = options.timeoutMs ?? 1500;
+
+  // 1. Instant check from localStorage
+  const cached = getCachedDeliveryPartnerLocation(maxCacheAgeMs);
+  if (cached) {
+    // Trigger background GPS update to keep cache fresh without blocking the UI
+    if (typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => saveDeliveryPartnerLocation(pos.coords.latitude, pos.coords.longitude),
+        () => {},
+        { enableHighAccuracy: false, maximumAge: 60000, timeout: 5000 }
+      );
+    }
+    return { lat: cached.lat, lng: cached.lng, fromCache: true };
+  }
+
+  // 2. If no cache, race fast GPS with timeout
+  return new Promise((resolve) => {
+    let resolved = false;
+    const timer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        const fallback = getCachedDeliveryPartnerLocation(24 * 60 * 60 * 1000); // 24h fallback
+        if (fallback) {
+          resolve({ lat: fallback.lat, lng: fallback.lng, fromCache: true });
+        } else {
+          resolve({ lat: 0, lng: 0, fromCache: false });
+        }
+      }
+    }, timeoutMs);
+
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      clearTimeout(timer);
+      const fallback = getCachedDeliveryPartnerLocation(24 * 60 * 60 * 1000);
+      return resolve(fallback ? { ...fallback, fromCache: true } : { lat: 0, lng: 0, fromCache: false });
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          saveDeliveryPartnerLocation(pos.coords.latitude, pos.coords.longitude);
+          resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, fromCache: false });
+        }
+      },
+      () => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          const fallback = getCachedDeliveryPartnerLocation(24 * 60 * 60 * 1000);
+          resolve(fallback ? { ...fallback, fromCache: true } : { lat: 0, lng: 0, fromCache: false });
+        }
+      },
+      { enableHighAccuracy: false, maximumAge: 30000, timeout: timeoutMs }
+    );
+  });
+}
+

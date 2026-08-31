@@ -18,6 +18,13 @@ const DEFAULT_FINANCE_SETTINGS = {
   onlineEnabled: true,
 };
 
+/** Settings that carry two historical field names for the same value. */
+const ALIAS_GROUPS = [
+  ["deliveryPricingMode", "pricingMode"],
+  ["customerBaseDeliveryFee", "baseDeliveryCharge"],
+  ["deliveryPartnerRatePerKm", "fleetCommissionRatePerKm"],
+];
+
 export function normalizeFinanceSettings(raw = {}) {
   const deliveryPricingMode =
     raw.deliveryPricingMode ||
@@ -92,9 +99,39 @@ export async function getOrCreateFinanceSettings({ session } = {}) {
   return normalizeFinanceSettings(settings.toObject?.() || settings);
 }
 
+/**
+ * Applies a (possibly partial) finance payload on top of what is stored.
+ *
+ * `normalizeFinanceSettings` fills every missing key from
+ * DEFAULT_FINANCE_SETTINGS, so normalizing the raw payload alone would
+ * silently reset any field the caller did not send — e.g. saving only
+ * `returnDeliveryCommission` would knock `riderBasePayout` back to 30.
+ * Merging against the current document first keeps partial saves safe.
+ */
 export async function updateDeliveryFinanceSettings(payload, { session } = {}) {
-  const normalized = normalizeFinanceSettings(payload || {});
   const query = {};
+  const findOptions = session ? { session } : {};
+  const current = await Setting.findOne(query, null, findOptions);
+  const currentPlain = current?.toObject?.() || current || {};
+
+  const merged = {};
+  for (const [key, value] of Object.entries(payload || {})) {
+    if (value !== undefined) merged[key] = value;
+  }
+
+  // Several settings have two historical names. When the payload sets one
+  // of them, the stored value of its alias must not shadow it — normalize
+  // resolves aliases by precedence, not recency.
+  const base = { ...currentPlain };
+  for (const aliases of ALIAS_GROUPS) {
+    if (!aliases.some((key) => key in merged)) continue;
+    for (const key of aliases) {
+      if (!(key in merged)) delete base[key];
+    }
+  }
+
+  const normalized = normalizeFinanceSettings({ ...base, ...merged });
+
   const options = { upsert: true, new: true };
   if (session) options.session = session;
 

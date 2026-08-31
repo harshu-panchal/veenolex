@@ -204,13 +204,43 @@ export const getDeliveryProfile = async (req, res) => {
 /* ===============================
    UPDATE PROFILE
 ================================ */
+const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+const ACCOUNT_NUMBER_PATTERN = /^\d{6,18}$/;
+
 export const updateDeliveryProfile = async (req, res) => {
     try {
-        const { name, vehicleType, vehicleNumber, drivingLicenseNumber, currentArea, isOnline } = req.body;
+        const {
+            name, vehicleType, vehicleNumber, drivingLicenseNumber,
+            currentArea, isOnline,
+            email, address,
+            accountHolder, accountNumber, ifsc,
+            profileImage, profileImageUrl,
+        } = req.body;
 
         const delivery = await Delivery.findById(req.user.id);
         if (!delivery) {
             return handleResponse(res, 404, "Delivery partner not found");
+        }
+
+        // Handle uploaded image file if present
+        if (req.files && Array.isArray(req.files)) {
+            for (const file of req.files) {
+                if (file.fieldname === "profileImage" || file.fieldname === "image" || file.fieldname === "avatar") {
+                    delivery.profileImage = await uploadToCloudinary(file.buffer, "delivery/profiles");
+                }
+            }
+        } else if (req.file && (req.file.fieldname === "profileImage" || req.file.fieldname === "image")) {
+            delivery.profileImage = await uploadToCloudinary(req.file.buffer, "delivery/profiles");
+        }
+
+        const incomingImage = profileImage || profileImageUrl;
+        if (typeof incomingImage === "string") {
+            const trimmed = incomingImage.trim();
+            if (trimmed && trimmed !== "undefined" && trimmed !== "null") {
+                delivery.profileImage = trimmed;
+            } else if (trimmed === "") {
+                delivery.profileImage = "";
+            }
         }
 
         if (name) delivery.name = name;
@@ -218,6 +248,30 @@ export const updateDeliveryProfile = async (req, res) => {
         if (vehicleNumber) delivery.vehicleNumber = vehicleNumber;
         if (drivingLicenseNumber) delivery.drivingLicenseNumber = drivingLicenseNumber;
         if (currentArea) delivery.currentArea = currentArea;
+
+        // Personal details — allowed to be cleared, so only `undefined` skips.
+        if (typeof email !== "undefined") delivery.email = String(email).trim();
+        if (typeof address !== "undefined") delivery.address = String(address).trim();
+
+        // Payout details. Validated here because a wrong IFSC or account
+        // number silently fails at payout time, days after the rider saved it.
+        if (typeof accountHolder !== "undefined") {
+            delivery.accountHolder = String(accountHolder).trim();
+        }
+        if (typeof accountNumber !== "undefined") {
+            const normalized = String(accountNumber).replace(/\s+/g, "");
+            if (normalized && !ACCOUNT_NUMBER_PATTERN.test(normalized)) {
+                return handleResponse(res, 400, "Account number must be 6-18 digits");
+            }
+            delivery.accountNumber = normalized;
+        }
+        if (typeof ifsc !== "undefined") {
+            const normalized = String(ifsc).replace(/\s+/g, "").toUpperCase();
+            if (normalized && !IFSC_PATTERN.test(normalized)) {
+                return handleResponse(res, 400, "Invalid IFSC code");
+            }
+            delivery.ifsc = normalized;
+        }
 
         // Capture going-offline transition before the save so we know whether
         // to drop the rider's realtime presence nodes after the write.
