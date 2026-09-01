@@ -183,7 +183,7 @@ const Orders = () => {
 
             setOrders(formattedOrders);
             setSummary({
-                totalOrders: Number(payload.summary?.totalOrders || payload.total || formattedOrders.length || 0),
+                totalOrders: Number(payload.summary?.totalOrders ?? payload.total ?? formattedOrders.length ?? 0),
                 totalAmount: Number(payload.summary?.totalAmount || 0),
                 pending: Number(payload.summary?.pending || 0),
                 confirmed: Number(payload.summary?.confirmed || 0),
@@ -191,6 +191,7 @@ const Orders = () => {
                 outForDelivery: Number(payload.summary?.outForDelivery || 0),
                 delivered: Number(payload.summary?.delivered || 0),
                 cancelled: Number(payload.summary?.cancelled || 0),
+                rescheduled: Number(payload.summary?.rescheduled || 0),
                 returned: Number(payload.summary?.returned || 0),
                 activeOrders: Number(payload.summary?.activeOrders || 0),
             });
@@ -209,7 +210,6 @@ const Orders = () => {
         }
     };
 
-    const tabs = ['All', 'Pending', 'Confirmed', 'Packed', 'Out for Delivery', 'Delivered', 'Cancelled', 'Rescheduled'];
     const todayStr = new Date().toISOString().split('T')[0];
     const fortyDaysAgo = new Date();
     fortyDaysAgo.setDate(fortyDaysAgo.getDate() - 40);
@@ -220,12 +220,31 @@ const Orders = () => {
         [orders]
     );
 
+    const tabs = useMemo(() => [
+        { id: 'All', label: 'All', count: summary.totalOrders },
+        { id: 'Pending', label: 'Pending', count: summary.pending },
+        { id: 'Confirmed', label: 'Confirmed', count: summary.confirmed },
+        { id: 'Packed', label: 'Packed', count: summary.packed },
+        { id: 'Out for Delivery', label: 'Out for Delivery', count: summary.outForDelivery },
+        { id: 'Delivered', label: 'Delivered', count: summary.delivered },
+        { id: 'Cancelled', label: 'Cancelled', count: summary.cancelled },
+        { id: 'Rescheduled', label: 'Rescheduled', count: summary.rescheduled },
+    ], [summary]);
+
     const filteredOrders = useMemo(() => {
         return safeOrders.filter(order => {
-            const matchesSearch = order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                order.customer.name.toLowerCase().includes(searchTerm.toLowerCase());
-            const statusToMatch = activeTab === 'Out for Delivery' ? 'out_for_delivery' : activeTab.toLowerCase();
-            const matchesTab = activeTab === 'All' || order.status.toLowerCase() === statusToMatch;
+            const matchesSearch = (order.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (order.customer?.name || '').toLowerCase().includes(searchTerm.toLowerCase());
+            
+            const normalizedStatus = String(order.status || '').toLowerCase();
+            let matchesTab = true;
+            if (activeTab === 'All') {
+                matchesTab = true;
+            } else if (activeTab === 'Out for Delivery') {
+                matchesTab = normalizedStatus === 'out_for_delivery';
+            } else {
+                matchesTab = normalizedStatus === activeTab.toLowerCase();
+            }
             return matchesSearch && matchesTab;
         });
     }, [safeOrders, searchTerm, activeTab]);
@@ -235,8 +254,8 @@ const Orders = () => {
             label: 'Total Orders',
             value: summary.totalOrders,
             icon: HiOutlineArchiveBoxXMark,
-            color: 'text-brand-600',
-            bg: 'bg-brand-50'
+            color: 'text-indigo-600',
+            bg: 'bg-indigo-50'
         },
         {
             label: 'Pending',
@@ -249,15 +268,15 @@ const Orders = () => {
             label: 'Confirmed',
             value: summary.confirmed,
             icon: HiOutlineCheck,
-            color: 'text-brand-600',
-            bg: 'bg-brand-50'
+            color: 'text-blue-600',
+            bg: 'bg-blue-50'
         },
         {
             label: 'Delivered',
             value: summary.delivered,
             icon: HiOutlineCheck,
-            color: 'text-brand-600',
-            bg: 'bg-brand-50'
+            color: 'text-emerald-600',
+            bg: 'bg-emerald-50'
         }
     ], [summary]);
 
@@ -385,26 +404,39 @@ const Orders = () => {
                             {/* Tabs */}
                             <div className="border-b border-slate-100 bg-slate-50/30 overflow-x-auto scrollbar-hide">
                                 <div className="flex px-3 sm:px-6 items-center min-w-max">
-                                    {tabs.map((tab) => (
-                                        <button
-                                            key={tab}
-                                            onClick={() => setActiveTab(tab)}
-                                            className={cn(
-                                                "relative py-3 sm:py-4 px-2.5 sm:px-4 text-xs sm:text-sm font-bold whitespace-nowrap transition-all duration-300",
-                                                activeTab === tab
-                                                    ? "text-primary scale-105"
-                                                    : "text-slate-600 hover:text-slate-700"
-                                            )}
-                                        >
-                                            {tab}
-                                            {activeTab === tab && (
-                                                <motion.div
-                                                    layoutId="tab-underline"
-                                                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full mx-2 sm:mx-4"
-                                                />
-                                            )}
-                                        </button>
-                                    ))}
+                                    {tabs.map((tab) => {
+                                        const isSelected = activeTab === tab.id;
+                                        return (
+                                            <button
+                                                key={tab.id}
+                                                onClick={() => setActiveTab(tab.id)}
+                                                className={cn(
+                                                    "relative py-3 sm:py-4 px-2.5 sm:px-4 text-xs sm:text-sm font-bold whitespace-nowrap transition-all duration-300 flex items-center gap-1.5",
+                                                    isSelected
+                                                        ? "text-primary scale-105"
+                                                        : "text-slate-600 hover:text-slate-700"
+                                                )}
+                                            >
+                                                <span>{tab.label}</span>
+                                                {typeof tab.count === 'number' && (
+                                                    <span className={cn(
+                                                        "text-[10px] px-1.5 py-0.5 rounded-full font-extrabold transition-colors",
+                                                        isSelected
+                                                            ? "bg-primary text-white shadow-sm"
+                                                            : "bg-slate-200/80 text-slate-700"
+                                                    )}>
+                                                        {tab.count}
+                                                    </span>
+                                                )}
+                                                {isSelected && (
+                                                    <motion.div
+                                                        layoutId="tab-underline"
+                                                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full mx-2 sm:mx-4"
+                                                    />
+                                                )}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
 

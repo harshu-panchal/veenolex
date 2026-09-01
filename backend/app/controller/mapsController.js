@@ -23,6 +23,10 @@ export const geocodeAddressController = async (req, res) => {
       formattedAddress: result.formattedAddress,
       placeId: result.placeId,
       types: result.types,
+      city: result.city || "",
+      state: result.state || "",
+      pincode: result.pincode || "",
+      landmark: result.landmark || "",
     });
   } catch (e) {
     const status = e.statusCode || 500;
@@ -38,6 +42,7 @@ export const geocodeAddressController = async (req, res) => {
 export const autocompleteAddressController = async (req, res) => {
   try {
     const input = String(req.query.input || "").trim();
+    const types = req.query.types ? String(req.query.types).trim() : undefined;
     if (!input || input.length < 3) {
       return handleResponse(res, 400, "input query param is required and must be at least 3 characters", {
         error: { code: "INPUT_REQUIRED", message: "input query param is required" },
@@ -51,16 +56,20 @@ export const autocompleteAddressController = async (req, res) => {
       });
     }
 
+    const params = {
+      input,
+      key: apiKey,
+      components: "country:in",
+      language: "en",
+    };
+    if (types) {
+      params.types = types;
+    }
+
     const response = await axios.get(
       "https://maps.googleapis.com/maps/api/place/autocomplete/json",
       {
-        params: {
-          input,
-          key: apiKey,
-          components: "country:in",
-          types: "address",
-          language: "en",
-        },
+        params,
         timeout: 10000,
       }
     );

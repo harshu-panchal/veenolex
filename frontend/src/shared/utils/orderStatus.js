@@ -60,30 +60,41 @@ function legacyFromWorkflow(workflowStatus) {
  */
 export function getLegacyStatusFromOrder(order) {
   if (!order) return "pending";
-  if (
-    String(order.status).toLowerCase() === "cancelled" ||
-    String(order.workflowStatus).toUpperCase() === "CANCELLED"
-  ) {
+  const s = String(order.status || order.orderStatus || "").toLowerCase();
+  const ws = String(order.workflowStatus || "").toUpperCase();
+
+  if (s === "cancelled" || ws === WORKFLOW_STATUS.CANCELLED) {
     return "cancelled";
   }
-  const v = Number(order.workflowVersion) || 0;
-  if (v >= 2 && order.workflowStatus) {
-    const workflowStatus = String(order.workflowStatus).toUpperCase();
-
-    if (workflowStatus === WORKFLOW_STATUS.OUT_FOR_DELIVERY) {
-      return "out_for_delivery";
-    }
-    if (workflowStatus === WORKFLOW_STATUS.DELIVERED) {
-      return "delivered";
-    }
-    if (
-      workflowStatus === WORKFLOW_STATUS.DELIVERY_ASSIGNED ||
-      workflowStatus === WORKFLOW_STATUS.PICKUP_READY
-    ) {
-      return "confirmed";
-    }
-
-    return legacyFromWorkflow(workflowStatus);
+  if (s === "delivered" || ws === WORKFLOW_STATUS.DELIVERED) {
+    return "delivered";
+  }
+  if (s === "rescheduled" || ws === WORKFLOW_STATUS.RESCHEDULED) {
+    return "rescheduled";
+  }
+  if (s === "scheduled" || ws === WORKFLOW_STATUS.SCHEDULED) {
+    return "scheduled";
+  }
+  if (s === "out_for_delivery" || ws === WORKFLOW_STATUS.OUT_FOR_DELIVERY) {
+    return "out_for_delivery";
+  }
+  if (s === "packed" || ws === WORKFLOW_STATUS.PICKUP_READY) {
+    return "packed";
+  }
+  if (
+    s === "confirmed" ||
+    ws === WORKFLOW_STATUS.SELLER_ACCEPTED ||
+    ws === WORKFLOW_STATUS.DELIVERY_SEARCH ||
+    ws === WORKFLOW_STATUS.DELIVERY_ASSIGNED
+  ) {
+    return "confirmed";
+  }
+  if (
+    s === "pending" ||
+    ws === WORKFLOW_STATUS.SELLER_PENDING ||
+    ws === WORKFLOW_STATUS.CREATED
+  ) {
+    return "pending";
   }
 
   const riderStep = Number(order.deliveryRiderStep) || 0;
@@ -94,7 +105,6 @@ export function getLegacyStatusFromOrder(order) {
     return "confirmed";
   }
 
-  const s = String(order.status ?? "pending").toLowerCase();
   if (LEGACY_ENUM.has(s)) return s;
   return "pending";
 }

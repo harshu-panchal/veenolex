@@ -114,12 +114,35 @@ export async function geocodeAddress(address, { country } = {}) {
     throw err;
   }
 
+function extractAddressComponents(components = []) {
+  const getComp = (types) =>
+    components.find((c) => types.some((t) => c.types.includes(t)))?.long_name || "";
+
+  const city =
+    getComp(["locality"]) ||
+    getComp(["sublocality_level_1"]) ||
+    getComp(["postal_town"]) ||
+    getComp(["administrative_area_level_2"]);
+  const state = getComp(["administrative_area_level_1"]);
+  const pincode = getComp(["postal_code"]);
+  const landmark = getComp(["neighborhood", "sublocality"]);
+
+  return { city, state, pincode, landmark };
+}
+
+  const components = Array.isArray(first.address_components) ? first.address_components : [];
+  const parsed = extractAddressComponents(components);
+
   const result = {
     lat: loc.lat,
     lng: loc.lng,
     formattedAddress: first.formatted_address || addr,
     placeId: first.place_id || null,
     types: Array.isArray(first.types) ? first.types : [],
+    city: parsed.city,
+    state: parsed.state,
+    pincode: parsed.pincode,
+    landmark: parsed.landmark,
   };
 
   const expiresAt = new Date(Date.now() + GEOCODE_CACHE_TTL_SEC() * 1000);
@@ -223,12 +246,19 @@ export async function geocodePlaceId(placeId) {
     throw err;
   }
 
+  const components = Array.isArray(first.address_components) ? first.address_components : [];
+  const parsed = extractAddressComponents(components);
+
   const result = {
     lat: loc.lat,
     lng: loc.lng,
     formattedAddress: first.formatted_address || "",
     placeId: first.place_id || pid,
     types: Array.isArray(first.types) ? first.types : [],
+    city: parsed.city,
+    state: parsed.state,
+    pincode: parsed.pincode,
+    landmark: parsed.landmark,
   };
 
   const expiresAt = new Date(Date.now() + GEOCODE_CACHE_TTL_SEC() * 1000);

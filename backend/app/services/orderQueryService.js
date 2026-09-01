@@ -32,23 +32,76 @@ function normalizeSellerStatusFilter(statusParam) {
     return {};
   }
 
-  if (statusParam === "pending") {
-    return { status: "pending" };
+  const s = String(statusParam).toLowerCase();
+  if (s === "pending") {
+    return {
+      $or: [
+        { status: "pending" },
+        { workflowStatus: { $in: ["SELLER_PENDING", "CREATED"] } },
+      ],
+    };
   }
-  if (statusParam === "processed") {
-    return { status: { $in: ["confirmed", "packed"] } };
+  if (s === "confirmed") {
+    return {
+      $or: [
+        { status: "confirmed" },
+        { workflowStatus: { $in: ["SELLER_ACCEPTED", "DELIVERY_SEARCH", "DELIVERY_ASSIGNED"] } },
+      ],
+    };
   }
-  if (statusParam === "out-for-delivery") {
-    return { status: "out_for_delivery" };
+  if (s === "packed") {
+    return {
+      $or: [
+        { status: "packed" },
+        { workflowStatus: "PICKUP_READY" },
+      ],
+    };
   }
-  if (statusParam === "delivered") {
-    return { status: "delivered" };
+  if (s === "processed") {
+    return {
+      $or: [
+        { status: { $in: ["confirmed", "packed"] } },
+        { workflowStatus: { $in: ["SELLER_ACCEPTED", "DELIVERY_SEARCH", "DELIVERY_ASSIGNED", "PICKUP_READY"] } },
+      ],
+    };
   }
-  if (statusParam === "cancelled") {
-    return { status: "cancelled" };
+  if (s === "out-for-delivery" || s === "out_for_delivery") {
+    return {
+      $or: [
+        { status: "out_for_delivery" },
+        { workflowStatus: "OUT_FOR_DELIVERY" },
+      ],
+    };
   }
-  if (statusParam === "returned") {
-    return { returnStatus: { $ne: "none" } };
+  if (s === "delivered") {
+    return {
+      $or: [
+        { status: "delivered" },
+        { workflowStatus: "DELIVERED" },
+        { orderStatus: "delivered" },
+      ],
+    };
+  }
+  if (s === "cancelled") {
+    return {
+      $or: [
+        { status: "cancelled" },
+        { workflowStatus: "CANCELLED" },
+      ],
+    };
+  }
+  if (s === "rescheduled") {
+    return {
+      $or: [
+        { status: "rescheduled" },
+        { workflowStatus: "RESCHEDULED" },
+      ],
+    };
+  }
+  if (s === "returned") {
+    return {
+      returnStatus: { $nin: [null, "", "none"] },
+    };
   }
 
   return {};
@@ -86,12 +139,9 @@ export function buildSellerOrdersQuery({
   const base = role === "admin"
     ? (sellerId ? { seller: sellerId } : {})
     : { seller: userId };
-  const withStatus = {
-    ...base,
-    ...normalizeSellerStatusFilter(statusParam),
-  };
   
-  let query = appendDateRange(withStatus, { startDate, endDate });
+  const statusFilter = normalizeSellerStatusFilter(statusParam);
+  let baseQuery = appendDateRange(base, { startDate, endDate });
 
   // For sellers, restrict orders strictly to the last 40 days
   if (role === "seller") {
@@ -99,17 +149,26 @@ export function buildSellerOrdersQuery({
     fortyDaysAgo.setDate(fortyDaysAgo.getDate() - 40);
     fortyDaysAgo.setHours(0, 0, 0, 0);
 
-    if (query.createdAt) {
-      const existingGte = query.createdAt.$gte ? new Date(query.createdAt.$gte) : null;
+    if (baseQuery.createdAt) {
+      const existingGte = baseQuery.createdAt.$gte ? new Date(baseQuery.createdAt.$gte) : null;
       if (!existingGte || existingGte < fortyDaysAgo) {
-        query.createdAt.$gte = fortyDaysAgo;
+        baseQuery.createdAt.$gte = fortyDaysAgo;
       }
     } else {
-      query.createdAt = { $gte: fortyDaysAgo };
+      baseQuery.createdAt = { $gte: fortyDaysAgo };
     }
   }
 
-  return query;
+  let finalQuery = baseQuery;
+  if (Object.keys(statusFilter).length > 0) {
+    if (statusFilter.$or) {
+      finalQuery = { ...baseQuery, $or: statusFilter.$or };
+    } else {
+      finalQuery = { ...baseQuery, ...statusFilter };
+    }
+  }
+
+  return { finalQuery, baseQuery };
 }
 
 export async function fetchSellerOrdersPage({
@@ -122,7 +181,7 @@ export async function fetchSellerOrdersPage({
   limit,
   sellerId,
 }) {
-  const query = buildSellerOrdersQuery({
+  const { finalQuery: query, baseQuery } = buildSellerOrdersQuery({
     role,
     userId,
     statusParam,
@@ -143,29 +202,113 @@ export async function fetchSellerOrdersPage({
       .lean(),
     Order.countDocuments(query),
     Order.aggregate([
-      { $match: query },
+      { $match: baseQuery },
       {
         $group: {
           _id: null,
           totalOrders: { $sum: 1 },
           totalAmount: { $sum: { $ifNull: ["$pricing.total", 0] } },
           pending: {
-            $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] },
+            $sum: {
+              $cond: [
+                {
+                  $or: [
+                    { $eq: ["$status", "pending"] },
+                    { $eq: ["$workflowStatus", "SELLER_PENDING"] },
+                    { $eq: ["$workflowStatus", "CREATED"] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
           },
           confirmed: {
-            $sum: { $cond: [{ $eq: ["$status", "confirmed"] }, 1, 0] },
+            $sum: {
+              $cond: [
+                {
+                  $or: [
+                    { $eq: ["$status", "confirmed"] },
+                    { $eq: ["$workflowStatus", "SELLER_ACCEPTED"] },
+                    { $eq: ["$workflowStatus", "DELIVERY_SEARCH"] },
+                    { $eq: ["$workflowStatus", "DELIVERY_ASSIGNED"] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
           },
           packed: {
-            $sum: { $cond: [{ $eq: ["$status", "packed"] }, 1, 0] },
+            $sum: {
+              $cond: [
+                {
+                  $or: [
+                    { $eq: ["$status", "packed"] },
+                    { $eq: ["$workflowStatus", "PICKUP_READY"] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
           },
           outForDelivery: {
-            $sum: { $cond: [{ $eq: ["$status", "out_for_delivery"] }, 1, 0] },
+            $sum: {
+              $cond: [
+                {
+                  $or: [
+                    { $eq: ["$status", "out_for_delivery"] },
+                    { $eq: ["$workflowStatus", "OUT_FOR_DELIVERY"] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
           },
           delivered: {
-            $sum: { $cond: [{ $eq: ["$status", "delivered"] }, 1, 0] },
+            $sum: {
+              $cond: [
+                {
+                  $or: [
+                    { $eq: ["$status", "delivered"] },
+                    { $eq: ["$workflowStatus", "DELIVERED"] },
+                    { $eq: ["$orderStatus", "delivered"] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
           },
           cancelled: {
-            $sum: { $cond: [{ $eq: ["$status", "cancelled"] }, 1, 0] },
+            $sum: {
+              $cond: [
+                {
+                  $or: [
+                    { $eq: ["$status", "cancelled"] },
+                    { $eq: ["$workflowStatus", "CANCELLED"] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          rescheduled: {
+            $sum: {
+              $cond: [
+                {
+                  $or: [
+                    { $eq: ["$status", "rescheduled"] },
+                    { $eq: ["$workflowStatus", "RESCHEDULED"] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
           },
           returned: {
             $sum: {
@@ -197,6 +340,7 @@ export async function fetchSellerOrdersPage({
     outForDelivery: Number(rawSummary.outForDelivery || 0),
     delivered: Number(rawSummary.delivered || 0),
     cancelled: Number(rawSummary.cancelled || 0),
+    rescheduled: Number(rawSummary.rescheduled || 0),
     returned: Number(rawSummary.returned || 0),
   };
   summary.activeOrders =

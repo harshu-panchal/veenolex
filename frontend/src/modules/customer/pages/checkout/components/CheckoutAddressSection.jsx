@@ -1,8 +1,9 @@
-import React from "react";
-import { Check, Contact2 } from "lucide-react";
+import React, { useState, useRef } from "react";
+import { Check, Contact2, MapPin, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useGooglePlacesAutocomplete } from "@/hooks/useGooglePlacesAutocomplete";
 
 /**
  * CheckoutAddressSection
@@ -37,6 +38,37 @@ const CheckoutAddressSection = React.memo(function CheckoutAddressSection({
   displayPhone,
   displayAddress,
 }) {
+  const [showRecipientSuggestions, setShowRecipientSuggestions] = useState(false);
+  const {
+    setQuery: setRecipientQuery,
+    suggestions: recipientSuggestions,
+    isLoading: isRecipientLoading,
+    resolvePlaceDetails,
+    clearSuggestions: clearRecipientSuggestions,
+  } = useGooglePlacesAutocomplete({ mode: "address" });
+
+  const handleSelectRecipientSuggestion = async (sug) => {
+    setShowRecipientSuggestions(false);
+    clearRecipientSuggestions();
+    try {
+      const details = await resolvePlaceDetails(sug);
+      onRecipientDataChange({
+        ...recipientData,
+        completeAddress: details.formattedAddress || sug.description,
+        pincode: details.pincode || recipientData.pincode,
+        landmark: details.landmark || recipientData.landmark,
+        location: details.location || null,
+        placeId: details.placeId || sug.placeId,
+      });
+    } catch {
+      onRecipientDataChange({
+        ...recipientData,
+        completeAddress: sug.description,
+        placeId: sug.placeId,
+      });
+    }
+  };
+
   return (
     <motion.div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
       {/* "Order for someone else" toggle */}
@@ -95,18 +127,57 @@ const CheckoutAddressSection = React.memo(function CheckoutAddressSection({
             className="overflow-hidden mb-4">
             <div className="bg-[#f8f9fb] rounded-2xl p-4 border border-slate-100 space-y-4">
               <div>
-                <h4 className="text-sm font-bold text-slate-800 mb-3">
-                  Enter delivery address details
-                </h4>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-bold text-slate-800">
+                    Enter delivery address details
+                  </h4>
+                  {isRecipientLoading && (
+                    <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                      <Loader2 size={10} className="animate-spin" /> Searching...
+                    </span>
+                  )}
+                </div>
                 <div className="space-y-3">
-                  <Input
-                    placeholder="Enter complete address*"
-                    value={recipientData.completeAddress}
-                    onChange={(e) =>
-                      onRecipientDataChange({ ...recipientData, completeAddress: e.target.value })
-                    }
-                    className="h-12 rounded-xl border-slate-200 focus:ring-primary focus:border-primary text-sm"
-                  />
+                  <div className="relative">
+                    <Input
+                      placeholder="Start typing address (e.g. flat, area, street)*"
+                      value={recipientData.completeAddress}
+                      onChange={(e) => {
+                        onRecipientDataChange({ ...recipientData, completeAddress: e.target.value });
+                        setRecipientQuery(e.target.value);
+                        setShowRecipientSuggestions(true);
+                      }}
+                      onFocus={() => {
+                        if (recipientSuggestions.length > 0) setShowRecipientSuggestions(true);
+                      }}
+                      className="h-12 rounded-xl border-slate-200 focus:ring-primary focus:border-primary text-sm"
+                    />
+
+                    {showRecipientSuggestions && recipientSuggestions.length > 0 && (
+                      <div className="absolute top-[100%] left-0 right-0 z-50 mt-1 bg-white rounded-xl border border-slate-200 shadow-xl max-h-[200px] overflow-y-auto divide-y divide-slate-100">
+                        {recipientSuggestions.map((sug) => (
+                          <div
+                            key={sug.placeId}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              handleSelectRecipientSuggestion(sug);
+                            }}
+                            className="p-2.5 hover:bg-brand-50 cursor-pointer flex items-start gap-2.5 transition-colors"
+                          >
+                            <div className="p-1.5 rounded-lg bg-slate-100 text-slate-600 flex-shrink-0 mt-0.5">
+                              <MapPin size={14} className="text-primary" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-slate-800 truncate">{sug.mainText}</p>
+                              {sug.secondaryText && (
+                                <p className="text-[11px] text-slate-500 truncate">{sug.secondaryText}</p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <Input
                     placeholder="Find landmark (optional)"
                     value={recipientData.landmark}
@@ -121,7 +192,7 @@ const CheckoutAddressSection = React.memo(function CheckoutAddressSection({
                     onChange={(e) =>
                       onRecipientDataChange({ ...recipientData, pincode: e.target.value })
                     }
-                    className="h-12 rounded-xl border-slate-200 focus:ring-primary focus:border-primary text-sm"
+                    className="h-12 rounded-xl border-slate-200 focus:ring-primary focus:border-primary text-sm font-mono"
                   />
                 </div>
               </div>

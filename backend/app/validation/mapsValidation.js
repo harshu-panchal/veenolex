@@ -45,4 +45,6 @@ export const routeRequestSchema = Joi.object({
 /** Query schema for `/maps/autocomplete`. */
 export const autocompleteQuerySchema = Joi.object({
   input: trimmedString.min(3).max(500).required(),
+  types: trimmedString.max(50).optional(),
 });
+

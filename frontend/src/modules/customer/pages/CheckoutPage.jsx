@@ -58,7 +58,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import useAddressAutocomplete from "@/hooks/useAddressAutocomplete";
+import AddressFormModal from "../components/shared/AddressFormModal";
 import ReschedulePicker from "@/components/ReschedulePicker";
 
 
@@ -127,6 +127,7 @@ const CheckoutPage = () => {
     savedAddresses: locationSavedAddresses,
     currentLocation,
     refreshLocation,
+    refreshAddresses,
     isFetchingLocation,
     updateLocation,
   } = useAppLocation();
@@ -156,35 +157,40 @@ const CheckoutPage = () => {
   const [outOfZoneShippingCost, setOutOfZoneShippingCost] = useState(0);
   const postOrderNavigateRef = useRef(null);
   const previewDebounceRef = useRef(null);
+  const hasUserSelectedAddressRef = useRef(false);
+
   const [currentAddress, setCurrentAddress] = useState({
     type: "Home",
     name: user?.name || "",
     address: currentLocation?.name || "",
     landmark: "",
-    city: [currentLocation?.city, currentLocation?.state, currentLocation?.pincode].filter(Boolean).join(", "),
+    city: currentLocation?.city || "",
+    state: currentLocation?.state || "",
+    pincode: currentLocation?.pincode || "",
     phone: user?.phone || "",
     location: currentLocation?.latitude && currentLocation?.longitude 
       ? { lat: currentLocation.latitude, lng: currentLocation.longitude } 
       : null,
   });
   const [isEditAddressOpen, setIsEditAddressOpen] = useState(false);
-  const [editAddressForm, setEditAddressForm] = useState(currentAddress);
-  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
-  const { suggestions: addressSuggestions, loading: isAddressAutocompleteLoading } = useAddressAutocomplete(editAddressForm.address);
+  const [isAddAddressModalOpen, setIsAddAddressModalOpen] = useState(false);
   
-  // Sync currentAddress if global currentLocation changes (e.g. from Profile page)
+  // Sync currentAddress if global currentLocation changes AND user hasn't custom-selected an address
   useEffect(() => {
-    if (currentLocation) {
+    if (currentLocation && !hasUserSelectedAddressRef.current) {
       setCurrentAddress(prev => ({
         ...prev,
+        name: user?.name || prev.name,
         address: currentLocation.name || prev.address,
-        city: [currentLocation.city, currentLocation.state, currentLocation.pincode].filter(Boolean).join(", ") || prev.city,
+        city: currentLocation.city || prev.city,
+        state: currentLocation.state || prev.state,
+        pincode: currentLocation.pincode || prev.pincode,
         location: currentLocation.latitude && currentLocation.longitude
           ? { lat: currentLocation.latitude, lng: currentLocation.longitude }
           : prev.location
       }));
     }
-  }, [currentLocation]);
+  }, [currentLocation, user?.name]);
 
   const [showRecipientForm, setShowRecipientForm] = useState(false);
   const [recipientData, setRecipientData] = useState({
@@ -246,12 +252,42 @@ const CheckoutPage = () => {
   const RECIPIENT_STORAGE_KEY = STORAGE_KEYS.RECIPIENT_ADDRESS;
 
   // Derived display values for primary delivery card
-  const displayName = savedRecipient?.name || currentAddress.name;
+  const displayName = savedRecipient?.name || currentAddress.name || user?.name || "Delivery Address";
   const displayPhone =
-    savedRecipient?.phone || currentAddress.phone || "6268423925";
-  const displayAddress = savedRecipient
-    ? `${savedRecipient.completeAddress}${savedRecipient.landmark ? `, ${savedRecipient.landmark}` : ""}${savedRecipient.pincode ? ` - ${savedRecipient.pincode}` : ""}`
-    : `${currentAddress.address}${currentAddress.landmark ? `, ${currentAddress.landmark}` : ""}, ${currentAddress.city}`;
+    savedRecipient?.phone || currentAddress.phone || user?.phone || "";
+  const displayAddress = useMemo(() => {
+    if (savedRecipient) {
+      return [
+        savedRecipient.completeAddress,
+        savedRecipient.landmark,
+        savedRecipient.pincode
+      ].filter(Boolean).join(", ");
+    }
+    const addr = currentAddress?.address || "";
+    const landmark = currentAddress?.landmark || "";
+    const city = currentAddress?.city || "";
+    const state = currentAddress?.state || "";
+    const pincode = currentAddress?.pincode || "";
+
+    const extraParts = [];
+    if (landmark && !addr.toLowerCase().includes(landmark.toLowerCase())) {
+      extraParts.push(landmark);
+    }
+    if (city && !addr.toLowerCase().includes(city.toLowerCase())) {
+      extraParts.push(city);
+    }
+    if (state && !addr.toLowerCase().includes(state.toLowerCase())) {
+      extraParts.push(state);
+    }
+    if (pincode && !addr.includes(pincode)) {
+      extraParts.push(pincode);
+    }
+
+    if (extraParts.length === 0) {
+      return addr || "No address selected";
+    }
+    return [addr, ...extraParts].filter(Boolean).join(", ");
+  }, [savedRecipient, currentAddress]);
 
   useEffect(() => {
     if (!paymentMethods.length) return;
@@ -413,13 +449,17 @@ const CheckoutPage = () => {
         return;
       }
 
+      hasUserSelectedAddressRef.current = true;
       setCurrentAddress({
-        type: addr.label,
+        id: addr.id,
+        type: addr.label || "Home",
         name: user?.name || currentAddress.name,
         address: rawText,
-        city: "",
+        city: addr.city || "",
+        state: addr.state || "",
+        pincode: addr.pincode || "",
         phone: addr.phone || currentAddress.phone,
-        landmark: "",
+        landmark: addr.landmark || "",
         ...(pid ? { placeId: pid } : {}),
         ...(resolvedLoc ? { location: resolvedLoc } : {}),
       });
@@ -429,9 +469,9 @@ const CheckoutPage = () => {
           {
             name: rawText,
             time: currentLocation?.time || "12-15 mins",
-            city: currentLocation?.city,
-            state: currentLocation?.state,
-            pincode: currentLocation?.pincode,
+            city: addr.city || currentLocation?.city,
+            state: addr.state || currentLocation?.state,
+            pincode: addr.pincode || currentLocation?.pincode,
             latitude: resolvedLoc.lat,
             longitude: resolvedLoc.lng,
           },
@@ -445,69 +485,120 @@ const CheckoutPage = () => {
     }
   };
 
-  const handleSaveEditedAddress = async () => {
-    if (
-      !editAddressForm.name.trim() ||
-      !editAddressForm.address.trim() ||
-      !editAddressForm.city.trim()
-    ) {
-      showToast("Please fill name, address and city", "error");
-      return;
+  const handleSaveEditedAddress = async (formData) => {
+    const address = formData.address?.trim();
+    const city = formData.city?.trim();
+    const landmark = formData.landmark?.trim();
+    const state = formData.state?.trim();
+    const pincode = formData.pincode?.trim();
+    const name = formData.name?.trim();
+    const phone = formData.phone?.trim();
+
+    hasUserSelectedAddressRef.current = true;
+    setCurrentAddress({
+      type: (formData.type || "Home").charAt(0).toUpperCase() + (formData.type || "home").slice(1),
+      name: name || user?.name || "",
+      address: address,
+      city: city || "",
+      state: state || "",
+      pincode: pincode || "",
+      phone: phone || user?.phone || "",
+      landmark: landmark || "",
+      location: formData.location || null,
+      placeId: formData.placeId || "",
+    });
+
+    if (formData.location) {
+      updateLocation(
+        {
+          name: address,
+          time: currentLocation?.time || "12-15 mins",
+          city: city || currentLocation?.city,
+          state: state || currentLocation?.state,
+          pincode: pincode || currentLocation?.pincode,
+          latitude: formData.location.lat,
+          longitude: formData.location.lng,
+        },
+        { persist: true, updateSavedHome: false },
+      );
     }
 
-    let location = null;
-    let placeId = null;
-    let formattedAddress = null;
+    setIsEditAddressOpen(false);
+    showToast("Delivery address updated", "success");
+  };
+
+  const handleAddNewAddressFromCheckout = async (formData) => {
+    const address = formData.address?.trim();
+    const city = formData.city?.trim();
+    const landmark = formData.landmark?.trim();
+    const state = formData.state?.trim();
+    const pincode = formData.pincode?.trim();
+    const name = formData.name?.trim();
+    const phone = formData.phone?.trim();
+
+    const newAddr = {
+      label: (formData.type || "home").toLowerCase(),
+      fullAddress: address,
+      ...(landmark && { landmark }),
+      ...(city && { city }),
+      ...(state && { state }),
+      ...(pincode && { pincode }),
+      ...(formData.location && { location: formData.location }),
+      ...(formData.placeId && { placeId: formData.placeId }),
+    };
+
     try {
-      const query = [
-        editAddressForm.address,
-        editAddressForm.landmark,
-        editAddressForm.city,
-      ]
-        .filter(Boolean)
-        .join(", ");
-      const resp = await customerApi.geocodeAddress(query);
-      const loc = resp.data?.result?.location;
-      if (
-        loc &&
-        typeof loc.lat === "number" &&
-        typeof loc.lng === "number" &&
-        Number.isFinite(loc.lat) &&
-        Number.isFinite(loc.lng)
-      ) {
-        location = { lat: loc.lat, lng: loc.lng };
-        placeId = resp.data?.result?.placeId || null;
-        formattedAddress = resp.data?.result?.formattedAddress || null;
+      const { data } = await customerApi.getProfile();
+      const profile = data?.result ?? data?.data ?? data;
+      const raw = Array.isArray(profile?.addresses) ? profile.addresses : [];
+
+      await customerApi.updateProfile({
+        ...(name && { name }),
+        ...(phone && { phone }),
+        addresses: [...raw, newAddr],
+      });
+
+      if (typeof refreshAddresses === "function") {
+        await refreshAddresses();
+      }
+
+      hasUserSelectedAddressRef.current = true;
+      setCurrentAddress({
+        type: (formData.type || "Home").charAt(0).toUpperCase() + (formData.type || "home").slice(1),
+        name: name || user?.name || "",
+        address: address,
+        city: city || "",
+        state: state || "",
+        pincode: pincode || "",
+        phone: phone || user?.phone || "",
+        landmark: landmark || "",
+        location: formData.location || null,
+        placeId: formData.placeId || "",
+      });
+
+      if (formData.location) {
         updateLocation(
           {
-            name: resp.data?.result?.formattedAddress || query,
+            name: address,
             time: currentLocation?.time || "12-15 mins",
-            city: currentLocation?.city,
-            state: currentLocation?.state,
-            pincode: currentLocation?.pincode,
-            latitude: loc.lat,
-            longitude: loc.lng,
+            city: city || currentLocation?.city,
+            state: state || currentLocation?.state,
+            pincode: pincode || currentLocation?.pincode,
+            latitude: formData.location.lat,
+            longitude: formData.location.lng,
           },
           { persist: true, updateSavedHome: false },
         );
       }
-    } catch (e) {
-      showToast(
-        e.response?.data?.message ||
-        "Could not fetch coordinates for this address. Delivery charges may be inaccurate.",
-        "error",
-      );
-    }
 
-    setCurrentAddress({
-      ...editAddressForm,
-      ...(location ? { location } : {}),
-      ...(placeId ? { placeId } : {}),
-      ...(formattedAddress ? { formattedAddress } : {}),
-    });
-    setIsEditAddressOpen(false);
-    showToast("Delivery address updated", "success");
+      showToast("New delivery address added and selected", "success");
+      setIsAddAddressModalOpen(false);
+    } catch (err) {
+      showToast(err.response?.data?.message || err.message || "Failed to save address", "error");
+      throw err;
+    }
   };
+
 
   const handleUseCurrentLiveLocation = async () => {
     const result = await refreshLocation();
@@ -734,7 +825,11 @@ const CheckoutPage = () => {
       setRecommendedProducts([]);
       return;
     }
-    const categoryId = cart[0]?.categoryId?._id || cart[0]?.categoryId;
+    const rawCat = cart[0]?.categoryId?._id || cart[0]?.categoryId || cart[0]?.category?._id || cart[0]?.category;
+    const categoryId = typeof rawCat === 'string' && /^[0-9a-fA-F]{24}$/.test(rawCat)
+      ? rawCat
+      : (typeof rawCat === 'object' && rawCat?._id && /^[0-9a-fA-F]{24}$/.test(String(rawCat._id)) ? String(rawCat._id) : null);
+
     if (!categoryId) return;
 
     const cartIds = new Set(cart.map((i) => i.id || i._id));
@@ -1325,8 +1420,11 @@ const CheckoutPage = () => {
           <DialogFooter>
             <Button
               variant="outline"
-              className="w-full border-brand-600 text-brand-600 hover:bg-brand-50"
-              onClick={() => navigate("/addresses")}>
+              className="w-full border-brand-600 text-brand-600 hover:bg-brand-50 font-bold rounded-xl"
+              onClick={() => {
+                setIsAddressModalOpen(false);
+                setIsAddAddressModalOpen(true);
+              }}>
               <Plus size={16} className="mr-2" /> Add New Address
             </Button>
           </DialogFooter>
@@ -1366,125 +1464,37 @@ const CheckoutPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Current Address Modal */}
-      <Dialog open={isEditAddressOpen} onOpenChange={setIsEditAddressOpen}>
-        <DialogContent className="sm:max-w-[425px] overflow-hidden p-0">
-          <motion.div
-            initial={{ y: "100%", opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: "100%", opacity: 0 }}
-            transition={{ type: "spring", stiffness: 260, damping: 25 }}
-            className="p-6">
-            <DialogHeader>
-              <DialogTitle>Edit Delivery Address</DialogTitle>
-              <DialogDescription>Update the details of your current delivery address.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div style={{ position: "relative", width: "100%" }} className="grid gap-2">
-                <Label htmlFor="edit-address" className="text-xs font-semibold text-slate-700">Address</Label>
-                <Input
-                  id="edit-address"
-                  type="text"
-                  placeholder="House, street, area"
-                  value={editAddressForm.address}
-                  autoComplete="off"
-                  onChange={(e) => {
-                    setEditAddressForm((prev) => ({ ...prev, address: e.target.value }));
-                    setShowAddressSuggestions(true);
-                  }}
-                  onBlur={() => setTimeout(() => setShowAddressSuggestions(false), 200)}
-                  style={{ width: "100%" }}
-                  className="h-10"
-                />
+      {/* Edit Current Address Modal with Google Places Autocomplete */}
+      <AddressFormModal
+        isOpen={isEditAddressOpen}
+        onClose={() => setIsEditAddressOpen(false)}
+        initialData={{
+          type: currentAddress.type,
+          name: currentAddress.name,
+          phone: currentAddress.phone,
+          address: currentAddress.address,
+          landmark: currentAddress.landmark,
+          city: currentAddress.city,
+          location: currentAddress.location,
+          placeId: currentAddress.placeId,
+        }}
+        title="Edit Delivery Address"
+        description="Update the details of your current delivery address with Google Maps."
+        onSave={handleSaveEditedAddress}
+        defaultName={user?.name || ""}
+        defaultPhone={user?.phone || ""}
+      />
 
-                {isAddressAutocompleteLoading && (
-                  <p style={{ fontSize: 12, color: "#888", margin: "4px 0 0" }}>
-                    Searching...
-                  </p>
-                )}
-
-                {showAddressSuggestions && addressSuggestions.length > 0 && (
-                  <ul
-                    style={{
-                      position: "absolute",
-                      top: "100%",
-                      left: 0,
-                      right: 0,
-                      background: "white",
-                      border: "1px solid #ddd",
-                      borderRadius: "8px",
-                      listStyle: "none",
-                      margin: "4px 0 0",
-                      padding: 0,
-                      zIndex: 9999,
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                      maxHeight: "220px",
-                      overflowY: "auto",
-                    }}
-                  >
-                    {addressSuggestions.map((s) => (
-                      <li
-                        key={s.place_id}
-                        onMouseDown={() => {
-                          setEditAddressForm((prev) => ({
-                            ...prev,
-                            address: s.description,
-                            placeId: s.place_id
-                          }));
-                          setShowAddressSuggestions(false);
-                        }}
-                        style={{
-                          padding: "10px 14px",
-                          cursor: "pointer",
-                          fontSize: "14px",
-                          borderBottom: "1px solid #f0f0f0",
-                        }}
-                        onMouseEnter={(e) => (e.target.style.background = "#f5f9ff")}
-                        onMouseLeave={(e) => (e.target.style.background = "white")}
-                      >
-                        📍 {s.description}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="edit-landmark" className="text-xs font-semibold text-slate-700">Nearest Landmark (optional)</Label>
-                <Input
-                  id="edit-landmark"
-                  value={editAddressForm.landmark || ""}
-                  onChange={(e) => setEditAddressForm((prev) => ({ ...prev, landmark: e.target.value }))}
-                  className="h-10"
-                  placeholder="e.g. Near City Mall, Opp. Temple"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="edit-city" className="text-xs font-semibold text-slate-700">City / Pincode</Label>
-                <Input
-                  id="edit-city"
-                  value={editAddressForm.city}
-                  onChange={(e) => setEditAddressForm((prev) => ({ ...prev, city: e.target.value }))}
-                  className="h-10"
-                  placeholder="City - Pincode"
-                />
-              </div>
-            </div>
-            <DialogFooter className="mt-2">
-              <Button
-                variant="outline"
-                onClick={() => setIsEditAddressOpen(false)}
-                className="border-slate-200 text-slate-600 hover:bg-slate-50">
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSaveEditedAddress}
-                className="bg-primary hover:bg-[#0b721b] text-white font-bold">
-                Save changes
-              </Button>
-            </DialogFooter>
-          </motion.div>
-        </DialogContent>
-      </Dialog>
+      {/* Add New Address directly from Checkout with Google Places Autocomplete */}
+      <AddressFormModal
+        isOpen={isAddAddressModalOpen}
+        onClose={() => setIsAddAddressModalOpen(false)}
+        title="Add New Delivery Address"
+        description="Type your address or city to auto-fill state and pincode for this order."
+        onSave={handleAddNewAddressFromCheckout}
+        defaultName={user?.name || ""}
+        defaultPhone={user?.phone || ""}
+      />
 
       <style
         dangerouslySetInnerHTML={{
