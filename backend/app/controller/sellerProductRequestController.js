@@ -445,25 +445,11 @@ export const approveSellerRequest = async (req, res) => {
 
       const sellerObj = await Seller.findById(request.sellerId).lean();
 
-      if (process.env.REDIS_DISABLED === "true") {
-        try {
-          await createShipRocketOrderForRequest(request, sellerObj || {}, request.items);
-          console.log("🚀 Direct Shiprocket order created for request:", request.requestNumber);
-        } catch (srErr) {
-          console.error("❌ Direct Shiprocket creation failed:", srErr.message);
-        }
-      } else {
-        await shiprocketQueue.add(
-          JOB_NAMES.SHIPROCKET_CREATE,
-          { type: "REQUEST", id: request._id },
-          {
-            attempts: 5,
-            backoff: {
-              type: "exponential",
-              delay: 5000
-            }
-          }
-        );
+      try {
+        await createShipRocketOrderForRequest(request, sellerObj || {}, request.items);
+        console.log("🚀 Direct Shiprocket order created for request upon approval:", request.requestNumber);
+      } catch (srErr) {
+        console.error("❌ Direct Shiprocket creation failed upon approval:", srErr.message);
       }
       console.log("🚚 Shiprocket delivery processing finished for request:", request.requestNumber);
     } else if (deliveryMode === "MANUAL" && deliveryBoyId) {
@@ -772,7 +758,7 @@ export const assignShiprocketDelivery = async (req, res) => {
       return res.status(404).json({ success: false, message: "Seller not found" });
     }
 
-    // Update request state to "Shipment Pending" immediately so user/seller sees state
+    // Update request state to "Shipment Pending" immediately
     request.deliveryType = "SHIPROCKET";
     request.deliveryWorkflowStatus = "DELIVERY_ASSIGNED";
     request.shipRocketDetails = {
@@ -782,35 +768,25 @@ export const assignShiprocketDelivery = async (req, res) => {
     };
     await request.save();
 
-    if (process.env.REDIS_DISABLED === "true") {
-      try {
-        await createShipRocketOrderForRequest(request, seller, request.items);
-        console.log("🚀 Direct Shiprocket order created for request:", request.requestNumber);
-      } catch (srErr) {
-        console.error("❌ Direct Shiprocket creation failed:", srErr.message);
-      }
-    } else {
-      await shiprocketQueue.add(
-        JOB_NAMES.SHIPROCKET_CREATE,
-        { type: "REQUEST", id: request._id },
-        {
-          attempts: 5,
-          backoff: {
-            type: "exponential",
-            delay: 5000
-          }
-        }
-      );
+    try {
+      const shipDetails = await createShipRocketOrderForRequest(request, seller, request.items);
+      console.log("🚀 Direct Shiprocket order created for request:", request.requestNumber, shipDetails);
+
+      return res.status(200).json({
+        success: true,
+        message: "Shiprocket delivery order created successfully",
+        request,
+        shipRocketDetails: request.shipRocketDetails
+      });
+    } catch (srErr) {
+      console.error("❌ Direct Shiprocket creation failed:", srErr.message);
+      return res.status(400).json({
+        success: false,
+        message: srErr.message || "Failed to create Shiprocket order",
+        request,
+        shipRocketDetails: request.shipRocketDetails
+      });
     }
-
-    console.log("🚚 Shiprocket delivery creation processed for request:", request.requestNumber);
-
-    return res.status(200).json({
-      success: true,
-      message: "Shiprocket delivery assigned successfully",
-      request,
-      shipRocketDetails: request.shipRocketDetails
-    });
   } catch (error) {
     console.error("❌ Error assigning Shiprocket delivery:", error);
     return res.status(500).json({

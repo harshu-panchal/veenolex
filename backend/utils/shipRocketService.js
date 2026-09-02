@@ -242,31 +242,20 @@ export const createShipRocketOrder = async (order, user, userAddress, seller, it
 
 export const createShipRocketOrderForRequest = async (request, seller, items) => {
   try {
+    const email = process.env.SHIPROCKET_EMAIL;
+    const password = process.env.SHIPROCKET_PASSWORD;
+
+    if (!email || !password || email === "your_shiprocket_email" || password === "your_shiprocket_password") {
+      throw new Error("ShipRocket credentials missing. Please set your real SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD in backend/.env to connect to app.shiprocket.in.");
+    }
+
     const token = await getShiprocketToken();
+    if (!token) {
+      throw new Error("ShipRocket authentication failed. Please check your SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD in backend/.env.");
+    }
+
     const channelId = await getChannelId(token);
     const pickupLocation = await getPickupLocation(token);
-
-    if (!token) {
-      if (
-        process.env.NODE_ENV === "development" || 
-        !process.env.SHIPROCKET_EMAIL || 
-        process.env.SHIPROCKET_EMAIL === "your_shiprocket_email"
-      ) {
-        console.warn("Falling back to Mock ShipRocket request details (No valid ShipRocket credentials)");
-        const mockDetails = {
-          orderId: `MOCK_SR_REQ_${Date.now()}`,
-          trackingNumber: `MOCK_AWB_${Math.floor(100000000 + Math.random() * 900000000)}`,
-          status: "NEW",
-          estimatedDelivery: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
-        };
-        request.shipRocketDetails = mockDetails;
-        if (typeof request.save === 'function') {
-          await request.save();
-        }
-        return mockDetails;
-      }
-      throw new Error("ShipRocket authentication failed. Please check SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD.");
-    }
 
     const url = "https://apiv2.shiprocket.in/v1/external/orders/create/adhoc";
     const now = new Date();
@@ -284,11 +273,11 @@ export const createShipRocketOrderForRequest = async (request, seller, items) =>
     }));
 
     const sellerObj = seller || {};
-    const sellerName = sellerObj.name || sellerObj.shopName || "Seller Customer";
+    const sellerName = sellerObj.name || sellerObj.shopName || "Seller Store";
     const rawPhone = (sellerObj.phone || "").replace(/[^0-9]/g, "");
     const sellerPhone = rawPhone.length >= 10 ? rawPhone.slice(-10) : "9876543210";
     const sellerEmail = sellerObj.email || "seller@veenolex.com";
-    const sellerAddress = sellerObj.address || sellerObj.locality || "Warehouse Store";
+    const sellerAddress = sellerObj.address || sellerObj.locality || "Store Address";
     const sellerCity = sellerObj.city || "Indore";
     const sellerState = sellerObj.state || "Madhya Pradesh";
     const sellerPincode = sellerObj.pincode ? String(sellerObj.pincode).trim() : "452001";
@@ -337,9 +326,10 @@ export const createShipRocketOrderForRequest = async (request, seller, items) =>
     const data = await response.json();
     console.log("🚀 Shiprocket API order creation response:", JSON.stringify(data));
 
-    if (!response.ok || (data.message && data.message.includes("Wrong Pickup location")) || (data.status_code === 0 && !data.order_id)) {
+    if (!response.ok || (data.message && data.message.toLowerCase().includes("wrong pickup location")) || (data.status_code === 0 && !data.order_id)) {
       console.error("ShipRocket API Error (Request):", data);
-      throw new Error(data.message || (data.errors ? JSON.stringify(data.errors) : "Failed to create ShipRocket order for request"));
+      const errMsg = data.message || (data.errors ? JSON.stringify(data.errors) : "Failed to create ShipRocket order for request");
+      throw new Error(errMsg);
     }
 
     const shipRocketOrder = Array.isArray(data) ? data[0] : data;
@@ -348,12 +338,15 @@ export const createShipRocketOrderForRequest = async (request, seller, items) =>
       throw new Error(data.message || "Shiprocket API returned no valid order ID");
     }
 
+    request.deliveryType = "SHIPROCKET";
+    request.deliveryWorkflowStatus = "DELIVERY_ASSIGNED";
     request.shipRocketDetails = {
-      orderId: shipRocketOrder.order_id?.toString() || shipRocketOrder.id?.toString(),
-      shipmentId: shipRocketOrder.shipment_id?.toString() || null,
-      trackingNumber: shipRocketOrder.awb_code || null,
+      orderId: (shipRocketOrder.order_id || shipRocketOrder.id)?.toString(),
+      shipmentId: (shipRocketOrder.shipment_id || shipRocketOrder.shipmentId)?.toString() || null,
+      trackingNumber: shipRocketOrder.awb_code || "AWB_PENDING",
       status: shipRocketOrder.status || "NEW",
-      estimatedDelivery: null
+      estimatedDelivery: null,
+      errorMessage: null
     };
 
     if (typeof request.save === 'function') {
@@ -363,12 +356,14 @@ export const createShipRocketOrderForRequest = async (request, seller, items) =>
     return request.shipRocketDetails;
 
   } catch (error) {
-    console.error("Error in createShipRocketOrderForRequest:", error);
+    console.error("❌ Error in createShipRocketOrderForRequest:", error.message);
+    request.deliveryType = "SHIPROCKET";
     request.shipRocketDetails = {
       orderId: `FAILED_SR_${request._id}`,
       trackingNumber: null,
       status: "SHIPMENT_FAILED",
-      estimatedDelivery: null
+      estimatedDelivery: null,
+      errorMessage: error.message
     };
     if (typeof request.save === 'function') {
       await request.save();

@@ -90,7 +90,9 @@ const CheckoutPricingBreakdown = React.memo(function CheckoutPricingBreakdown({
             <span className="text-slate-500 font-bold text-[13px] tracking-wider">
               Delivery Fee
             </span>
-            <span className="font-black text-slate-800">₹{deliveryFee}</span>
+            <span className={`font-black ${deliveryFee === 0 ? "text-emerald-600" : "text-slate-800"}`}>
+              {deliveryFee === 0 ? "FREE" : `₹${deliveryFee}`}
+            </span>
           </div>
 
           <div className="flex justify-between items-center px-2">
@@ -100,10 +102,19 @@ const CheckoutPricingBreakdown = React.memo(function CheckoutPricingBreakdown({
             <span className="font-black text-slate-800">₹{handlingFee}</span>
           </div>
           <div className="flex justify-between items-center px-2">
-            <span className="text-slate-500 font-bold text-[13px] tracking-wider">
-              Tax
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500 font-bold text-[13px] tracking-wider">
+                Tax
+              </span>
+              {taxAmount === 0 && (
+                <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                  Included
+                </span>
+              )}
+            </div>
+            <span className="font-black text-slate-800">
+              {taxAmount > 0 ? `₹${taxAmount}` : "₹0"}
             </span>
-            <span className="font-black text-slate-800">₹{taxAmount}</span>
           </div>
 
           {selectedCoupon && (
