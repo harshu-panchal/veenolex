@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Lottie from "lottie-react";
 import { useInViewAnimation } from "@/core/hooks/useInViewAnimation";
@@ -6,6 +6,7 @@ import { useCart } from "../context/CartContext";
 import { useAuth } from "../../../core/context/AuthContext";
 import { useWishlist } from "../context/WishlistContext";
 import { customerApi } from "../services/customerApi";
+import { invalidateCache } from "@core/api/dedupe";
 import { useLocation as useAppLocation } from "../context/LocationContext";
 import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
 import { loadRazorpayScript } from "../../../shared/utils/razorpay";
@@ -33,6 +34,7 @@ import {
   Check,
   Contact2,
   Wallet,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
@@ -146,6 +148,7 @@ const CheckoutPage = () => {
   const [selectedCoupon, setSelectedCoupon] = useState(null);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [isResolvingAddressCoords, setIsResolvingAddressCoords] = useState(false);
+  const [isDeletingAddress, setIsDeletingAddress] = useState(null);
   const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
   const [useWallet, setUseWallet] = useState(false);
   const [walletAmountToUse, setWalletAmountToUse] = useState(0);
@@ -362,7 +365,6 @@ const CheckoutPage = () => {
   };
 
   const handleOpenEditAddress = () => {
-    setEditAddressForm(currentAddress);
     setIsEditAddressOpen(true);
   };
 
@@ -598,6 +600,46 @@ const CheckoutPage = () => {
       throw err;
     }
   };
+
+  const handleDeleteSavedAddress = useCallback(async (addr, e) => {
+    e.stopPropagation();
+    const addrId = addr.id;
+    setIsDeletingAddress(addrId);
+    try {
+      // Invalidate cached profile so we get fresh data
+      invalidateCache("/customer/profile");
+      const { data } = await customerApi.getProfile();
+      const profile = data?.result ?? data?.data ?? data;
+      const raw = Array.isArray(profile?.addresses) ? profile.addresses : [];
+
+      // Find matching index — match by _id first, then by index (id is String(idx) when no _id)
+      const idx = raw.findIndex((r, i) => {
+        if (r._id && String(r._id) === String(addrId)) return true;
+        // When there's no _id, LocationContext sets id = String(idx)
+        return String(i) === String(addrId);
+      });
+
+      if (idx < 0) {
+        showToast("Could not find address to delete", "error");
+        return;
+      }
+
+      const updatedAddresses = raw.filter((_, i) => i !== idx);
+      await customerApi.updateProfile({ addresses: updatedAddresses });
+
+      // Invalidate cache again so refreshAddresses gets fresh data
+      invalidateCache("/customer/profile");
+      if (typeof refreshAddresses === "function") {
+        await refreshAddresses();
+      }
+
+      showToast("Address deleted successfully", "success");
+    } catch (err) {
+      showToast(err.response?.data?.message || "Failed to delete address", "error");
+    } finally {
+      setIsDeletingAddress(null);
+    }
+  }, [refreshAddresses, showToast]);
 
 
   const handleUseCurrentLiveLocation = async () => {
@@ -1393,28 +1435,46 @@ const CheckoutPage = () => {
             <DialogTitle>Select Delivery Address</DialogTitle>
             <DialogDescription>Choose where you want your order delivered.</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="max-h-[50vh] overflow-y-auto pr-1 -mr-1 space-y-3 py-4" style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain' }}>
             {locationSavedAddresses.map((addr) => (
-              <button
+              <div
                 key={addr.id}
-                onClick={() => handleSelectSavedAddress(addr)}
-                disabled={isResolvingAddressCoords}
-                className={`w-full p-4 rounded-2xl border-2 text-left transition-all ${currentAddress.id === addr.id
-                  ? "border-primary bg-brand-50 shadow-sm"
-                  : "border-slate-100 bg-white hover:border-slate-200"
-                  }`}>
-                <div className="flex items-center gap-3 mb-2">
-                  <div className={`p-2 rounded-full ${currentAddress.id === addr.id ? "bg-primary text-primary-foreground" : "bg-slate-100 text-slate-500"}`}>
-                    <MapPin size={16} />
+                className={`relative w-full p-4 rounded-2xl border-2 text-left transition-all ${
+                  currentAddress.id === addr.id
+                    ? "border-primary bg-brand-50 shadow-sm"
+                    : "border-slate-100 bg-white hover:border-slate-200"
+                }`}
+              >
+                <button
+                  onClick={() => handleSelectSavedAddress(addr)}
+                  disabled={isResolvingAddressCoords}
+                  className="w-full text-left"
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className={`p-2 rounded-full ${currentAddress.id === addr.id ? "bg-primary text-primary-foreground" : "bg-slate-100 text-slate-500"}`}>
+                      <MapPin size={16} />
+                    </div>
+                    <span className="font-black text-slate-800 tracking-widest text-[10px]">{addr.label}</span>
                   </div>
-                  <span className="font-black text-slate-800 tracking-widest text-[10px]">{addr.label}</span>
-                </div>
-                <p className="text-sm font-bold text-slate-800">{user?.name || currentAddress.name}</p>
-                <p className="text-xs text-slate-500 leading-relaxed mb-1">{addr.address}</p>
-                {addr.phone && (
-                  <p className="text-[11px] text-slate-400 font-medium">Phone: {addr.phone}</p>
-                )}
-              </button>
+                  <p className="text-sm font-bold text-slate-800">{user?.name || currentAddress.name}</p>
+                  <p className="text-xs text-slate-500 leading-relaxed mb-1">{addr.address}</p>
+                  {addr.phone && (
+                    <p className="text-[11px] text-slate-400 font-medium">Phone: {addr.phone}</p>
+                  )}
+                </button>
+                <button
+                  onClick={(e) => handleDeleteSavedAddress(addr, e)}
+                  disabled={isDeletingAddress === addr.id}
+                  className="absolute top-3 right-3 p-2 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-50"
+                  title="Delete address"
+                >
+                  {isDeletingAddress === addr.id ? (
+                    <span className="block h-4 w-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Trash2 size={16} />
+                  )}
+                </button>
+              </div>
             ))}
           </div>
           <DialogFooter>

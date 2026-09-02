@@ -487,7 +487,17 @@ export async function generateOrderPaymentBreakdown({
     handlingFeeStrategy: effectiveHandlingStrategy,
     categoryById,
   });
+  const platformFee = Number(effectiveSettings.platformFee || 0);
+  const effectiveHandlingFeeCharged = Math.max(
+    Number(handling.handlingFeeCharged || 0),
+    platformFee,
+  );
+
   const delivery = calculateCustomerDeliveryFee(distanceKm, effectiveSettings);
+  const freeThreshold = Number(effectiveSettings.freeDeliveryThreshold || 0);
+  if (freeThreshold > 0 && productSubtotal >= freeThreshold) {
+    delivery.deliveryFeeCharged = 0;
+  }
   const rider = calculateRiderPayout(distanceKm, effectiveSettings);
 
   const normalizedDiscount = roundCurrency(discountTotal || 0);
@@ -498,7 +508,7 @@ export async function generateOrderPaymentBreakdown({
   const grossTotal = roundCurrency(
     productSubtotal +
       delivery.deliveryFeeCharged +
-      handling.handlingFeeCharged -
+      effectiveHandlingFeeCharged -
       normalizedDiscount +
       normalizedTax +
       normalizedTip,
@@ -524,7 +534,7 @@ export async function generateOrderPaymentBreakdown({
 
   const platformLogisticsMargin = roundCurrency(
     delivery.deliveryFeeCharged +
-      handling.handlingFeeCharged -
+      effectiveHandlingFeeCharged -
       (rider.riderPayoutBase + rider.riderPayoutDistance + rider.riderPayoutBonus),
   );
   const platformTotalEarning = roundCurrency(
@@ -557,7 +567,7 @@ export async function generateOrderPaymentBreakdown({
     currency: "INR",
     productSubtotal,
     deliveryFeeCharged: delivery.deliveryFeeCharged,
-    handlingFeeCharged: handling.handlingFeeCharged,
+    handlingFeeCharged: effectiveHandlingFeeCharged,
     tipTotal: normalizedTip,
     discountTotal: normalizedDiscount,
     taxTotal: normalizedTax,

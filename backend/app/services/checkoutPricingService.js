@@ -12,6 +12,7 @@ import {
   hydrateOrderItems,
 } from "./finance/pricingService.js";
 import { computeOrderDiscount } from "./finance/couponService.js";
+import { getOrCreateFinanceSettings } from "./finance/financeSettingsService.js";
 
 function normalizeLocation(location = null) {
   const lat = Number(location?.lat);
@@ -176,13 +177,18 @@ function allocateCheckoutTipToSellerBreakdowns(
   });
 }
 
-async function computeGlobalHandlingFeeForCheckout(hydratedItems = [], { session = null } = {}) {
+async function computeGlobalHandlingFeeForCheckout(
+  hydratedItems = [],
+  { session = null, financeSettings = null } = {},
+) {
+  const platformFee = Number(financeSettings?.platformFee || 0);
+
   const headerIds = Array.from(
     new Set(hydratedItems.map((item) => String(item?.headerCategoryId || "")).filter(Boolean)),
   );
   if (headerIds.length === 0) {
     return {
-      handlingFeeCharged: 0,
+      handlingFeeCharged: round2(platformFee),
       handlingCategoryUsed: null,
     };
   }
@@ -195,12 +201,16 @@ async function computeGlobalHandlingFeeForCheckout(hydratedItems = [], { session
   const categoryById = new Map(categories.map((category) => [String(category._id), category]));
 
   const handling = calculateHandlingFee(hydratedItems, {
-    handlingFeeStrategy: HANDLING_FEE_STRATEGY.HIGHEST_CATEGORY_FEE,
+    handlingFeeStrategy:
+      financeSettings?.handlingFeeStrategy || HANDLING_FEE_STRATEGY.HIGHEST_CATEGORY_FEE,
     categoryById,
   });
 
+  const categoryHandlingFee = Number(handling.handlingFeeCharged || 0);
+  const finalHandlingFee = Math.max(platformFee, categoryHandlingFee);
+
   return {
-    handlingFeeCharged: Number(handling.handlingFeeCharged || 0),
+    handlingFeeCharged: round2(finalHandlingFee),
     handlingCategoryUsed: handling.handlingCategoryUsed || null,
   };
 }
@@ -282,6 +292,7 @@ function applyGlobalHandlingFeeToSellerBreakdowns(
 // allocate against the post-rebate grandTotal).
 function applyFreeDeliveryToSellerBreakdowns(sellerBreakdownEntries = []) {
   for (const entry of sellerBreakdownEntries) {
+    if (entry?.isOutOfZone) continue;
     const breakdown = entry?.breakdown;
     if (!breakdown) continue;
     const oldDeliveryFee = round2(Number(breakdown.deliveryFeeCharged || 0));
@@ -425,9 +436,11 @@ export async function buildCheckoutPricingSnapshot({
 
   const itemsBySeller = groupHydratedItemsBySeller(hydratedItems);
   const sellerIds = Array.from(itemsBySeller.keys()).sort((a, b) => a.localeCompare(b));
-  const sellerBreakdownEntries = [];
-
-  const globalHandling = await computeGlobalHandlingFeeForCheckout(hydratedItems, { session });
+  const financeSettings = await getOrCreateFinanceSettings({ session });
+  const globalHandling = await computeGlobalHandlingFeeForCheckout(hydratedItems, {
+    session,
+    financeSettings,
+  });
 
   // Pre-compute each seller's subtotal for proportional discount/wallet distribution
   const sellerSubtotals = new Map();
@@ -437,6 +450,12 @@ export async function buildCheckoutPricingSnapshot({
     const subtotal = items.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0);
     sellerSubtotals.set(sellerId, subtotal);
     totalSubtotal += subtotal;
+  }
+
+  // Waive delivery fee if cart subtotal meets the Free Delivery Minimum set in Admin Settings
+  const freeDeliveryThreshold = Number(financeSettings?.freeDeliveryThreshold || 0);
+  if (freeDeliveryThreshold > 0 && totalSubtotal >= freeDeliveryThreshold) {
+    applyFreeDelivery = true;
   }
 
   for (const sellerId of sellerIds) {

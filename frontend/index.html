@@ -27,7 +27,7 @@
     align-items: center;
     justify-content: center;
     background: linear-gradient(135deg, #ffffff 0%, #FFF9EC 50%, #FFF4D6 100%);
-    transition: opacity 2s ease, visibility 2s ease;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
   ">
     <style>
       @keyframes splash-shimmer {
@@ -152,13 +152,13 @@
         var root = document.getElementById('root');
         if (root && root.children.length > 0) {
           setTimeout(function() { splash.classList.add('hidden'); }, 300);
-          setTimeout(function() { splash.remove(); }, 2500);
+          setTimeout(function() { splash.remove(); }, 600);
           observer.disconnect();
         }
       });
       observer.observe(document.getElementById('root'), { childList: true });
       // Fallback: remove after 6s max
-      setTimeout(function() { if (splash.parentNode) { splash.classList.add('hidden'); setTimeout(function() { splash.remove(); }, 2500); } }, 6000);
+      setTimeout(function() { if (splash.parentNode) { splash.classList.add('hidden'); setTimeout(function() { splash.remove(); }, 600); } }, 6000);
     })();
   </script>
 </body>

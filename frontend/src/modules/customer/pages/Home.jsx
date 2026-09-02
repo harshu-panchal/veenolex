@@ -28,6 +28,7 @@ import ExperienceBannerCarousel from "../components/experience/ExperienceBannerC
 import { useLocation } from "../context/LocationContext";
 import { useSettings } from "@core/context/SettingsContext";
 import { getCategoryFallbackImage } from "../constants/homeConstants";
+
 import Lottie from "lottie-react";
 import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
 import { getJSON, remove as removeStorage, STORAGE_KEYS } from "@core/utils/storage";
@@ -41,6 +42,40 @@ import QuickCategorySlider from "../components/home/QuickCategorySlider";
 import LowestPriceSection from "../components/home/LowestPriceSection";
 import OfferSections from "../components/home/OfferSections";
 import PromoMarquee from "../components/home/PromoMarquee";
+
+/**
+ * Popup artwork is admin-uploaded at full resolution. Serve a sized,
+ * auto-format variant instead of the original — the raw Cloudinary URL was
+ * the single largest download on the homepage.
+ */
+const popupImageSrc = (url) =>
+  applyCloudinaryTransform(url, "f_auto,q_auto,w_800,dpr_auto") || url;
+
+/**
+ * Resolves once the popup artwork is decoded, reporting its intrinsic size.
+ * Resolves `null` on error or timeout so a broken or slow image degrades to
+ * the old behaviour (popup still opens) rather than being lost entirely.
+ */
+function preloadPopupImage(src, timeoutMs = 5000) {
+  return new Promise((resolve) => {
+    if (!src || typeof Image === "undefined") return resolve(null);
+
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    const img = new Image();
+    img.onload = () =>
+      finish({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => finish(null);
+    img.src = src;
+  });
+}
 
 const DEFAULT_CATEGORY_THEME = {
   gradient: "linear-gradient(to bottom, var(--primary), var(--brand-400))",
@@ -283,24 +318,45 @@ const Home = () => {
   const [pendingReturn, setPendingReturn] = useState(null);
   const [activePopup, setActivePopup] = useState(null);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
+  // Intrinsic size of the popup artwork, learned during preload so the
+  // modal can reserve the exact box before the image paints.
+  const [popupImageSize, setPopupImageSize] = useState(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchPopup = async () => {
       try {
         const res = await customerApi.getActivePopup();
         const popup = res.data?.result || res.data;
-        if (popup && popup._id) {
-          const isDismissed = popup.showOnce && localStorage.getItem("dismissed_popup_" + popup._id);
-          if (!isDismissed) {
-            setActivePopup(popup);
-            setIsPopupOpen(true);
-          }
-        }
+        if (!popup || !popup._id) return;
+
+        const isDismissed =
+          popup.showOnce &&
+          localStorage.getItem("dismissed_popup_" + popup._id);
+        if (isDismissed || cancelled) return;
+
+        // Decode the artwork *before* mounting the modal. Opening first
+        // meant the browser only started fetching a full-resolution
+        // original once the modal existed: it became the LCP element at
+        // ~16s, and the box grew from nothing to 72vh when the bytes
+        // landed (CLS 0.64). Preloading takes that off the critical path
+        // and hands us the dimensions to reserve space with.
+        const size = await preloadPopupImage(popupImageSrc(popup.imageUrl));
+        if (cancelled) return;
+
+        setPopupImageSize(size);
+        setActivePopup(popup);
+        setIsPopupOpen(true);
       } catch (error) {
         console.error("Failed to load active popup:", error);
       }
     };
+
     fetchPopup();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handlePopupClick = (popup) => {
@@ -677,8 +733,12 @@ const Home = () => {
                 className="w-full overflow-hidden relative cursor-pointer group flex items-center justify-center"
               >
                 <img
-                  src={activePopup.imageUrl}
+                  src={popupImageSrc(activePopup.imageUrl)}
                   alt={activePopup.title}
+                  {...(popupImageSize
+                    ? { width: popupImageSize.width, height: popupImageSize.height }
+                    : {})}
+                  decoding="async"
                   className="w-full h-auto max-h-[72vh] object-cover block transition-transform duration-700 group-hover:scale-[1.02]"
                 />
                 

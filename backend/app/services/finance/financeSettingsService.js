@@ -60,6 +60,9 @@ export function normalizeFinanceSettings(raw = {}) {
   const handlingFeeStrategy =
     raw.handlingFeeStrategy || DEFAULT_FINANCE_SETTINGS.handlingFeeStrategy;
 
+  const platformFee = roundCurrency(raw.platformFee ?? 0);
+  const freeDeliveryThreshold = roundCurrency(raw.freeDeliveryThreshold ?? 0);
+
   return {
     deliveryPricingMode,
     pricingMode: deliveryPricingMode,
@@ -74,6 +77,8 @@ export function normalizeFinanceSettings(raw = {}) {
     fleetCommissionRatePerKm: deliveryPartnerRatePerKm,
     fixedDeliveryFee,
     handlingFeeStrategy,
+    platformFee,
+    freeDeliveryThreshold,
     codEnabled: raw.codEnabled ?? DEFAULT_FINANCE_SETTINGS.codEnabled,
     onlineEnabled: raw.onlineEnabled ?? DEFAULT_FINANCE_SETTINGS.onlineEnabled,
   };
