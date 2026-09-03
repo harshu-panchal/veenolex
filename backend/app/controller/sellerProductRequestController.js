@@ -458,6 +458,73 @@ export const approveSellerRequest = async (req, res) => {
       request.deliveryWorkflowStatus = "DELIVERY_ASSIGNED";
       request.assignedAt = new Date();
       await request.save();
+
+      console.log("🚚 Delivery boy manually assigned for request upon approval:", request.requestNumber);
+
+      try {
+        const payload = {
+          orderId: request.requestNumber,
+          sourceType: "SELLER_REQUEST",
+          workflowStatus: "DELIVERY_ASSIGNED",
+          preview: {
+            pickup: "Veenolex Wholesale Warehouse",
+            drop: request.sellerName || "Seller Store",
+            total: request.totalAmount || 0,
+          }
+        };
+
+        emitToDelivery(deliveryBoyId, { event: "delivery:assigned", payload });
+
+        const deliveryPartner = await Delivery.findById(deliveryBoyId).select("fcmToken").lean();
+
+        if (deliveryPartner?.fcmToken) {
+          emitNotificationEvent(NOTIFICATION_EVENTS.BULK_PUSH, {
+            messages: [{
+              token: deliveryPartner.fcmToken,
+              notification: {
+                title: "New Delivery Assigned",
+                body: `You have been manually assigned to deliver ${request.requestNumber}`,
+              },
+              data: {
+                event: "delivery:assigned",
+                payload: JSON.stringify(payload),
+              }
+            }]
+          });
+        }
+
+        const notificationDoc = await Notification.create({
+          recipient: deliveryBoyId,
+          userId: deliveryBoyId,
+          recipientModel: "Delivery",
+          role: "delivery",
+          title: "Delivery Assigned",
+          message: `You have been manually assigned to deliver ${request.requestNumber}`,
+          body: `You have been manually assigned to deliver ${request.requestNumber}`,
+          type: "order",
+          channel: "in_app",
+          provider: "internal",
+          status: "sent",
+          sentAt: new Date(),
+          data: { orderId: request.requestNumber, sourceType: "SELLER_REQUEST" },
+        });
+
+        emitToDelivery(deliveryBoyId, {
+          event: "notification:new",
+          payload: {
+            notificationId: notificationDoc._id.toString(),
+            eventType: "DELIVERY_ASSIGNED",
+            role: "delivery",
+            title: "Delivery Assigned",
+            body: notificationDoc.body,
+            data: notificationDoc.data,
+            createdAt: notificationDoc.createdAt.toISOString()
+          }
+        });
+
+      } catch (err) {
+        console.warn("❌ Failed to notify delivery boy on approval manual assign:", err.message);
+      }
     } else if (startDelivery || deliveryMode === "BROADCAST") {
       request.deliveryType = "STANDARD";
       await request.save();

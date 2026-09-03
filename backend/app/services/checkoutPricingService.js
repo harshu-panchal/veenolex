@@ -458,6 +458,7 @@ export async function buildCheckoutPricingSnapshot({
     applyFreeDelivery = true;
   }
 
+  const sellerBreakdownEntries = [];
   for (const sellerId of sellerIds) {
     const sellerItems = itemsBySeller.get(sellerId) || [];
     const { distanceKm, isOutOfZone } = await computeDistanceKmForSeller({

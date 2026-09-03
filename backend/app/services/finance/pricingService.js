@@ -347,13 +347,19 @@ export async function hydrateOrderItems(
     const productId = String(item.product || item.productId || item._id || item.id);
     const product = productMap.get(productId);
     if (!product) {
-      throw new Error(`Product not found for line item: ${productId}`);
+      const err = new Error(`Product not found for line item: ${item.name || productId}`);
+      err.statusCode = 400;
+      throw err;
     }
     if (product.status !== "active") {
-      throw new Error(`Product is not available for purchase: ${product.name}`);
+      const err = new Error(`Product is not available for purchase: ${product.name}`);
+      err.statusCode = 400;
+      throw err;
     }
     if (resolveProductApprovalStatus(product) !== PRODUCT_APPROVAL_STATUS.APPROVED) {
-      throw new Error(`Product is not approved for purchase: ${product.name}`);
+      const err = new Error(`Product is not approved for purchase: ${product.name}`);
+      err.statusCode = 400;
+      throw err;
     }
 
     const rawVariantSku = String(item.variantSku || item.variantSlot || "").trim();

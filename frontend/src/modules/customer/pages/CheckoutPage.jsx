@@ -778,6 +778,9 @@ const CheckoutPage = () => {
 
   // Load recipient from localStorage + fetch coupons on mount
   useEffect(() => {
+    // Preload Razorpay SDK script in the background for instant payment modal launch
+    loadRazorpayScript().catch(() => {});
+
     const parsed = getJSON(RECIPIENT_STORAGE_KEY, null);
     if (parsed && parsed.completeAddress && parsed.name && parsed.phone) {
       setRecipientData(parsed);
@@ -874,9 +877,13 @@ const CheckoutPage = () => {
 
     if (!categoryId) return;
 
+    const lat = currentLocation?.latitude || currentAddress?.location?.lat;
+    const lng = currentLocation?.longitude || currentAddress?.location?.lng;
+    if (!lat || !lng) return;
+
     const cartIds = new Set(cart.map((i) => i.id || i._id));
     customerApi
-      .getProducts({ categoryId, limit: 10 })
+      .getProducts({ categoryId, limit: 10, lat, lng })
       .then((res) => {
         if (res.data?.success) {
           const items = (res.data.result?.items || [])
@@ -886,7 +893,7 @@ const CheckoutPage = () => {
         }
       })
       .catch(() => { });
-  }, [cartProductIdKey]);
+  }, [cartProductIdKey, currentLocation, currentAddress]);
 
   const handlePrePlaceOrderCheck = () => {
     if (hasOutOfStockItems) {
@@ -1403,8 +1410,8 @@ const CheckoutPage = () => {
               <SlideToPay 
                 onSuccess={handlePrePlaceOrderCheck}
                 amount={finalAmountToPay}
-                isLoading={isPlacingOrder || isPreviewLoading || !pricingPreview}
-                disabled={isPlacingOrder || isPreviewLoading || !pricingPreview || hasOutOfStockItems}
+                isLoading={isPlacingOrder}
+                disabled={isPlacingOrder || hasOutOfStockItems}
                 text={finalAmountToPay === 0 ? "SLIDE TO PLACE FREE ORDER" : "SLIDE TO PAY"}
               />
               <p className="text-center text-[10px] text-slate-400 font-bold mt-4 uppercase tracking-[0.1em]">
@@ -1421,8 +1428,8 @@ const CheckoutPage = () => {
           <SlideToPay 
             onSuccess={handlePrePlaceOrderCheck}
             amount={finalAmountToPay}
-            isLoading={isPlacingOrder || isPreviewLoading || !pricingPreview}
-            disabled={isPlacingOrder || isPreviewLoading || !pricingPreview || hasOutOfStockItems}
+            isLoading={isPlacingOrder}
+            disabled={isPlacingOrder || hasOutOfStockItems}
             text={finalAmountToPay === 0 ? "SLIDE TO PLACE FREE ORDER" : "SLIDE TO PAY"}
           />
         </div>

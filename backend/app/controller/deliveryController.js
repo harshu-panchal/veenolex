@@ -283,7 +283,76 @@ export const getMyDeliveryOrders = async (req, res) => {
             .populate("customer", "name phone")
             .lean();
 
-        return handleResponse(res, 200, "Delivery orders fetched", orders);
+        let sellerRequests = [];
+        if (normalized === "all" || normalized === "active") {
+            const rawRequests = await SellerProductRequest.find({
+                deliveryBoy: deliveryBoyId,
+                status: { $in: ["APPROVED", "DISPATCHED"] }
+            })
+                .sort({ createdAt: -1 })
+                .limit(50)
+                .populate("sellerId", "shopName name address locality city phone location")
+                .lean();
+
+            sellerRequests = rawRequests.map((r) => {
+                const s = (r.sellerId && typeof r.sellerId === "object") ? r.sellerId : {};
+                const rawAddr = s.address || r.sellerAddress || "";
+                const parts = [rawAddr, s.locality, s.city, s.pincode].filter(Boolean);
+                const completeAddr = parts.length > 0 ? parts.join(", ") : (rawAddr || "Seller Store, Indore");
+
+                return {
+                    _id: r._id,
+                    orderId: r.requestNumber,
+                    requestNumber: r.requestNumber,
+                    isSellerRequest: true,
+                    status: r.status?.toLowerCase() || "approved",
+                    workflowStatus: r.deliveryWorkflowStatus || "DELIVERY_ASSIGNED",
+                    total: r.totalAmount || 0,
+                    finalAmount: r.totalAmount || 0,
+                    totalAmount: r.totalAmount || 0,
+                    paymentStatus: r.paymentStatus === "PAID" ? "PAID" : "PENDING",
+                    paymentMode: r.paymentType || "ONLINE",
+                    createdAt: r.createdAt,
+                    seller: {
+                        _id: s._id || r.sellerId,
+                        shopName: s.shopName || s.name || r.sellerName || "Seller Store",
+                        name: s.name || s.shopName || r.sellerName || "Seller Store",
+                        address: completeAddr,
+                        phone: s.phone || r.sellerPhone || "",
+                        location: s.location
+                    },
+                    customer: {
+                        name: s.shopName || s.name || r.sellerName || "Seller Store",
+                        phone: s.phone || r.sellerPhone || ""
+                    },
+                    address: {
+                        fullName: s.shopName || s.name || r.sellerName || "Seller Store",
+                        phone: s.phone || r.sellerPhone || "",
+                        completeAddress: completeAddr,
+                        street: completeAddr,
+                        city: s.city || "Indore",
+                        location: s.location || { type: "Point", coordinates: [75.8577, 22.7196] }
+                    },
+                    items: (r.items || []).map((item) => ({
+                        product: {
+                            name: item.name || item.productName || "Product",
+                            mainImage: item.image || item.mainImage || "",
+                            price: item.price || 0,
+                            salePrice: item.price || 0
+                        },
+                        quantity: item.quantity || 1,
+                        price: item.price || 0,
+                        totalPrice: (item.price || 0) * (item.quantity || 1)
+                    }))
+                };
+            });
+        }
+
+        const combinedOrders = [...sellerRequests, ...orders].sort(
+            (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+        );
+
+        return handleResponse(res, 200, "Delivery orders fetched", combinedOrders);
     } catch (error) {
         return handleResponse(res, 500, error.message);
     }

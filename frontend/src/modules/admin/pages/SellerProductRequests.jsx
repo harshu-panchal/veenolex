@@ -25,7 +25,33 @@ export default function SellerProductRequests() {
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectModal, setShowRejectModal] = useState(null);
   const [showApproveModal, setShowApproveModal] = useState(null); // stores request object
-  const [selectedDeliveryMode, setSelectedDeliveryMode] = useState("SHIPROCKET"); // "SHIPROCKET", "BROADCAST", "MANUAL", "NONE"
+  const [selectedDeliveryMode, setSelectedDeliveryMode] = useState("SHIPROCKET"); // "SHIPROCKET", "BROADCAST", "MANUAL"
+  const [selectedDriverId, setSelectedDriverId] = useState("");
+
+  const openApproveModal = async (request) => {
+    setShowApproveModal(request);
+    setSelectedDeliveryMode("SHIPROCKET");
+    setSelectedDriverId("");
+
+    if (availableDrivers.length === 0) {
+      setIsFetchingDrivers(true);
+      try {
+        const response = await adminApi.getDeliveryPartners({ status: 'active', limit: 100 });
+        const payload = response.data.result || {};
+        const data = Array.isArray(payload.items) ? payload.items : (response.data.results || response.data.result || []);
+        setAvailableDrivers(data);
+        if (data.length > 0) {
+          setSelectedDriverId(data[0]._id || data[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to prefetch drivers:", err);
+      } finally {
+        setIsFetchingDrivers(false);
+      }
+    } else if (availableDrivers.length > 0) {
+      setSelectedDriverId(availableDrivers[0]._id || availableDrivers[0].id);
+    }
+  };
   
   const handleTriggerBroadcast = async (requestId) => {
     try {
@@ -156,22 +182,46 @@ export default function SellerProductRequests() {
   // ─────────────────────────────────
   const handleApprove = async (requestId, startDelivery = false, deliveryMode = "NONE", deliveryBoyId = null) => {
     try {
+      if (deliveryMode === "MANUAL" && !deliveryBoyId) {
+        toast.error("Please select a delivery partner to assign.");
+        return;
+      }
+
       setActionLoading(requestId + "_approve");
 
       const res = await approveRequest(requestId, adminNote, startDelivery, deliveryMode, deliveryBoyId);
 
+      const assignedDriverObj = deliveryMode === "MANUAL" && deliveryBoyId
+        ? availableDrivers.find(d => (d._id || d.id) === deliveryBoyId)
+        : null;
+
       // Update local state
       setRequests(requests.map((r) =>
         r._id === requestId
-          ? (res.data || { ...r, status: "APPROVED", adminNote, deliveryType: deliveryMode === "SHIPROCKET" ? "SHIPROCKET" : r.deliveryType })
+          ? {
+              ...(res.data || r),
+              status: "APPROVED",
+              adminNote,
+              deliveryType: deliveryMode === "SHIPROCKET" ? "SHIPROCKET" : "STANDARD",
+              deliveryBoy: assignedDriverObj || res.data?.deliveryBoy || r.deliveryBoy,
+              deliveryWorkflowStatus: deliveryMode === "BROADCAST" ? "DELIVERY_SEARCH" : "DELIVERY_ASSIGNED"
+            }
           : r
       ));
 
       setShowApproveModal(null);
       setSelectedRequest(null);
       setAdminNote("");
+      setSelectedDriverId("");
 
-      toast.success(res.message || (deliveryMode === "SHIPROCKET" ? "Request approved & Shiprocket delivery queued!" : "Request approved successfully!"));
+      toast.success(
+        res.message ||
+        (deliveryMode === "SHIPROCKET"
+          ? "Request approved & Shiprocket delivery queued!"
+          : deliveryMode === "MANUAL"
+          ? "Request approved & driver assigned successfully!"
+          : "Request approved successfully!")
+      );
 
     } catch (err) {
       const msg = err.response?.data?.message || err.message;
@@ -520,7 +570,7 @@ export default function SellerProductRequests() {
                 {request.status === "PENDING" && (
                   <>
                     <button
-                      onClick={() => setShowApproveModal(request)}
+                      onClick={() => openApproveModal(request)}
                       disabled={actionLoading === request._id + "_approve"}
                       style={{
                         padding: "9px 20px",
@@ -623,7 +673,7 @@ export default function SellerProductRequests() {
 
                             {!isSrPendingOrFailed && srDetails.orderId && !String(srDetails.orderId).startsWith("MOCK_") && (
                               <a
-                                href="https://app.shiprocket.in/seller/orders/new"
+                                href={`https://app.shiprocket.in/seller/orders/new?order_ids=${srDetails.orderId}`}
                                 target="_blank"
                                 rel="noreferrer"
                                 style={{
@@ -1372,36 +1422,75 @@ export default function SellerProductRequests() {
                 />
               </div>
 
-              {/* Option 3: Approve Only */}
+              {/* Option 3: Manual Assign */}
               <div
-                onClick={() => setSelectedDeliveryMode("NONE")}
+                onClick={() => setSelectedDeliveryMode("MANUAL")}
                 style={{
                   padding: "12px 14px",
                   borderRadius: "10px",
-                  border: selectedDeliveryMode === "NONE" ? "2px solid #27AE60" : "1px solid #E5E7EB",
-                  backgroundColor: selectedDeliveryMode === "NONE" ? "#E8F8F5" : "white",
+                  border: selectedDeliveryMode === "MANUAL" ? "2px solid #27AE60" : "1px solid #E5E7EB",
+                  backgroundColor: selectedDeliveryMode === "MANUAL" ? "#E8F8F5" : "white",
                   cursor: "pointer",
                   display: "flex",
-                  alignItems: "center",
-                  gap: "12px"
+                  flexDirection: "column",
+                  gap: "8px"
                 }}
               >
-                <div style={{ fontSize: "24px" }}>⏸️</div>
-                <div style={{ flex: 1 }}>
-                  <p style={{ margin: "0", fontWeight: "700", fontSize: "14px", color: "#117A65" }}>
-                    Approve Only (Assign Delivery Later)
-                  </p>
-                  <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#6B7280" }}>
-                    Updates status to APPROVED without triggering immediate delivery dispatch
-                  </p>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div style={{ fontSize: "24px" }}>👤</div>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: "0", fontWeight: "700", fontSize: "14px", color: "#117A65" }}>
+                      Assign Driver Manually
+                    </p>
+                    <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#6B7280" }}>
+                      Select a specific registered delivery partner to fulfill this order
+                    </p>
+                  </div>
+                  <input
+                    type="radio"
+                    name="deliveryMode"
+                    checked={selectedDeliveryMode === "MANUAL"}
+                    onChange={() => setSelectedDeliveryMode("MANUAL")}
+                    style={{ accentColor: "#27AE60" }}
+                  />
                 </div>
-                <input
-                  type="radio"
-                  name="deliveryMode"
-                  checked={selectedDeliveryMode === "NONE"}
-                  onChange={() => setSelectedDeliveryMode("NONE")}
-                  style={{ accentColor: "#27AE60" }}
-                />
+
+                {/* Inline Driver Selection Dropdown when MANUAL is selected */}
+                {selectedDeliveryMode === "MANUAL" && (
+                  <div style={{ marginTop: "4px", paddingTop: "8px", borderTop: "1px dashed #A3E4D7" }} onClick={(e) => e.stopPropagation()}>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: "600", color: "#117A65", marginBottom: "4px" }}>
+                      Select Delivery Partner:
+                    </label>
+                    {isFetchingDrivers ? (
+                      <div style={{ fontSize: "12px", color: "#6B7280" }}>⏳ Loading available drivers...</div>
+                    ) : availableDrivers.length === 0 ? (
+                      <div style={{ fontSize: "12px", color: "#E74C3C" }}>⚠️ No active drivers found.</div>
+                    ) : (
+                      <select
+                        value={selectedDriverId}
+                        onChange={(e) => setSelectedDriverId(e.target.value)}
+                        style={{
+                          width: "100%",
+                          padding: "8px 10px",
+                          borderRadius: "8px",
+                          border: "1px solid #A3E4D7",
+                          backgroundColor: "white",
+                          fontSize: "13px",
+                          color: "#374151",
+                          outline: "none",
+                          cursor: "pointer"
+                        }}
+                      >
+                        <option value="">-- Choose a Driver --</option>
+                        {availableDrivers.map((driver) => (
+                          <option key={driver._id || driver.id} value={driver._id || driver.id}>
+                            {driver.name || "Driver"} ({driver.phone || "No Phone"}) {driver.city ? `- ${driver.city}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1428,6 +1517,7 @@ export default function SellerProductRequests() {
                 onClick={() => {
                   setShowApproveModal(null);
                   setAdminNote("");
+                  setSelectedDriverId("");
                 }}
                 style={{
                   flex: 1, padding: "10px", backgroundColor: "white", border: "1px solid #D1D5DB",
@@ -1440,17 +1530,27 @@ export default function SellerProductRequests() {
                 onClick={() => handleApprove(
                   showApproveModal._id,
                   selectedDeliveryMode === "BROADCAST",
-                  selectedDeliveryMode
+                  selectedDeliveryMode,
+                  selectedDeliveryMode === "MANUAL" ? selectedDriverId : null
                 )}
-                disabled={actionLoading === showApproveModal._id + "_approve"}
+                disabled={
+                  actionLoading === showApproveModal._id + "_approve" ||
+                  (selectedDeliveryMode === "MANUAL" && !selectedDriverId)
+                }
                 style={{
                   flex: 1, padding: "10px", backgroundColor: "#27AE60", color: "white",
-                  border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: "700"
+                  border: "none", borderRadius: "8px", cursor: (selectedDeliveryMode === "MANUAL" && !selectedDriverId) ? "not-allowed" : "pointer",
+                  fontSize: "13px", fontWeight: "700",
+                  opacity: (selectedDeliveryMode === "MANUAL" && !selectedDriverId) ? 0.6 : 1
                 }}
               >
                 {actionLoading === showApproveModal._id + "_approve"
                   ? "⏳ Approving..."
-                  : "✅ Approve & Dispatch"}
+                  : selectedDeliveryMode === "MANUAL"
+                  ? "✅ Approve & Assign Driver"
+                  : selectedDeliveryMode === "SHIPROCKET"
+                  ? "✅ Approve & Shiprocket"
+                  : "✅ Approve & Broadcast"}
               </button>
             </div>
           </div>
