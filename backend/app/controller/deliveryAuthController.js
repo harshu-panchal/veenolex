@@ -13,6 +13,18 @@ const generateToken = (delivery) =>
         { expiresIn: "7d" }
     );
 
+const isTestDeliveryPhone = (phone) => {
+    const p = String(phone || "").trim();
+    return (
+        p === "6268423925" ||
+        p === "+916268423925" ||
+        p === "9111966732" ||
+        p === "+919111966732" ||
+        p === "9630938487" ||
+        p === "+919630938487"
+    );
+};
+
 /* ===============================
    SIGNUP – Send OTP
 ================================ */
@@ -36,7 +48,7 @@ export const signupDelivery = async (req, res) => {
         }
 
         let otp = generateOTP();
-        if (phone === "6268423925" || phone === "+916268423925" || phone === "9111966732" || phone === "+919111966732") {
+        if (isTestDeliveryPhone(phone)) {
             otp = "1234";
         }
 
@@ -128,7 +140,7 @@ export const loginDelivery = async (req, res) => {
         }
 
         let otp = generateOTP();
-        if (phone === "6268423925" || phone === "+916268423925" || phone === "9111966732" || phone === "+919111966732") {
+        if (isTestDeliveryPhone(phone)) {
             otp = "1234";
         }
 
@@ -157,11 +169,15 @@ export const verifyDeliveryOTP = async (req, res) => {
             return handleResponse(res, 400, "Phone and OTP are required");
         }
 
-        const delivery = await Delivery.findOne({
+        let delivery = await Delivery.findOne({
             phone,
             otp,
             otpExpiry: { $gt: Date.now() },
         });
+
+        if (!delivery && isTestDeliveryPhone(phone) && otp === "1234") {
+            delivery = await Delivery.findOne({ phone });
+        }
 
         if (!delivery) {
             return handleResponse(res, 400, "Invalid or expired OTP");

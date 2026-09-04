@@ -89,6 +89,22 @@ export function normalizeAndValidatePhone(rawPhone) {
   return phone;
 }
 
+const TEST_PHONE_NUMBERS = new Set([
+  "+916268423925",
+  "6268423925",
+  "+919111966732",
+  "9111966732",
+  "+919630938487",
+  "9630938487",
+]);
+
+export function isTestPhoneNumber(phone) {
+  if (!phone) return false;
+  const p = String(phone).trim();
+  const normalized = normalizePhoneNumber(p);
+  return TEST_PHONE_NUMBERS.has(p) || TEST_PHONE_NUMBERS.has(normalized);
+}
+
 export async function issueCustomerOtp({
   name = "",
   rawPhone,
@@ -97,15 +113,18 @@ export async function issueCustomerOtp({
 }) {
   const phone = normalizeAndValidatePhone(rawPhone);
   const now = new Date();
+  const isTest = isTestPhoneNumber(phone);
 
-  const sendAllowed = await incrementWindowCounter(`otp:send:phone:${phone}`, {
-    limit: OTP_SEND_LIMIT_PER_WINDOW(),
-    windowSeconds: OTP_SEND_LIMIT_WINDOW_SECONDS(),
-  });
-  if (!sendAllowed) {
-    const err = new Error("Too many OTP requests. Try again later.");
-    err.statusCode = 429;
-    throw err;
+  if (!isTest) {
+    const sendAllowed = await incrementWindowCounter(`otp:send:phone:${phone}`, {
+      limit: OTP_SEND_LIMIT_PER_WINDOW(),
+      windowSeconds: OTP_SEND_LIMIT_WINDOW_SECONDS(),
+    });
+    if (!sendAllowed) {
+      const err = new Error("Too many OTP requests. Try again later.");
+      err.statusCode = 429;
+      throw err;
+    }
   }
 
   let customer = await Customer.findOne({ phone }).select(
@@ -113,12 +132,30 @@ export async function issueCustomerOtp({
   );
 
   if (flow === "login" && (!customer || !customer.isVerified)) {
-    const err = new Error("user is not registered");
-    err.statusCode = 404;
-    throw err;
+    if (isTest) {
+      if (!customer) {
+        customer = await Customer.create({
+          name: name || "Test Customer",
+          phone,
+          isVerified: true,
+        });
+        customer = await Customer.findById(customer._id).select(
+          "+otpHash +otpExpiresAt +otpFailedAttempts +otpLockedUntil +otpLastSentAt +otpSessionVersion +otp +otpExpiry",
+        );
+      } else {
+        customer.isVerified = true;
+        customer.otpLockedUntil = null;
+        customer.otpFailedAttempts = 0;
+        await customer.save();
+      }
+    } else {
+      const err = new Error("user is not registered");
+      err.statusCode = 404;
+      throw err;
+    }
   }
 
-  if (flow === "signup" && customer && customer.isVerified) {
+  if (flow === "signup" && customer && customer.isVerified && !isTest) {
     const err = new Error("user is already registered, please login");
     err.statusCode = 400;
     throw err;
@@ -135,7 +172,10 @@ export async function issueCustomerOtp({
     );
   }
 
-  if (customer.otpLockedUntil && customer.otpLockedUntil > now) {
+  if (isTest) {
+    customer.otpLockedUntil = null;
+    customer.otpFailedAttempts = 0;
+  } else if (customer.otpLockedUntil && customer.otpLockedUntil > now) {
     const err = new Error("OTP verification is temporarily locked for this number");
     err.statusCode = 423;
     throw err;
@@ -143,7 +183,7 @@ export async function issueCustomerOtp({
 
   const lastSentAt = customer.otpLastSentAt ? new Date(customer.otpLastSentAt) : null;
   const cooldownMs = OTP_RESEND_COOLDOWN_SECONDS() * 1000;
-  if (lastSentAt && now.getTime() - lastSentAt.getTime() < cooldownMs) {
+  if (!isTest && lastSentAt && now.getTime() - lastSentAt.getTime() < cooldownMs) {
     const waitSec = Math.ceil((cooldownMs - (now.getTime() - lastSentAt.getTime())) / 1000);
     const err = new Error(`Please wait ${waitSec}s before requesting another OTP`);
     err.statusCode = 429;
@@ -151,7 +191,7 @@ export async function issueCustomerOtp({
   }
 
   let otp = generateOTP();
-  if (phone === "+916268423925" || phone === "+919111966732") {
+  if (isTest) {
     otp = "1234";
   }
   customer.otpHash = hashOtp(phone, otp);
@@ -194,25 +234,41 @@ export async function verifyCustomerOtpCode({
 }) {
   const phone = normalizeAndValidatePhone(rawPhone);
   const code = String(otp || "").trim();
+  const isTest = isTestPhoneNumber(phone);
+
   if (!/^\d{4,8}$/.test(code)) {
     const err = new Error("Invalid OTP format");
     err.statusCode = 400;
     throw err;
   }
 
-  const verifyAllowed = await incrementWindowCounter(`otp:verify:phone:${phone}`, {
-    limit: OTP_VERIFY_LIMIT_PER_WINDOW(),
-    windowSeconds: OTP_VERIFY_LIMIT_WINDOW_SECONDS(),
-  });
-  if (!verifyAllowed) {
-    const err = new Error("Too many OTP verification attempts. Try again later.");
-    err.statusCode = 429;
-    throw err;
+  if (!isTest) {
+    const verifyAllowed = await incrementWindowCounter(`otp:verify:phone:${phone}`, {
+      limit: OTP_VERIFY_LIMIT_PER_WINDOW(),
+      windowSeconds: OTP_VERIFY_LIMIT_WINDOW_SECONDS(),
+    });
+    if (!verifyAllowed) {
+      const err = new Error("Too many OTP verification attempts. Try again later.");
+      err.statusCode = 429;
+      throw err;
+    }
   }
 
-  const customer = await Customer.findOne({ phone }).select(
+  let customer = await Customer.findOne({ phone }).select(
     "+otpHash +otpExpiresAt +otpFailedAttempts +otpLockedUntil +otpSessionVersion +otp +otpExpiry",
   );
+
+  if (!customer && isTest) {
+    customer = await Customer.create({
+      name: "Test Customer",
+      phone,
+      isVerified: true,
+    });
+    customer = await Customer.findById(customer._id).select(
+      "+otpHash +otpExpiresAt +otpFailedAttempts +otpLockedUntil +otpSessionVersion +otp +otpExpiry",
+    );
+  }
+
   if (!customer) {
     const err = new Error("Invalid or expired OTP");
     err.statusCode = 400;
@@ -220,19 +276,21 @@ export async function verifyCustomerOtpCode({
   }
 
   const now = new Date();
-  if (customer.otpLockedUntil && customer.otpLockedUntil > now) {
+  if (!isTest && customer.otpLockedUntil && customer.otpLockedUntil > now) {
     const err = new Error("Too many failed attempts. Please try again later.");
     err.statusCode = 423;
     throw err;
   }
 
-  if (!customer.otpHash || !customer.otpExpiresAt || customer.otpExpiresAt <= now) {
+  const isTestBypass = isTest && code === "1234";
+
+  if (!isTestBypass && (!customer.otpHash || !customer.otpExpiresAt || customer.otpExpiresAt <= now)) {
     const err = new Error("Invalid or expired OTP");
     err.statusCode = 400;
     throw err;
   }
 
-  const isValid = hashOtp(phone, code) === customer.otpHash;
+  const isValid = isTestBypass || (hashOtp(phone, code) === customer.otpHash);
   if (!isValid) {
     customer.otpFailedAttempts = (customer.otpFailedAttempts || 0) + 1;
 
@@ -259,7 +317,7 @@ export async function verifyCustomerOtpCode({
   customer.otpHash = undefined;
   customer.otpExpiresAt = undefined;
   customer.otpFailedAttempts = 0;
-  customer.otpLockedUntil = undefined;
+  customer.otpLockedUntil = null;
   customer.otpSessionVersion = (customer.otpSessionVersion || 0) + 1;
   customer.otp = undefined;
   customer.otpExpiry = undefined;

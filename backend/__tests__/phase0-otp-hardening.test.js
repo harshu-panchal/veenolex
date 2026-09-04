@@ -110,4 +110,34 @@ describe("Phase 0 OTP hardening", () => {
     expect(customer.otpHash).not.toBe("1234");
     expect(customer.save).toHaveBeenCalled();
   });
+
+  it("handles test phone 9630938487 with OTP 1234 and auto-provisions on login", async () => {
+    const testCustomer = buildCustomer({
+      phone: "+919630938487",
+      isVerified: true,
+    });
+    mockFindOneSelect(null);
+    mockCustomerCreate.mockResolvedValue(testCustomer);
+    mockCustomerFindById.mockReturnValue({
+      select: jest.fn().mockResolvedValue(testCustomer),
+    });
+
+    const issueRes = await issueCustomerOtp({
+      rawPhone: "9630938487",
+      flow: "login",
+      ipAddress: "127.0.0.1",
+    });
+    expect(issueRes.sent).toBe(true);
+    expect(issueRes.phone).toBe("+919630938487");
+    expect(testCustomer.otpHash).toBeTruthy();
+
+    mockFindOneSelect(testCustomer);
+
+    const verifiedCustomer = await verifyCustomerOtpCode({
+      rawPhone: "9630938487",
+      otp: "1234",
+      ipAddress: "127.0.0.1",
+    });
+    expect(verifiedCustomer.isVerified).toBe(true);
+  });
 });
