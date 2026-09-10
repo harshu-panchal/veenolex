@@ -113,12 +113,19 @@ export const getActiveDeliveryOtp = async (req, res) => {
     });
 
     if (!otp) {
-      return handleResponse(res, 404, "No active OTP found");
+      return handleResponse(res, 200, "No active OTP found", {
+        otp: null,
+        active: false,
+      });
     }
     
     // Check if expired
     if (otp.expiresAt && new Date(otp.expiresAt) < new Date()) {
-       return handleResponse(res, 410, "OTP has expired");
+       return handleResponse(res, 200, "OTP has expired", {
+         otp: null,
+         active: false,
+         expired: true,
+       });
     }
 
     return handleResponse(res, 200, "Active OTP fetched", {
