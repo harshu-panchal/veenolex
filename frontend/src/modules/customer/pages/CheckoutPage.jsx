@@ -1030,7 +1030,7 @@ const CheckoutPage = () => {
               }
 
               const options = {
-                key: gatewayDetails.keyId,
+                key: gatewayDetails.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID,
                 amount: gatewayDetails.amount,
                 currency: gatewayDetails.currency || "INR",
                 name: "Veenolex",

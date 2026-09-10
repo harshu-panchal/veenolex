@@ -1174,12 +1174,39 @@ const ProductManagement = () => {
                                                     + ADD
                                                 </button>
                                             </div>
-                                            <div className="space-y-3">
+                                            <div className="space-y-4">
                                                 {formData.variants.map((v, i) => (
-                                                    <div key={v.id} className="rounded-3xl border border-slate-100 bg-slate-50/80 p-4 shadow-sm">
-                                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
-                                                            <div className="space-y-1.5">
-                                                                <label className="ml-1 text-[8px] font-bold uppercase tracking-widest text-slate-400">Variant Name</label>
+                                                    <div key={v.id} className="rounded-2xl border border-slate-200/80 bg-slate-50/90 p-4 sm:p-5 shadow-xs space-y-4 relative transition-all hover:border-slate-300">
+                                                        {/* Top Bar: Variant Badge & Remove Action */}
+                                                        <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="px-2.5 py-1 bg-white border border-slate-200 text-slate-700 font-bold text-xs rounded-lg shadow-2xs flex items-center gap-1.5">
+                                                                    <span>Variant #{i + 1}</span>
+                                                                </span>
+                                                                {v.name && (
+                                                                    <span className="text-xs font-bold text-slate-500 truncate max-w-[200px]">
+                                                                        — {v.name}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            {formData.variants.length > 1 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setFormData({ ...formData, variants: formData.variants.filter((_, idx) => idx !== i) })}
+                                                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                                                    title="Remove variant"
+                                                                >
+                                                                    <HiOutlineTrash className="h-4 w-4" />
+                                                                    <span>Remove</span>
+                                                                </button>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Row 1: Variant Name & SKU */}
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                                                            <div className="space-y-1">
+                                                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider ml-1">Variant Name <span className="text-rose-500">*</span></label>
                                                                 <input
                                                                     value={v.name}
                                                                     onChange={e => {
@@ -1187,54 +1214,84 @@ const ProductManagement = () => {
                                                                         news[i].name = e.target.value;
                                                                         setFormData({ ...formData, variants: news });
                                                                     }}
-                                                                    placeholder="500g"
-                                                                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none ring-0 focus:border-primary/40 focus:ring-2 focus:ring-primary/10"
+                                                                    placeholder="e.g. 500g, 1kg, Pack of 2..."
+                                                                    className="w-full px-3.5 py-2.5 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                                                                 />
                                                             </div>
-                                                            <div className="space-y-1.5">
-                                                                <label className="ml-1 text-[8px] font-bold uppercase tracking-widest text-slate-400">Seller Price</label>
+
+                                                            <div className="space-y-1">
+                                                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider ml-1">Product Code (SKU)</label>
                                                                 <input
-                                                                    type="number"
-                                                                    value={v.sellerPrice ?? ''}
+                                                                    value={v.sku}
                                                                     onChange={e => {
                                                                         const news = [...formData.variants];
-                                                                        news[i].sellerPrice = e.target.value;
+                                                                        news[i].sku = e.target.value;
                                                                         setFormData({ ...formData, variants: news });
                                                                     }}
-                                                                    placeholder="400"
-                                                                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none ring-0 focus:border-primary/40 focus:ring-2 focus:ring-primary/10"
+                                                                    placeholder="mango-001"
+                                                                    className="w-full px-3.5 py-2.5 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                                                                 />
                                                             </div>
-                                                            <div className="space-y-1.5">
-                                                                <label className="ml-1 text-[8px] font-bold uppercase tracking-widest text-slate-400">Price</label>
-                                                                <input
-                                                                    type="number"
-                                                                    value={v.price}
-                                                                    onChange={e => {
-                                                                        const news = [...formData.variants];
-                                                                        news[i].price = e.target.value;
-                                                                        setFormData({ ...formData, variants: news });
-                                                                    }}
-                                                                    placeholder="200"
-                                                                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none ring-0 focus:border-primary/40 focus:ring-2 focus:ring-primary/10"
-                                                                />
+                                                        </div>
+
+                                                        {/* Row 2: Pricing & Stock (4 responsive columns) */}
+                                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                                                            <div className="space-y-1">
+                                                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider ml-1">Seller Price</label>
+                                                                <div className="relative">
+                                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                                                                    <input
+                                                                        type="number"
+                                                                        value={v.sellerPrice ?? ''}
+                                                                        onChange={e => {
+                                                                            const news = [...formData.variants];
+                                                                            news[i].sellerPrice = e.target.value;
+                                                                            setFormData({ ...formData, variants: news });
+                                                                        }}
+                                                                        placeholder="400"
+                                                                        className="w-full pl-7 pr-3 py-2.5 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                                                                    />
+                                                                </div>
                                                             </div>
-                                                            <div className="space-y-1.5">
-                                                                <label className="ml-1 text-[8px] font-bold uppercase tracking-widest text-brand-500">Sale Price</label>
-                                                                <input
-                                                                    type="number"
-                                                                    value={v.salePrice}
-                                                                    onChange={e => {
-                                                                        const news = [...formData.variants];
-                                                                        news[i].salePrice = e.target.value;
-                                                                        setFormData({ ...formData, variants: news });
-                                                                    }}
-                                                                    placeholder="150"
-                                                                    className="w-full rounded-xl border border-brand-200 bg-brand-50/60 px-4 py-2.5 text-sm outline-none ring-0 focus:border-brand-300 focus:ring-2 focus:ring-brand-100"
-                                                                />
+
+                                                            <div className="space-y-1">
+                                                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider ml-1">Regular Price <span className="text-rose-500">*</span></label>
+                                                                <div className="relative">
+                                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                                                                    <input
+                                                                        type="number"
+                                                                        value={v.price}
+                                                                        onChange={e => {
+                                                                            const news = [...formData.variants];
+                                                                            news[i].price = e.target.value;
+                                                                            setFormData({ ...formData, variants: news });
+                                                                        }}
+                                                                        placeholder="500"
+                                                                        className="w-full pl-7 pr-3 py-2.5 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                                                                    />
+                                                                </div>
                                                             </div>
-                                                            <div className="space-y-1.5">
-                                                                <label className="ml-1 text-[8px] font-bold uppercase tracking-widest text-slate-400">Stock</label>
+
+                                                            <div className="space-y-1">
+                                                                <label className="text-[11px] font-bold text-brand-600 uppercase tracking-wider ml-1">Sale Price</label>
+                                                                <div className="relative">
+                                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-brand-500">₹</span>
+                                                                    <input
+                                                                        type="number"
+                                                                        value={v.salePrice}
+                                                                        onChange={e => {
+                                                                            const news = [...formData.variants];
+                                                                            news[i].salePrice = e.target.value;
+                                                                            setFormData({ ...formData, variants: news });
+                                                                        }}
+                                                                        placeholder="450"
+                                                                        className="w-full pl-7 pr-3 py-2.5 bg-brand-50/70 ring-1 ring-brand-200 border-none rounded-xl text-xs font-bold text-brand-700 outline-none focus:ring-2 focus:ring-brand-300 transition-all"
+                                                                    />
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="space-y-1">
+                                                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider ml-1">Stock Qty <span className="text-rose-500">*</span></label>
                                                                 <input
                                                                     type="number"
                                                                     value={v.stock}
@@ -1243,39 +1300,16 @@ const ProductManagement = () => {
                                                                         news[i].stock = e.target.value;
                                                                         setFormData({ ...formData, variants: news });
                                                                     }}
-                                                                    placeholder="50"
-                                                                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none ring-0 focus:border-primary/40 focus:ring-2 focus:ring-primary/10"
+                                                                    placeholder="10"
+                                                                    className="w-full px-3.5 py-2.5 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                                                                 />
-                                                            </div>
-                                                            <div className="space-y-1.5">
-                                                                <label className="ml-1 text-[8px] font-bold uppercase tracking-widest text-slate-400">SKU</label>
-                                                                <div className="flex items-start gap-2">
-                                                                    <input
-                                                                        value={v.sku}
-                                                                        onChange={e => {
-                                                                            const news = [...formData.variants];
-                                                                            news[i].sku = e.target.value;
-                                                                            setFormData({ ...formData, variants: news });
-                                                                        }}
-                                                                        placeholder="mango-001"
-                                                                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none ring-0 focus:border-primary/40 focus:ring-2 focus:ring-primary/10"
-                                                                    />
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => setFormData({ ...formData, variants: formData.variants.filter((_, idx) => idx !== i) })}
-                                                                        className="mt-0.5 rounded-xl p-2 text-rose-500 transition-colors hover:bg-rose-50"
-                                                                        aria-label="Delete variant"
-                                                                    >
-                                                                        <HiOutlineTrash className="h-4 w-4" />
-                                                                    </button>
-                                                                </div>
                                                             </div>
                                                         </div>
 
-                                                        {/* Barcode Scanner & Generator Row */}
-                                                        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end mt-4 pt-4 border-t border-slate-200/50">
-                                                            <div className="col-span-12 md:col-span-6 space-y-1.5">
-                                                                <label className="ml-1 text-[8px] font-bold uppercase tracking-widest text-slate-400">Barcode Number</label>
+                                                        {/* Row 3: Barcode Scanner & Generator */}
+                                                        <div className="pt-3 border-t border-slate-200/60 flex flex-col md:flex-row items-stretch md:items-end gap-3">
+                                                            <div className="flex-1 min-w-[180px] space-y-1">
+                                                                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider ml-1">Barcode Number</label>
                                                                 <input
                                                                     value={v.barcode || ""}
                                                                     onChange={e => {
@@ -1284,40 +1318,39 @@ const ProductManagement = () => {
                                                                         setFormData({ ...formData, variants: news });
                                                                     }}
                                                                     placeholder="Scan or type barcode..."
-                                                                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none ring-0 focus:border-primary/40 focus:ring-2 focus:ring-primary/10"
+                                                                    className="w-full px-3.5 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                                                                 />
                                                             </div>
-                                                            <div className="col-span-12 md:col-span-6 flex gap-2">
+
+                                                            <div className="flex flex-wrap items-center gap-2">
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => {
                                                                         setActiveScanIndex(i);
                                                                         setIsScannerOpen(true);
                                                                     }}
-                                                                    className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-emerald-700 flex items-center justify-center gap-1.5"
+                                                                    className="px-3.5 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
                                                                 >
                                                                     Scan Barcode
                                                                 </button>
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => handleGenerateBarcode(i)}
-                                                                    className="flex-1 rounded-xl bg-slate-200 px-4 py-2.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-300 flex items-center justify-center gap-1.5"
+                                                                    className="px-3.5 py-2 bg-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-300 transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
                                                                 >
                                                                     Generate
                                                                 </button>
-                                                            </div>
-                                                            {v.barcode && (
-                                                                <div className="col-span-12 flex justify-end mt-1">
+                                                                {v.barcode && (
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => handleDownloadBarcode(i)}
-                                                                        className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-indigo-700 flex items-center justify-center gap-1.5"
+                                                                        className="px-3.5 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
                                                                     >
                                                                         <HiOutlineArrowDownTray className="h-4 w-4" />
                                                                         Download Barcode
                                                                     </button>
-                                                                </div>
-                                                            )}
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 ))}

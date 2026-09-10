@@ -372,7 +372,7 @@ const AddProduct = () => {
 
       <div className="bg-white rounded-lg shadow-xl overflow-hidden flex flex-col md:flex-row min-h-[600px] border border-slate-100">
         {/* Sidebar Tabs */}
-        <div className="md:w-64 bg-slate-50/50 border-r border-slate-100 p-4 space-y-1 overflow-y-auto">
+        <div className="md:w-64 shrink-0 bg-slate-50/50 border-r border-slate-100 p-4 space-y-1 overflow-y-auto">
           {[
             { id: "general", label: "General Info", icon: HiOutlineTag },
             { id: "variants", label: "Item Variants", icon: HiOutlineSwatch },
@@ -415,7 +415,7 @@ const AddProduct = () => {
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 p-8 overflow-y-auto">
+        <div className="flex-1 min-w-0 p-6 md:p-8 overflow-y-auto">
           {modalTab === "general" && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-2 duration-300">
               <div className="space-y-1.5 flex flex-col">
@@ -591,6 +591,7 @@ const AddProduct = () => {
                   </p>
                 </div>
                 <button
+                  type="button"
                   onClick={() =>
                     setFormData((prev) => ({
                       ...prev,
@@ -609,126 +610,38 @@ const AddProduct = () => {
                       ],
                     }))
                   }
-                  className="flex items-center space-x-2 px-3 py-1.5 bg-primary/10 text-primary rounded-lg text-[10px] font-bold hover:bg-primary/20 transition-all">
+                  className="flex items-center space-x-2 px-3 py-1.5 bg-primary/10 text-primary rounded-lg text-[10px] font-bold hover:bg-primary/20 transition-all cursor-pointer">
                   <HiOutlineSquaresPlus className="h-4 w-4" />
                   <span>ADD VARIANT</span>
                 </button>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {(formData.variants || []).map((variant, index) => (
                   <div
                     key={variant.id}
-                    className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-wrap md:flex-nowrap gap-3 items-end group relative">
-                    <div className="flex-[2] min-w-[140px] space-y-1">
-                      <label className="text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
-                        Variant Name
-                      </label>
-                      <input
-                        value={variant.name}
-                        onChange={(e) => {
-                          const nextValue = e.target.value;
-                          setFormData((prev) => {
-                            const newVariants = prev.variants.map((item, idx) => {
-                              if (idx !== index) return item;
-                              return { ...item, name: nextValue };
-                            });
-                            return {
-                              ...prev,
-                              variants: newVariants,
-                            };
-                          });
-                        }}
-                        placeholder="e.g. 1kg, 1 pack, 1 liter..."
-                        className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-primary/10"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-[90px] space-y-1">
-                      <label className="text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
-                        Seller Price
-                      </label>
-                      <input
-                        type="number"
-                        value={variant.sellerPrice ?? ""}
-                        onChange={(e) => {
-                          const newVariants = [...formData.variants];
-                          newVariants[index].sellerPrice = e.target.value;
-                          setFormData({ ...formData, variants: newVariants });
-                        }}
-                        placeholder="400"
-                        className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-[90px] space-y-1">
-                      <label className="text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
-                        Price
-                      </label>
-                      <input
-                        type="number"
-                        value={variant.price}
-                        onChange={(e) => {
-                          const newVariants = [...formData.variants];
-                          newVariants[index].price = e.target.value;
-                          setFormData({ ...formData, variants: newVariants });
-                        }}
-                        placeholder="500"
-                        className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-[80px] space-y-1">
-                      <label className="text-[8px] font-bold text-brand-500 uppercase tracking-widest ml-1">
-                        Sale
-                      </label>
-                      <input
-                        type="number"
-                        value={variant.salePrice}
-                        onChange={(e) => {
-                          const newVariants = [...formData.variants];
-                          newVariants[index].salePrice = e.target.value;
-                          setFormData({ ...formData, variants: newVariants });
-                        }}
-                        placeholder="450"
-                        className="w-full px-3 py-2 bg-brand-50 ring-1 ring-brand-100 border-none rounded-xl text-xs font-bold text-brand-700 outline-none focus:ring-2 focus:ring-brand-200"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-[70px] space-y-1">
-                      <label className="text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
-                        Stock
-                      </label>
-                      <input
-                        type="number"
-                        value={variant.stock}
-                        onChange={(e) => {
-                          const newVariants = [...formData.variants];
-                          newVariants[index].stock = e.target.value;
-                          setFormData({ ...formData, variants: newVariants });
-                        }}
-                        placeholder="10"
-                        className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
-                      />
-                    </div>
-                    <div className="flex-[1.5] min-w-[110px] space-y-1">
-                      <label className="text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
-                        Product Code
-                      </label>
-                      <input
-                        value={variant.sku}
-                        onChange={(e) => {
-                          const newVariants = [...formData.variants];
-                          newVariants[index].sku = e.target.value;
-                          setFormData({ ...formData, variants: newVariants });
-                        }}
-                        placeholder={makeSku(formData.name, index + 1)}
-                        className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-primary/10"
-                      />
-                    </div>
-                    <div className="flex-none flex justify-end pb-1">
-                      <button
-                        onClick={() => {
-                          if (formData.variants.length > 1) {
+                    className="p-4 sm:p-5 bg-slate-50/90 rounded-2xl border border-slate-200/80 shadow-xs space-y-4 relative transition-all hover:border-slate-300">
+                    {/* Top Bar: Variant Badge & Remove Action */}
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-1 bg-white border border-slate-200 text-slate-700 font-bold text-xs rounded-lg shadow-2xs flex items-center gap-1.5">
+                          <HiOutlineSwatch className="h-3.5 w-3.5 text-primary" />
+                          <span>Variant #{index + 1}</span>
+                        </span>
+                        {variant.name && (
+                          <span className="text-xs font-bold text-slate-500 truncate max-w-[200px]">
+                            — {variant.name}
+                          </span>
+                        )}
+                      </div>
+
+                      {formData.variants.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
                             setFormData((prev) => {
                               const remaining = prev.variants
-                                .map((variant, idx) => ({ variant, oldIndex: idx + 1 }))
+                                .map((item, idx) => ({ variant: item, oldIndex: idx + 1 }))
                                 .filter((item) => item.oldIndex !== index + 1)
                                 .map((item, newIdx) => {
                                   const shouldAuto =
@@ -740,16 +653,142 @@ const AddProduct = () => {
                                 });
                               return { ...prev, variants: remaining };
                             });
-                          }
-                        }}
-                        className="p-2 text-slate-300 hover:text-rose-500 transition-colors">
-                        <HiOutlineTrash className="h-4 w-4" />
-                      </button>
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title="Remove variant">
+                          <HiOutlineTrash className="h-4 w-4" />
+                          <span>Remove</span>
+                        </button>
+                      )}
                     </div>
 
-                    <div className="col-span-12 grid grid-cols-1 md:grid-cols-12 gap-4 items-end mt-2 pt-2 border-t border-slate-200/50">
-                      <div className="col-span-12 md:col-span-6 space-y-1">
-                        <label className="text-xs font-bold text-slate-600 uppercase tracking-widest ml-1">
+                    {/* Row 1: Variant Name & Product Code (SKU) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider ml-1">
+                          Variant Name <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          value={variant.name}
+                          onChange={(e) => {
+                            const nextValue = e.target.value;
+                            setFormData((prev) => {
+                              const newVariants = prev.variants.map((item, idx) => {
+                                if (idx !== index) return item;
+                                return { ...item, name: nextValue };
+                              });
+                              return {
+                                ...prev,
+                                variants: newVariants,
+                              };
+                            });
+                          }}
+                          placeholder="e.g. 1kg, 500g, Pack of 2..."
+                          className="w-full px-3.5 py-2.5 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider ml-1">
+                          Product Code (SKU)
+                        </label>
+                        <input
+                          value={variant.sku}
+                          onChange={(e) => {
+                            const newVariants = [...formData.variants];
+                            newVariants[index].sku = e.target.value;
+                            setFormData({ ...formData, variants: newVariants });
+                          }}
+                          placeholder={makeSku(formData.name, index + 1)}
+                          className="w-full px-3.5 py-2.5 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Row 2: Pricing & Stock (4 responsive columns) */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider ml-1">
+                          Seller Price
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                          <input
+                            type="number"
+                            value={variant.sellerPrice ?? ""}
+                            onChange={(e) => {
+                              const newVariants = [...formData.variants];
+                              newVariants[index].sellerPrice = e.target.value;
+                              setFormData({ ...formData, variants: newVariants });
+                            }}
+                            placeholder="400"
+                            className="w-full pl-7 pr-3 py-2.5 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider ml-1">
+                          Regular Price <span className="text-rose-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">₹</span>
+                          <input
+                            type="number"
+                            value={variant.price}
+                            onChange={(e) => {
+                              const newVariants = [...formData.variants];
+                              newVariants[index].price = e.target.value;
+                              setFormData({ ...formData, variants: newVariants });
+                            }}
+                            placeholder="500"
+                            className="w-full pl-7 pr-3 py-2.5 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-brand-600 uppercase tracking-wider ml-1">
+                          Sale Price
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-brand-500">₹</span>
+                          <input
+                            type="number"
+                            value={variant.salePrice}
+                            onChange={(e) => {
+                              const newVariants = [...formData.variants];
+                              newVariants[index].salePrice = e.target.value;
+                              setFormData({ ...formData, variants: newVariants });
+                            }}
+                            placeholder="450"
+                            className="w-full pl-7 pr-3 py-2.5 bg-brand-50/70 ring-1 ring-brand-200 border-none rounded-xl text-xs font-bold text-brand-700 outline-none focus:ring-2 focus:ring-brand-300 transition-all"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider ml-1">
+                          Stock Qty <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          value={variant.stock}
+                          onChange={(e) => {
+                            const newVariants = [...formData.variants];
+                            newVariants[index].stock = e.target.value;
+                            setFormData({ ...formData, variants: newVariants });
+                          }}
+                          placeholder="10"
+                          className="w-full px-3.5 py-2.5 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Row 3: Barcode Number, Scan, Generate & Download */}
+                    <div className="pt-3 border-t border-slate-200/60 flex flex-col md:flex-row items-stretch md:items-end gap-3">
+                      <div className="flex-1 min-w-[180px] space-y-1">
+                        <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider ml-1">
                           Barcode Number
                         </label>
                         <input
@@ -760,40 +799,39 @@ const AddProduct = () => {
                             setFormData({ ...formData, variants: newVariants });
                           }}
                           placeholder="Scan or type barcode number..."
-                          className="w-full px-3 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10"
+                          className="w-full px-3.5 py-2 bg-white ring-1 ring-slate-200 border-none rounded-xl text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                         />
                       </div>
-                      <div className="col-span-12 md:col-span-6 flex gap-2">
+
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
                           onClick={() => {
                             setActiveScanIndex(index);
                             setIsScannerOpen(true);
                           }}
-                          className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-1.5"
+                          className="px-3.5 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
                         >
                           Scan Barcode
                         </button>
                         <button
                           type="button"
                           onClick={() => handleGenerateBarcode(index)}
-                          className="flex-1 px-4 py-2 bg-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-300 transition-all flex items-center justify-center gap-1.5"
+                          className="px-3.5 py-2 bg-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-300 transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
                         >
                           Generate
                         </button>
-                      </div>
-                      {variant.barcode && (
-                        <div className="col-span-12 flex justify-end mt-1">
+                        {variant.barcode && (
                           <button
                             type="button"
                             onClick={() => handleDownloadBarcode(index)}
-                            className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-indigo-700 flex items-center justify-center gap-1.5"
+                            className="px-3.5 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
                           >
                             <HiOutlineArrowDownTray className="h-4 w-4" />
                             Download Barcode
                           </button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
