@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import ProductCard from "../shared/ProductCard";
 import { cn } from "@/lib/utils";
 import ExperienceBannerCarousel from "./ExperienceBannerCarousel";
@@ -43,6 +44,81 @@ const LazyLoadTrigger = ({ enabled, onVisible }) => {
   }, [enabled, onVisible]);
 
   return <div ref={ref} className="h-2 w-full" aria-hidden="true" />;
+};
+
+const SectionHorizontalRow = ({ sectionId, sectionKey, heading, allProducts, items, hasMore, loadMoreForSection }) => {
+  const scrollRef = useRef(null);
+
+  const scroll = (direction) => {
+    if (scrollRef.current) {
+      const scrollAmount = direction === "left" ? -340 : 340;
+      scrollRef.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
+    }
+  };
+
+  return (
+    <div id={`section-${sectionId}`} className="w-full relative group">
+      <div className="flex items-center justify-between mb-3 px-1">
+        {heading && (
+          <h3 className="text-lg md:text-[22px] font-bold text-black font-['Inter']">
+            {heading}
+          </h3>
+        )}
+        <span className="text-[11px] font-semibold text-slate-400">
+          {allProducts.length} items
+        </span>
+      </div>
+
+      {/* Left Navigation Arrow */}
+      {items.length > 0 && (
+        <button
+          type="button"
+          onClick={() => scroll("left")}
+          aria-label="Scroll left"
+          className="absolute -left-2 md:-left-4 top-[58%] -translate-y-1/2 z-30 h-10 w-10 bg-white/95 backdrop-blur-md shadow-lg rounded-full flex items-center justify-center border border-slate-200/80 cursor-pointer hover:bg-white text-slate-800 transition-all hover:scale-110 active:scale-95">
+          <ChevronLeft size={22} strokeWidth={2.5} />
+        </button>
+      )}
+
+      {/* Right Navigation Arrow */}
+      {items.length > 0 && (
+        <button
+          type="button"
+          onClick={() => scroll("right")}
+          aria-label="Scroll right"
+          className="absolute -right-2 md:-right-4 top-[58%] -translate-y-1/2 z-30 h-10 w-10 bg-white/95 backdrop-blur-md shadow-lg rounded-full flex items-center justify-center border border-slate-200/80 cursor-pointer hover:bg-white text-slate-800 transition-all hover:scale-110 active:scale-95">
+          <ChevronRight size={22} strokeWidth={2.5} />
+        </button>
+      )}
+
+      <div
+        ref={scrollRef}
+        className="relative z-10 flex overflow-x-auto gap-3 md:gap-6 pb-2 md:pb-3 no-scrollbar snap-x snap-mandatory scroll-smooth"
+        onScroll={(e) => {
+          if (!hasMore) return;
+          const node = e.currentTarget;
+          const distanceToEnd =
+            node.scrollWidth - node.scrollLeft - node.clientWidth;
+          if (distanceToEnd < 220) {
+            loadMoreForSection(sectionKey, allProducts.length);
+          }
+        }}
+      >
+        {items.map((product) => (
+          <div
+            key={product._id || product.id}
+            className="w-[148px] sm:w-[164px] md:w-[260px] shrink-0 snap-start smooth-transform"
+          >
+            <ProductCard product={product} compact={true} neutralBg={true} />
+          </div>
+        ))}
+      </div>
+      <LazyLoadTrigger
+        enabled={hasMore}
+        onVisible={() => loadMoreForSection(sectionKey, allProducts.length)}
+      />
+    </div>
+  );
 };
 
 const SectionRenderer = ({ sections = [], productsById = {}, categoriesById = {}, subcategoriesById = {} }) => {
@@ -292,47 +368,16 @@ const SectionRenderer = ({ sections = [], productsById = {}, categoriesById = {}
             const hasMore = items.length < allProducts.length;
 
             return (
-            <div
-              key={section._id || sectionKey}
-              id={`section-${section._id}`}
-              className="w-full"
-            >
-                <div className="flex items-center justify-between mb-3 px-1">
-                  {heading && (
-                    <h3 className="text-lg md:text-[22px] font-bold text-black font-['Inter']">
-                      {heading}
-                    </h3>
-                  )}
-                  <span className="text-[11px] font-semibold text-slate-400">
-                    {allProducts.length} items
-                  </span>
-                </div>
-                <div
-                  className="relative z-10 flex overflow-x-auto gap-3 md:gap-6 pb-2 md:pb-3 no-scrollbar snap-x snap-mandatory scroll-smooth"
-                  onScroll={(e) => {
-                    if (!hasMore) return;
-                    const node = e.currentTarget;
-                    const distanceToEnd =
-                      node.scrollWidth - node.scrollLeft - node.clientWidth;
-                    if (distanceToEnd < 220) {
-                      loadMoreForSection(sectionKey, allProducts.length);
-                    }
-                  }}
-                >
-                  {items.map((product) => (
-                    <div
-                      key={product._id || product.id}
-                      className="w-[148px] sm:w-[164px] md:w-[260px] shrink-0 snap-start smooth-transform"
-                    >
-                      <ProductCard product={product} compact={true} neutralBg={true} />
-                    </div>
-                  ))}
-                </div>
-                <LazyLoadTrigger
-                  enabled={hasMore}
-                  onVisible={() => loadMoreForSection(sectionKey, allProducts.length)}
-                />
-              </div>
+              <SectionHorizontalRow
+                key={section._id || sectionKey}
+                sectionId={section._id}
+                sectionKey={sectionKey}
+                heading={heading}
+                allProducts={allProducts}
+                items={items}
+                hasMore={hasMore}
+                loadMoreForSection={loadMoreForSection}
+              />
             );
           }
 

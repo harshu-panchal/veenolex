@@ -39,25 +39,42 @@ export const recordOfflineSale = async (saleData) => {
         throw new Error(`❌ Seller does not own product: ${product.name}`);
       }
 
-      if (product.stock < item.quantity) {
+      const totalProductStock = Array.isArray(product.variants) && product.variants.length > 0
+        ? product.variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
+        : Number(product.stock || 0);
+
+      if (totalProductStock < item.quantity) {
         throw new Error(
-          `❌ Insufficient stock for ${product.name}. Available: ${product.stock}, Requested: ${item.quantity}`
+          `❌ Insufficient stock for ${product.name}. Available: ${totalProductStock}, Requested: ${item.quantity}`
         );
       }
 
-      const subTotal = product.price * item.quantity;
+      const subTotal = (item.pricePerUnit || product.salePrice || product.price) * item.quantity;
       grandTotal += subTotal;
 
       processedItems.push({
         productId: product._id,
         productName: product.name,
         quantity: item.quantity,
-        pricePerUnit: product.price,
-        subTotal: subTotal
+        pricePerUnit: item.pricePerUnit || product.salePrice || product.price,
+        subTotal: subTotal,
+        variantSku: item.variantSku || ""
       });
 
-      // Prepare for stock deduction
-      product.stock -= item.quantity;
+      // Prepare for stock deduction (both root stock & variant stock if present)
+      product.stock = Math.max(0, (product.stock || 0) - item.quantity);
+      if (Array.isArray(product.variants) && product.variants.length > 0) {
+        let vIndex = -1;
+        if (item.variantSku) {
+          vIndex = product.variants.findIndex(
+            (v) => String(v.sku || "").trim() === String(item.variantSku).trim()
+          );
+        }
+        if (vIndex === -1) vIndex = 0;
+        if (product.variants[vIndex]) {
+          product.variants[vIndex].stock = Math.max(0, (product.variants[vIndex].stock || 0) - item.quantity);
+        }
+      }
       productDocsToSave.push(product);
     }
 
@@ -226,7 +243,19 @@ export const deleteOfflineSale = async (saleId) => {
     for (const item of sale.items) {
       const product = await Product.findById(item.productId);
       if (product) {
-        product.stock += item.quantity;
+        product.stock = (product.stock || 0) + item.quantity;
+        if (Array.isArray(product.variants) && product.variants.length > 0) {
+          let vIndex = -1;
+          if (item.variantSku) {
+            vIndex = product.variants.findIndex(
+              (v) => String(v.sku || "").trim() === String(item.variantSku).trim()
+            );
+          }
+          if (vIndex === -1) vIndex = 0;
+          if (product.variants[vIndex]) {
+            product.variants[vIndex].stock = (product.variants[vIndex].stock || 0) + item.quantity;
+          }
+        }
         await product.save();
         restoredQuantity += item.quantity;
       }

@@ -57,7 +57,39 @@ const Analytics = () => {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [chartRange, setChartRange] = useState("Daily");
+  const [dateFilter, setDateFilter] = useState("7days"); // "today" | "yesterday" | "7days" | "30days" | "custom"
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const hasFetchedOnce = useRef(false);
+
+  const dateRangeBounds = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+
+    if (dateFilter === "today") {
+      return { start: todayStr, end: todayStr };
+    }
+    if (dateFilter === "yesterday") {
+      const y = new Date(now);
+      y.setDate(y.getDate() - 1);
+      const yStr = y.toISOString().slice(0, 10);
+      return { start: yStr, end: yStr };
+    }
+    if (dateFilter === "7days") {
+      const s = new Date(now);
+      s.setDate(s.getDate() - 7);
+      return { start: s.toISOString().slice(0, 10), end: todayStr };
+    }
+    if (dateFilter === "30days") {
+      const s = new Date(now);
+      s.setDate(s.getDate() - 30);
+      return { start: s.toISOString().slice(0, 10), end: todayStr };
+    }
+    if (dateFilter === "custom") {
+      return { start: startDate || todayStr, end: endDate || todayStr };
+    }
+    return { start: "", end: "" };
+  }, [dateFilter, startDate, endDate]);
 
   useEffect(() => {
     const fetchAnalytics = async () => {
@@ -101,38 +133,70 @@ const Analytics = () => {
     fetchAnalytics();
   }, [chartRange]);
 
+  const filteredSalesTrend = useMemo(() => {
+    const rawTrend = Array.isArray(statsData?.salesTrend) ? statsData.salesTrend : [];
+    if (!dateRangeBounds.start || !dateRangeBounds.end) return rawTrend;
+
+    return rawTrend.filter((item) => {
+      const itemDateStr = item.date || item.day || item._id;
+      if (!itemDateStr) return true;
+      const parsed = new Date(itemDateStr).toISOString().slice(0, 10);
+      return parsed >= dateRangeBounds.start && parsed <= dateRangeBounds.end;
+    });
+  }, [statsData?.salesTrend, dateRangeBounds]);
+
+  const filteredOverview = useMemo(() => {
+    if (!dateRangeBounds.start || !dateRangeBounds.end) {
+      return statsData?.overview ?? {};
+    }
+    if (filteredSalesTrend.length > 0) {
+      const totalSalesVal = filteredSalesTrend.reduce((sum, item) => sum + (Number(item.sales || item.totalSales || 0)), 0);
+      const totalOrdersVal = filteredSalesTrend.reduce((sum, item) => sum + (Number(item.orders || item.totalOrders || 0)), 0);
+      const aovVal = totalOrdersVal > 0 ? Math.round(totalSalesVal / totalOrdersVal) : 0;
+      return {
+        totalSales: `₹${totalSalesVal.toLocaleString("en-IN")}`,
+        totalOrders: totalOrdersVal.toString(),
+        avgOrderValue: `₹${aovVal.toLocaleString("en-IN")}`,
+        conversionRate: statsData?.overview?.conversionRate || "0%",
+        salesTrend: statsData?.overview?.salesTrend || "0%",
+        ordersTrend: statsData?.overview?.ordersTrend || "0%",
+      };
+    }
+    return statsData?.overview ?? {};
+  }, [statsData?.overview, filteredSalesTrend, dateRangeBounds]);
+
   const stats = [
     {
       label: "Total Sales",
-      value: statsData?.overview?.totalSales || "₹0",
-      trend: statsData?.overview?.salesTrend || "0%",
+      value: filteredOverview?.totalSales || "₹0",
+      trend: filteredOverview?.salesTrend || "0%",
       icon: HiOutlineArrowTrendingUp,
       color: "text-brand-600",
       bg: "bg-brand-50",
     },
     {
       label: "Total Orders",
-      value: statsData?.overview?.totalOrders || "0",
-      trend: statsData?.overview?.ordersTrend || "0%",
+      value: filteredOverview?.totalOrders || "0",
+      trend: filteredOverview?.ordersTrend || "0%",
       icon: HiOutlineShoppingBag,
       color: "text-brand-600",
       bg: "bg-brand-50",
     },
     {
       label: "Avg Order Value",
-      value: statsData?.overview?.avgOrderValue || "₹0",
-      trend: "0%", // Trend for AOV can be added later
+      value: filteredOverview?.avgOrderValue || "₹0",
+      trend: "0%",
       icon: HiOutlineUsers,
       color: "text-amber-600",
       bg: "bg-amber-50",
     },
     {
       label: "Conversion Rate",
-      value: statsData?.overview?.conversionRate || "0%",
+      value: filteredOverview?.conversionRate || "0%",
       trend: "0%",
       icon: HiOutlineChartBar,
-      color: "text-rose-600",
-      bg: "bg-rose-50",
+      color: "text-brand-600",
+      bg: "bg-brand-50",
     },
   ];
 
@@ -263,6 +327,56 @@ const Analytics = () => {
               <HiOutlineArrowDownTray className="h-4 w-4 shrink-0" />
               <span>{isExporting ? "DOWNLOADING..." : "DOWNLOAD REPORT"}</span>
             </ShimmerButton>
+          </div>
+
+          {/* DATEWISE FILTER BAR */}
+          <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm mt-1">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 shrink-0">
+              <HiOutlineCalendarDays className="h-4 w-4 text-brand-600" />
+              <span>Date Filter:</span>
+            </div>
+
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 overflow-x-auto scrollbar-hide">
+              {[
+                { label: "Today", value: "today" },
+                { label: "Yesterday", value: "yesterday" },
+                { label: "Last 7 Days", value: "7days" },
+                { label: "Last 30 Days", value: "30days" },
+                { label: "Custom Range", value: "custom" },
+              ].map((preset) => (
+                <button
+                  key={preset.value}
+                  type="button"
+                  onClick={() => setDateFilter(preset.value)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap",
+                    dateFilter === preset.value
+                      ? "bg-white text-slate-900 shadow-sm border border-slate-200"
+                      : "text-slate-600 hover:text-slate-900"
+                  )}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            {dateFilter === "custom" && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-primary/10"
+                />
+                <span className="text-xs text-slate-400 font-bold">to</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-primary/10"
+                />
+              </div>
+            )}
           </div>
         </div>
       </BlurFade>

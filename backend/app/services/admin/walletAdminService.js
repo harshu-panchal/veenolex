@@ -86,8 +86,31 @@ export async function getSellerWithdrawalsData({ page, limit, skip }) {
   };
 }
 
-export async function getSellerTransactionsData({ page, limit, skip }) {
+export async function getSellerTransactionsData({ page, limit, skip, sellerId, status, type }) {
   const query = { userModel: "Seller" };
+
+  if (sellerId && sellerId !== "all") {
+    query.user = sellerId;
+  }
+  if (status && status !== "all") {
+    if (status === "paid" || status === "settled") {
+      query.status = "Settled";
+    } else if (status === "pending") {
+      query.status = "Pending";
+    } else {
+      query.status = new RegExp(`^${status}$`, "i");
+    }
+  }
+  if (type && type !== "all") {
+    if (type === "sale") {
+      query.type = { $in: ["Seller Earning", "Order Payment"] };
+    } else if (type === "payout") {
+      query.type = { $in: ["Withdrawal", "Payout"] };
+    } else if (type === "refund") {
+      query.type = { $in: ["Refund", "Wallet Refund"] };
+    }
+  }
+
   const transactions = await Transaction.find(query)
     .populate("user", "name shopName phone bankDetails")
     .populate({

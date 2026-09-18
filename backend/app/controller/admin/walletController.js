@@ -58,12 +58,13 @@ export const getSellerWithdrawals = async (req, res) => {
 
 export const getSellerTransactions = async (req, res) => {
   try {
+    const { sellerId, status, type } = req.query;
     const { page, limit, skip } = getPagination(req, {
       defaultLimit: 25,
       maxLimit: 200,
     });
 
-    const data = await getSellerTransactionsData({ page, limit, skip });
+    const data = await getSellerTransactionsData({ page, limit, skip, sellerId, status, type });
     return handleResponse(res, 200, "Seller transactions fetched", data);
   } catch (error) {
     return handleResponse(res, 500, error.message);

@@ -66,6 +66,22 @@ export const OfflineSalesForm = ({ sellerProducts = [], onSaleRecorded = null })
 
   const selectedProduct = sellerProducts.find(p => p._id === currentProductId);
 
+  const getEffectivePrice = (product) => {
+    if (!product) return 0;
+    const sPrice = Number(product.salePrice);
+    if (!isNaN(sPrice) && sPrice > 0) return sPrice;
+    const regPrice = Number(product.price);
+    return !isNaN(regPrice) ? regPrice : 0;
+  };
+
+  const resolveProductStock = (product) => {
+    if (!product) return 0;
+    if (Array.isArray(product.variants) && product.variants.length > 0) {
+      return product.variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+    }
+    return Number(product.stock || 0);
+  };
+
   // ═══════════════════════════════════════════════════════════════
   // CART ACTIONS
   // ═══════════════════════════════════════════════════════════════
@@ -82,9 +98,11 @@ export const OfflineSalesForm = ({ sellerProducts = [], onSaleRecorded = null })
     // Check stock for this addition
     const existingCartItem = cart.find(item => item.productId === currentProductId);
     const requestedTotalQty = (existingCartItem ? existingCartItem.quantity : 0) + parseInt(currentQuantity);
-    
-    if (requestedTotalQty > selectedProduct.stock) {
-      setError(`❌ Insufficient stock. Available: ${selectedProduct.stock}, Requested Total: ${requestedTotalQty}`);
+    const availableStock = resolveProductStock(selectedProduct);
+    const effectivePrice = getEffectivePrice(selectedProduct);
+
+    if (requestedTotalQty > availableStock) {
+      setError(`❌ Insufficient stock. Available: ${availableStock}, Requested Total: ${requestedTotalQty}`);
       return;
     }
 
@@ -92,7 +110,7 @@ export const OfflineSalesForm = ({ sellerProducts = [], onSaleRecorded = null })
       // Update existing
       setCart(cart.map(item => 
         item.productId === currentProductId 
-          ? { ...item, quantity: requestedTotalQty, subTotal: requestedTotalQty * item.price }
+          ? { ...item, quantity: requestedTotalQty, price: effectivePrice, subTotal: requestedTotalQty * effectivePrice }
           : item
       ));
     } else {
@@ -100,10 +118,10 @@ export const OfflineSalesForm = ({ sellerProducts = [], onSaleRecorded = null })
       setCart([...cart, {
         productId: selectedProduct._id,
         name: selectedProduct.name,
-        price: selectedProduct.price,
+        price: effectivePrice,
         quantity: parseInt(currentQuantity),
-        subTotal: selectedProduct.price * parseInt(currentQuantity),
-        maxStock: selectedProduct.stock
+        subTotal: effectivePrice * parseInt(currentQuantity),
+        maxStock: availableStock
       }]);
     }
 
@@ -380,7 +398,7 @@ export const OfflineSalesForm = ({ sellerProducts = [], onSaleRecorded = null })
               <option value="">-- Choose Product --</option>
               {sellerProducts.map((product) => (
                 <option key={product._id} value={product._id}>
-                  {product.name} (Stock: {product.stock}) - ₹{product.price || product.salePrice}
+                  {product.name} (Stock: {resolveProductStock(product)}) - ₹{getEffectivePrice(product)}
                 </option>
               ))}
             </select>
@@ -450,7 +468,7 @@ export const OfflineSalesForm = ({ sellerProducts = [], onSaleRecorded = null })
                     onMouseEnter={() => setHighlightedIndex(index)}
                     onMouseLeave={() => setHighlightedIndex(-1)}
                   >
-                    {product.name} (Stock: {product.stock}) - ₹{product.price}
+                    {product.name} (Stock: {resolveProductStock(product)}) - ₹{getEffectivePrice(product)}
                   </li>
                 ))}
                 {filteredProducts.length === 0 && (
@@ -467,7 +485,7 @@ export const OfflineSalesForm = ({ sellerProducts = [], onSaleRecorded = null })
             <input
               type="number"
               min="1"
-              max={selectedProduct?.stock || 9999}
+              max={resolveProductStock(selectedProduct) || 9999}
               value={currentQuantity}
               onChange={(e) => {
                 const val = e.target.value === "" ? "" : Math.max(1, parseInt(e.target.value, 10) || 1);

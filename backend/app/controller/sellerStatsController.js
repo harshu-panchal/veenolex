@@ -38,7 +38,7 @@ export const getSellerEarnings = async (req, res) => {
             createdAt: { $gte: fortyDaysAgo }
         })
             .sort({ createdAt: -1 })
-            .populate("order", "orderId");
+            .populate("order", "orderId paymentMode posPaymentMethod payment");
 
         const settledBalance = transactions
             .filter(t => t.status === 'Settled')
@@ -122,16 +122,43 @@ export const getSellerEarnings = async (req, res) => {
                 totalWithdrawn: totalWithdrawn
             },
             monthlyChart: chartData,
-            ledger: transactions.map(t => ({
-                id: (t.reference || t._id).toString(),
-                type: t.type,
-                amount: t.amount,
-                status: t.status,
-                date: t.createdAt.toISOString().split('T')[0],
-                time: t.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                customer: t.type === 'Withdrawal' ? 'Bank Transfer' : 'Customer',
-                ref: t.order ? `#${t.order.orderId}` : t.reference || t._id
-            }))
+            ledger: transactions.map(t => {
+                let paymentMethod = "Online";
+                if (t.type === 'Withdrawal') {
+                    paymentMethod = 'Bank Transfer';
+                } else if (t.order) {
+                    const rawMode = (t.order.paymentMode || t.order.posPaymentMethod || t.order.payment?.method || "").toUpperCase();
+                    if (rawMode.includes("COD") || rawMode.includes("CASH")) {
+                        paymentMethod = "COD";
+                    } else if (rawMode.includes("ONLINE") || rawMode.includes("UPI") || rawMode.includes("CARD") || rawMode.includes("RAZORPAY") || rawMode.includes("PAYMENT")) {
+                        paymentMethod = "Online";
+                    } else if (rawMode.includes("WALLET")) {
+                        paymentMethod = "Wallet";
+                    } else if (rawMode.includes("CREDIT")) {
+                        paymentMethod = "Credit";
+                    } else if (t.order.paymentMode) {
+                        paymentMethod = t.order.paymentMode;
+                    }
+                } else if (t.meta?.paymentMethod) {
+                    const rawMeta = String(t.meta.paymentMethod).toUpperCase();
+                    if (rawMeta.includes("CASH") || rawMeta.includes("COD")) paymentMethod = "COD";
+                    else if (rawMeta.includes("ONLINE") || rawMeta.includes("UPI") || rawMeta.includes("CARD")) paymentMethod = "Online";
+                    else paymentMethod = t.meta.paymentMethod;
+                }
+
+                return {
+                    id: (t.reference || t._id).toString(),
+                    type: t.type,
+                    amount: t.amount,
+                    status: t.status,
+                    date: t.createdAt.toISOString().split('T')[0],
+                    time: t.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    customer: t.type === 'Withdrawal' ? 'Bank Transfer' : 'Customer',
+                    ref: t.order ? `#${t.order.orderId}` : t.reference || t._id,
+                    paymentMethod: paymentMethod,
+                    paymentMode: paymentMethod
+                };
+            })
         });
     } catch (error) {
         return handleResponse(res, 500, error.message);

@@ -36,6 +36,38 @@ const Transactions = () => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [dateFilter, setDateFilter] = useState("All"); // "All" | "Today" | "Yesterday" | "Last 7 Days" | "Last 30 Days" | "Custom"
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  const dateRangeBounds = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+
+    if (dateFilter === "Today") {
+      return { start: todayStr, end: todayStr };
+    }
+    if (dateFilter === "Yesterday") {
+      const y = new Date(now);
+      y.setDate(y.getDate() - 1);
+      const yStr = y.toISOString().slice(0, 10);
+      return { start: yStr, end: yStr };
+    }
+    if (dateFilter === "Last 7 Days") {
+      const s = new Date(now);
+      s.setDate(s.getDate() - 7);
+      return { start: s.toISOString().slice(0, 10), end: todayStr };
+    }
+    if (dateFilter === "Last 30 Days") {
+      const s = new Date(now);
+      s.setDate(s.getDate() - 30);
+      return { start: s.toISOString().slice(0, 10), end: todayStr };
+    }
+    if (dateFilter === "Custom") {
+      return { start: startDate || todayStr, end: endDate || todayStr };
+    }
+    return { start: "", end: "" };
+  }, [dateFilter, startDate, endDate]);
 
   const stats = [
     {
@@ -61,17 +93,28 @@ const Transactions = () => {
     },
   ];
 
+  const getPaymentMethodLabel = (txn) => {
+    if (txn.paymentMethod) return txn.paymentMethod;
+    if (txn.paymentMode) return txn.paymentMode;
+    if (txn.type === "Withdrawal") return "Bank Transfer";
+    const refStr = (txn.ref || txn.id || "").toString().toLowerCase();
+    const typeStr = (txn.type || "").toString().toLowerCase();
+    if (refStr.includes("cod") || typeStr.includes("cod") || typeStr.includes("cash")) return "COD";
+    if (typeStr.includes("withdrawal")) return "Bank Transfer";
+    return "Online";
+  };
+
   const ledger = Array.isArray(data?.ledger) ? data.ledger : [];
   const filteredTransactions = useMemo(() => {
     const term = searchTerm.toLowerCase();
     const result = ledger.filter((txn) => {
-      if (!term && activeTab === "All") return true;
       const id = (txn.id ?? txn.ref ?? "").toString().toLowerCase();
       const customer = (txn.customer ?? "").toString().toLowerCase();
       const ref = (txn.ref ?? "").toString().toLowerCase();
       const status = (txn.status ?? "").toString().toLowerCase();
       const type = (txn.type ?? "").toString().toLowerCase();
       const amount = Math.abs(Number(txn.amount ?? 0)).toString();
+      const pm = getPaymentMethodLabel(txn).toLowerCase();
       const matchesSearch =
         !term ||
         id.includes(term) ||
@@ -79,17 +122,28 @@ const Transactions = () => {
         ref.includes(term) ||
         status.includes(term) ||
         type.includes(term) ||
-        amount.includes(term);
+        amount.includes(term) ||
+        pm.includes(term);
       const txnType = (txn.type ?? "").toString();
       const matchesType = activeTab === "All" || txnType === activeTab;
-      return matchesSearch && matchesType;
+
+      let matchesDate = true;
+      if (dateRangeBounds.start && dateRangeBounds.end) {
+        const rawDate = txn.createdAt ? new Date(txn.createdAt) : (txn.date ? new Date(txn.date) : null);
+        if (rawDate && !isNaN(rawDate.getTime())) {
+          const dateStr = rawDate.toISOString().slice(0, 10);
+          matchesDate = dateStr >= dateRangeBounds.start && dateStr <= dateRangeBounds.end;
+        }
+      }
+
+      return matchesSearch && matchesType && matchesDate;
     });
     const totalPages = Math.max(1, Math.ceil(result.length / pageSize));
     if (page > totalPages) {
       setPage(1);
     }
     return result;
-  }, [searchTerm, activeTab, ledger, page, pageSize]);
+  }, [searchTerm, activeTab, dateRangeBounds, ledger, page, pageSize]);
 
   const paginatedTransactions = useMemo(() => {
     const start = (page - 1) * pageSize;
@@ -102,6 +156,7 @@ const Transactions = () => {
       const record = {
         id: txn.id ?? txn.ref ?? "",
         type: txn.type ?? "",
+        paymentMethod: getPaymentMethodLabel(txn),
         amount: `₹${Math.abs(Number(txn.amount ?? 0)).toLocaleString()}`,
         status: txn.status ?? "",
         date:
@@ -123,6 +178,7 @@ const Transactions = () => {
       exportToCSV([record], `Transaction_${record.id || "receipt"}`, {
         id: "Transaction ID",
         type: "Type",
+        paymentMethod: "Payment Method",
         amount: "Amount",
         status: "Status",
         date: "Date",
@@ -167,6 +223,7 @@ const Transactions = () => {
                   const exportData = filteredTransactions.map((txn) => ({
                     id: txn.id ?? txn.ref ?? "",
                     type: txn.type ?? "",
+                    paymentMethod: getPaymentMethodLabel(txn),
                     amount: `₹${Number(txn.amount ?? 0).toLocaleString()}`,
                     status: txn.status ?? "",
                     date: txn.date ?? (txn.createdAt ? new Date(txn.createdAt).toLocaleDateString() : ""),
@@ -178,6 +235,7 @@ const Transactions = () => {
                   exportToCSV(exportData, "Seller_Transactions", {
                     id: "Transaction ID",
                     type: "Type",
+                    paymentMethod: "Payment Method",
                     amount: "Amount",
                     status: "Status",
                     date: "Date",
@@ -262,6 +320,57 @@ const Transactions = () => {
             </div>
           </div>
 
+          {/* DATEWISE FILTER BAR */}
+          <div className="px-6 py-3 border-b border-slate-100 bg-slate-50/50 flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 shrink-0">
+              <HiOutlineCalendarDays className="h-4 w-4 text-brand-600" />
+              <span>Date Filter:</span>
+            </div>
+
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 overflow-x-auto scrollbar-hide">
+              {[
+                { label: "All Time", value: "All" },
+                { label: "Today", value: "Today" },
+                { label: "Yesterday", value: "Yesterday" },
+                { label: "Last 7 Days", value: "Last 7 Days" },
+                { label: "Last 30 Days", value: "Last 30 Days" },
+                { label: "Custom Range", value: "Custom" },
+              ].map((preset) => (
+                <button
+                  key={preset.value}
+                  type="button"
+                  onClick={() => setDateFilter(preset.value)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap",
+                    dateFilter === preset.value
+                      ? "bg-white text-slate-900 shadow-sm border border-slate-200"
+                      : "text-slate-600 hover:text-slate-900"
+                  )}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            {dateFilter === "Custom" && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-primary/10"
+                />
+                <span className="text-xs text-slate-400 font-bold">to</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-primary/10"
+                />
+              </div>
+            )}
+          </div>
+
           {/* Table */}
           <div className="overflow-x-auto">
             <table className="w-full text-left min-w-[720px]">
@@ -272,6 +381,9 @@ const Transactions = () => {
                   </th>
                   <th className="px-6 py-4 text-xs font-black text-slate-600 uppercase tracking-widest">
                     Reference
+                  </th>
+                  <th className="px-6 py-4 text-xs font-black text-slate-600 uppercase tracking-widest">
+                    Payment Method
                   </th>
                   <th className="px-6 py-4 text-xs font-black text-slate-600 uppercase tracking-widest">
                     Amount
@@ -288,7 +400,7 @@ const Transactions = () => {
                 <AnimatePresence>
                   {filteredTransactions.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-slate-600 text-sm font-medium">
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-600 text-sm font-medium">
                         {ledger.length === 0 ? "No transactions yet." : "No matches for your search or filter."}
                       </td>
                     </tr>
@@ -340,6 +452,27 @@ const Transactions = () => {
                             {txn.date ?? (txn.createdAt ? new Date(txn.createdAt).toLocaleDateString() : "—")} • {txn.time ?? (txn.createdAt ? new Date(txn.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—")}
                           </span>
                         </div>
+                      </td>
+                      <td className="px-6 py-5">
+                        {(() => {
+                          const pm = getPaymentMethodLabel(txn);
+                          const isCOD = pm === "COD" || pm === "Cash";
+                          const isBank = pm === "Bank Transfer";
+                          return (
+                            <Badge
+                              className={cn(
+                                "text-[10px] sm:text-xs font-black uppercase tracking-wider px-2 py-0.5 rounded-md border-none",
+                                isCOD
+                                  ? "bg-amber-100 text-amber-800"
+                                  : isBank
+                                  ? "bg-purple-100 text-purple-800"
+                                  : "bg-emerald-100 text-emerald-800"
+                              )}
+                            >
+                              {pm}
+                            </Badge>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-5">
                         <p
@@ -445,6 +578,12 @@ const Transactions = () => {
                 <span className="text-slate-600 font-bold">Type</span>
                 <span className="text-slate-900 font-black">
                   {selectedTxn.type ?? "—"}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-600 font-bold">Payment Method</span>
+                <span className="text-slate-900 font-black">
+                  {getPaymentMethodLabel(selectedTxn)}
                 </span>
               </div>
               <div className="flex justify-between items-center text-sm">

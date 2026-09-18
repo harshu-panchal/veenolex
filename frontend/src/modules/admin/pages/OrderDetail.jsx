@@ -459,7 +459,16 @@ const OrderDetail = () => {
                             </div>
                             <div className="flex items-center justify-between px-2">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gateway Method</span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-900">{order.payment?.method || 'CASH'}</span>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-900">
+                                    {(() => {
+                                        const raw = (order.paymentMode || order.posPaymentMethod || order.payment?.method || '').toString().toUpperCase();
+                                        if (raw.includes('COD') || raw.includes('CASH')) return 'COD';
+                                        if (raw.includes('ONLINE') || raw.includes('UPI') || raw.includes('CARD') || raw.includes('RAZORPAY') || raw.includes('PHONEPE')) return 'ONLINE';
+                                        if (raw.includes('WALLET')) return 'WALLET';
+                                        if (raw.includes('CREDIT')) return 'CREDIT';
+                                        return order.payment?.method ? order.payment.method.toUpperCase() : 'ONLINE';
+                                    })()}
+                                </span>
                             </div>
                         </div>
                     </Card>

@@ -406,25 +406,55 @@ export const approveSellerRequest = async (req, res) => {
         delete baseObj.createdAt;
         delete baseObj.updatedAt;
 
-        // Atomic upsert: if product exists for this seller+master, increment stock.
-        // If it doesn't exist, create it with all base product properties.
-        await Product.findOneAndUpdate(
-          { adminProductId: actualMasterId, sellerId: request.sellerId },
-          {
-            $inc: { stock: quantity },
-            $setOnInsert: {
-              ...baseObj,
-              sellerId: request.sellerId,
-              adminProductId: actualMasterId,
-              slug: `${baseProduct.slug}${uniqueSuffix}`,
-              sku: `${baseProduct.sku || 'SKU'}${uniqueSuffix}`,
-              lastSubmittedByRole: "admin",
-              approvalStatus: "approved",
-              approvalNote: "Automatically approved from admin warehouse delivery.",
-            },
-          },
-          { upsert: true, new: true }
-        );
+        // Atomic upsert or find & update to ensure both root stock & variant stock are incremented
+        const existingSellerProduct = await Product.findOne({ adminProductId: actualMasterId, sellerId: request.sellerId });
+
+        if (existingSellerProduct) {
+          existingSellerProduct.stock = (existingSellerProduct.stock || 0) + quantity;
+          if (Array.isArray(existingSellerProduct.variants) && existingSellerProduct.variants.length > 0) {
+            let vIndex = -1;
+            if (item.variantSku) {
+              vIndex = existingSellerProduct.variants.findIndex(
+                (v) => String(v.sku || "").trim() === String(item.variantSku).trim()
+              );
+            }
+            if (vIndex === -1) vIndex = 0;
+            if (existingSellerProduct.variants[vIndex]) {
+              existingSellerProduct.variants[vIndex].stock = (existingSellerProduct.variants[vIndex].stock || 0) + quantity;
+            }
+          }
+          await existingSellerProduct.save();
+        } else {
+          // Create new seller product from master catalog product
+          const clonedVariants = Array.isArray(baseObj.variants)
+            ? baseObj.variants.map((v) => ({ ...v, stock: 0 }))
+            : [];
+          if (clonedVariants.length > 0) {
+            let vIndex = -1;
+            if (item.variantSku) {
+              vIndex = clonedVariants.findIndex(
+                (v) => String(v.sku || "").trim() === String(item.variantSku).trim()
+              );
+            }
+            if (vIndex === -1) vIndex = 0;
+            if (clonedVariants[vIndex]) {
+              clonedVariants[vIndex].stock = quantity;
+            }
+          }
+
+          await Product.create({
+            ...baseObj,
+            stock: quantity,
+            variants: clonedVariants,
+            sellerId: request.sellerId,
+            adminProductId: actualMasterId,
+            slug: `${baseProduct.slug}${uniqueSuffix}`,
+            sku: `${baseProduct.sku || 'SKU'}${uniqueSuffix}`,
+            lastSubmittedByRole: "admin",
+            approvalStatus: "approved",
+            approvalNote: "Automatically approved from admin warehouse delivery.",
+          });
+        }
       }
     }
 

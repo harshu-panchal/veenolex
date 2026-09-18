@@ -29,6 +29,29 @@ import {
     adminRouteMatchesOrder,
 } from '@/shared/utils/orderStatus';
 
+const resolvePaymentMethod = (o) => {
+    const rawMode = (o.paymentMode || o.posPaymentMethod || o.payment?.method || '').toString().toUpperCase();
+    if (rawMode.includes('COD') || rawMode.includes('CASH')) {
+        return 'COD';
+    }
+    if (rawMode.includes('ONLINE') || rawMode.includes('UPI') || rawMode.includes('CARD') || rawMode.includes('RAZORPAY') || rawMode.includes('PHONEPE') || rawMode.includes('DIGITAL')) {
+        return 'Online';
+    }
+    if (rawMode.includes('WALLET')) {
+        return 'Wallet';
+    }
+    if (rawMode.includes('CREDIT')) {
+        return 'Credit';
+    }
+    if (o.payment?.method === 'cod' || o.payment?.method === 'cash') {
+        return 'COD';
+    }
+    if (o.payment?.method === 'online') {
+        return 'Online';
+    }
+    return 'Online';
+};
+
 const OrdersList = () => {
     const { status = 'all' } = useParams();
     const navigate = useNavigate();
@@ -58,7 +81,7 @@ const OrdersList = () => {
     const handleCSVExport = () => {
         setIsExporting(true);
         try {
-            const headers = ["Order ID", "Customer", "Seller", "Status", "Amount", "Date", "Payment"];
+            const headers = ["Order ID", "Customer", "Seller", "Status", "Amount", "Date", "Payment Method"];
             const rows = orders.map(o => [
                 o.id,
                 o.customer,
@@ -111,7 +134,7 @@ const OrdersList = () => {
                     workflowVersion: o.workflowVersion,
                     returnStatus: o.returnStatus,
                     date: new Date(o.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
-                    payment: o.payment?.method === 'cod' ? 'COD' : 'Digital',
+                    payment: resolvePaymentMethod(o),
                 }));
                 setOrders(formatted);
                 setSummary({
@@ -337,7 +360,7 @@ const OrdersList = () => {
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-300 group-focus-within:text-fuchsia-500 transition-colors" />
                         <input
                             type="text"
-                            placeholder="Search by Order ID, Customer, or Shop..."
+                            placeholder="Search by Order ID, Customer, Seller, or Payment..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full pl-11 pr-4 py-3 bg-slate-50 border-none rounded-2xl text-xs font-semibold outline-none focus:ring-2 focus:ring-fuchsia-500/10 transition-all"
@@ -367,6 +390,7 @@ const OrdersList = () => {
                                 <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Order Details</th>
                                 <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Customer</th>
                                 <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Seller</th>
+                                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Payment Method</th>
                                 <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
                                 <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Amount</th>
                                 <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
@@ -375,7 +399,7 @@ const OrdersList = () => {
                         <tbody className="divide-y divide-slate-50">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan="6" className="px-4 py-20 text-center">
+                                    <td colSpan="7" className="px-4 py-20 text-center">
                                         <div className="flex justify-center flex-col items-center gap-2">
                                             <div className="h-8 w-8 border-4 border-fuchsia-600 border-t-transparent rounded-full animate-spin"></div>
                                             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading Orders...</p>
@@ -416,6 +440,27 @@ const OrdersList = () => {
                                             <span className="text-xs font-black text-slate-700">{order.seller}</span>
                                         </div>
                                     </td>
+                                    <td className="px-4 py-5">
+                                        {(() => {
+                                            const pm = order.payment;
+                                            const isCOD = pm === "COD" || pm === "Cash";
+                                            const isWallet = pm === "Wallet";
+                                            return (
+                                                <span
+                                                    className={cn(
+                                                        "inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
+                                                        isCOD
+                                                            ? "bg-amber-100 text-amber-800 border border-amber-200"
+                                                            : isWallet
+                                                            ? "bg-purple-100 text-purple-800 border border-purple-200"
+                                                            : "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                                    )}
+                                                >
+                                                    {pm}
+                                                </span>
+                                            );
+                                        })()}
+                                    </td>
                                     <td className="px-4 py-5" onClick={(e) => e.stopPropagation()}>
                                         <div className="relative inline-block w-40">
                                             <select
@@ -437,10 +482,7 @@ const OrdersList = () => {
                                         </div>
                                     </td>
                                     <td className="px-4 py-5 text-right">
-                                        <div className="flex flex-col items-end">
-                                            <span className="text-sm font-black text-slate-900">₹{order.amount.toLocaleString()}</span>
-                                            <span className="text-[10px] font-bold text-slate-400 mt-0.5">{order.payment}</span>
-                                        </div>
+                                        <span className="text-sm font-black text-slate-900">₹{order.amount.toLocaleString()}</span>
                                     </td>
                                     <td className="px-4 py-5 text-right">
                                         <div className="flex items-center justify-end gap-2">

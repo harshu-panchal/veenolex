@@ -229,6 +229,13 @@ const ProductManagement = () => {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
   };
 
+  const resolveProductStock = (product) => {
+    if (Array.isArray(product?.variants) && product.variants.length > 0) {
+      return product.variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+    }
+    return Number(product?.stock || 0);
+  };
+
   const handleModalScrollWheel = (event) => {
     const container = event.currentTarget;
     if (container.scrollHeight <= container.clientHeight) return;
@@ -330,9 +337,13 @@ const ProductManagement = () => {
 
       let matchesStatus = filterStatus === "All";
       if (filterStatus === "Active") matchesStatus = p.status === "active";
-      if (filterStatus === "Low Stock")
-        matchesStatus = p.stock > 0 && p.stock <= resolveLowStockThreshold(p);
-      if (filterStatus === "Out of Stock") matchesStatus = p.stock === 0;
+      if (filterStatus === "Low Stock") {
+        const currentStock = resolveProductStock(p);
+        matchesStatus = currentStock > 0 && currentStock <= resolveLowStockThreshold(p);
+      }
+      if (filterStatus === "Out of Stock") {
+        matchesStatus = resolveProductStock(p) === 0;
+      }
 
       let matchesPrice = true;
       const effectivePrice = Number(p.salePrice ?? p.price ?? 0);
@@ -375,10 +386,13 @@ const ProductManagement = () => {
         (typeof total === "number" ? total : safeProducts.length),
       lowStock:
         summaryStats?.lowStock ??
-        safeProducts.filter((p) => p.stock > 0 && p.stock <= resolveLowStockThreshold(p)).length,
+        safeProducts.filter((p) => {
+          const st = resolveProductStock(p);
+          return st > 0 && st <= resolveLowStockThreshold(p);
+        }).length,
       outOfStock:
         summaryStats?.outOfStock ??
-        safeProducts.filter((p) => p.stock === 0).length,
+        safeProducts.filter((p) => resolveProductStock(p) === 0).length,
       active:
         summaryStats?.active ??
         safeProducts.filter((p) => p.status === "active").length,
@@ -865,6 +879,9 @@ const ProductManagement = () => {
                 <th className="px-6 py-3 text-center text-[10px] font-semibold text-gray-600 uppercase tracking-wider">
                   Variant
                 </th>
+                <th className="px-6 py-3 text-left text-[10px] font-semibold text-gray-600 uppercase tracking-wider">
+                  Quantity
+                </th>
                 <th className="px-6 py-3 text-center text-[10px] font-semibold text-gray-600 uppercase tracking-wider">
                   Approval
                 </th>
@@ -962,6 +979,55 @@ const ProductManagement = () => {
                         None
                       </span>
                     )}
+                  </td>
+                  <td className="px-6 py-4 min-w-[170px] align-middle">
+                    {(() => {
+                      const totalStock = resolveProductStock(p);
+                      const lowAlert = resolveLowStockThreshold(p);
+                      
+                      let barColor = "bg-emerald-500";
+                      let textColor = "text-emerald-700";
+                      let badgeBg = "bg-emerald-50 border-emerald-200";
+                      let statusLabel = "In Stock";
+
+                      if (totalStock === 0) {
+                        barColor = "bg-rose-500";
+                        textColor = "text-rose-700";
+                        badgeBg = "bg-rose-50 border-rose-200";
+                        statusLabel = "Out of Stock";
+                      } else if (totalStock <= lowAlert) {
+                        barColor = "bg-amber-500";
+                        textColor = "text-amber-700";
+                        badgeBg = "bg-amber-50 border-amber-200";
+                        statusLabel = "Low Stock";
+                      }
+
+                      const fillPercent = Math.min(100, Math.max(0, (totalStock / 50) * 100));
+
+                      return (
+                        <div className="flex flex-col gap-1.5 w-full">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={cn("text-xs font-bold font-sans", textColor)}>
+                              {totalStock} {totalStock === 1 ? "unit" : "units"}
+                            </span>
+                            <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full border", badgeBg, textColor)}>
+                              {statusLabel}
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden ring-1 ring-slate-200/60">
+                            <div
+                              className={cn("h-full transition-all duration-500 rounded-full", barColor)}
+                              style={{ width: totalStock === 0 ? "0%" : `${Math.max(fillPercent, 8)}%` }}
+                            />
+                          </div>
+                          {Array.isArray(p.variants) && p.variants.length > 0 && (
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              Across {p.variants.length} variant{p.variants.length > 1 ? "s" : ""}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-4 text-center">
                     <div className="flex flex-col items-center gap-1">

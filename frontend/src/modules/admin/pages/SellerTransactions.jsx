@@ -43,10 +43,28 @@ const SellerTransactions = () => {
     const [selectedTxn, setSelectedTxn] = useState(null);
     const [isExporting, setIsExporting] = useState(false);
     const [transactions, setTransactions] = useState([]);
+    const [registeredSellers, setRegisteredSellers] = useState([]);
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(25);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchRegisteredSellers = async () => {
+            try {
+                const res = await adminApi.getSellers();
+                if (res.data?.success || res.data) {
+                    const list = res.data.results || res.data.result || res.data.data || (Array.isArray(res.data) ? res.data : []);
+                    if (Array.isArray(list)) {
+                        setRegisteredSellers(list);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to fetch registered sellers:", err);
+            }
+        };
+        fetchRegisteredSellers();
+    }, []);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -63,7 +81,7 @@ const SellerTransactions = () => {
             if (searchTerm.trim()) params.search = searchTerm.trim();
             if (filterStatus !== 'all') params.status = filterStatus;
             if (filterType !== 'all') params.type = filterType;
-            if (selectedSeller !== 'all') params.sellerId = selectedSeller; // Assuming backend supports seller filter
+            if (selectedSeller !== 'all') params.sellerId = selectedSeller;
             
             const res = await adminApi.getSellerTransactions(params);
             if (res.data.success) {
@@ -80,6 +98,7 @@ const SellerTransactions = () => {
                         minute: '2-digit'
                     }),
                     seller: t.user?.shopName || t.user?.name || 'Unknown',
+                    sellerId: (t.user?._id || t.user || '').toString(),
                     type: t.type === 'Seller Earning' ? 'sale' :
                         (t.type === 'Withdrawal' || t.type === 'Payout') ? 'payout' :
                             t.type.toLowerCase(),
@@ -110,9 +129,25 @@ const SellerTransactions = () => {
     };
 
     const sellers = useMemo(() => {
-        const unique = Array.from(new Set(transactions.map(t => t.seller)));
-        return unique.map(name => ({ id: name, name }));
-    }, [transactions]);
+        const map = new Map();
+        // 1. Add all registered sellers
+        registeredSellers.forEach(s => {
+            const id = (s._id || s.id || '').toString();
+            const name = s.shopName || s.name || 'Unnamed Merchant';
+            if (id && !map.has(id)) {
+                map.set(id, { id, name });
+            }
+        });
+        // 2. Add fallback from transaction data if any missing
+        transactions.forEach(t => {
+            const name = t.seller;
+            const id = t.sellerId || t.seller;
+            if (name && name !== 'Unknown' && !Array.from(map.values()).some(v => v.name === name || v.id === id)) {
+                map.set(id, { id, name });
+            }
+        });
+        return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+    }, [registeredSellers, transactions]);
 
     const stats = useMemo(() => {
         return {
@@ -124,17 +159,21 @@ const SellerTransactions = () => {
     }, [transactions]);
 
     const filteredTransactions = useMemo(() => {
+        const selObj = sellers.find(s => s.id === selectedSeller);
         return transactions.filter(t => {
             const matchesSearch = t.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (t.orderId && t.orderId.toLowerCase().includes(searchTerm.toLowerCase())) ||
                 t.seller.toLowerCase().includes(searchTerm.toLowerCase());
             const matchesStatus = filterStatus === 'all' || t.status === filterStatus;
             const matchesType = filterType === 'all' || t.type === filterType;
-            const matchesSeller = selectedSeller === 'all' || t.seller === selectedSeller;
+            const matchesSeller = selectedSeller === 'all' ||
+                t.sellerId === selectedSeller ||
+                t.seller === selectedSeller ||
+                (selObj && t.seller === selObj.name);
 
             return matchesSearch && matchesStatus && matchesType && matchesSeller;
         });
-    }, [transactions, searchTerm, filterStatus, filterType, selectedSeller]);
+    }, [transactions, searchTerm, filterStatus, filterType, selectedSeller, sellers]);
 
     const handleExport = () => {
         setIsExporting(true);
@@ -247,7 +286,7 @@ const SellerTransactions = () => {
                                 className="bg-transparent text-[10px] font-bold text-slate-600 uppercase outline-none cursor-pointer max-w-[150px]"
                             >
                                 <option value="all">All Merchants</option>
-                                {sellers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                {sellers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
                         </div>
 
