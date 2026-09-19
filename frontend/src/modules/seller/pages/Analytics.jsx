@@ -62,9 +62,17 @@ const Analytics = () => {
   const [endDate, setEndDate] = useState("");
   const hasFetchedOnce = useRef(false);
 
+  const formatLocalDate = (d) => {
+    if (!d) return "";
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   const dateRangeBounds = useMemo(() => {
     const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
+    const todayStr = formatLocalDate(now);
 
     if (dateFilter === "today") {
       return { start: todayStr, end: todayStr };
@@ -72,18 +80,18 @@ const Analytics = () => {
     if (dateFilter === "yesterday") {
       const y = new Date(now);
       y.setDate(y.getDate() - 1);
-      const yStr = y.toISOString().slice(0, 10);
+      const yStr = formatLocalDate(y);
       return { start: yStr, end: yStr };
     }
     if (dateFilter === "7days") {
       const s = new Date(now);
       s.setDate(s.getDate() - 7);
-      return { start: s.toISOString().slice(0, 10), end: todayStr };
+      return { start: formatLocalDate(s), end: todayStr };
     }
     if (dateFilter === "30days") {
       const s = new Date(now);
       s.setDate(s.getDate() - 30);
-      return { start: s.toISOString().slice(0, 10), end: todayStr };
+      return { start: formatLocalDate(s), end: todayStr };
     }
     if (dateFilter === "custom") {
       return { start: startDate || todayStr, end: endDate || todayStr };
@@ -138,9 +146,12 @@ const Analytics = () => {
     if (!dateRangeBounds.start || !dateRangeBounds.end) return rawTrend;
 
     return rawTrend.filter((item) => {
-      const itemDateStr = item.date || item.day || item._id;
-      if (!itemDateStr) return true;
-      const parsed = new Date(itemDateStr).toISOString().slice(0, 10);
+      const itemDateRaw = item.date || item.day || item._id;
+      if (!itemDateRaw) return true;
+      let parsed = String(itemDateRaw);
+      if (parsed.includes("T")) {
+        parsed = formatLocalDate(new Date(parsed));
+      }
       return parsed >= dateRangeBounds.start && parsed <= dateRangeBounds.end;
     });
   }, [statsData?.salesTrend, dateRangeBounds]);
@@ -149,20 +160,18 @@ const Analytics = () => {
     if (!dateRangeBounds.start || !dateRangeBounds.end) {
       return statsData?.overview ?? {};
     }
-    if (filteredSalesTrend.length > 0) {
-      const totalSalesVal = filteredSalesTrend.reduce((sum, item) => sum + (Number(item.sales || item.totalSales || 0)), 0);
-      const totalOrdersVal = filteredSalesTrend.reduce((sum, item) => sum + (Number(item.orders || item.totalOrders || 0)), 0);
-      const aovVal = totalOrdersVal > 0 ? Math.round(totalSalesVal / totalOrdersVal) : 0;
-      return {
-        totalSales: `₹${totalSalesVal.toLocaleString("en-IN")}`,
-        totalOrders: totalOrdersVal.toString(),
-        avgOrderValue: `₹${aovVal.toLocaleString("en-IN")}`,
-        conversionRate: statsData?.overview?.conversionRate || "0%",
-        salesTrend: statsData?.overview?.salesTrend || "0%",
-        ordersTrend: statsData?.overview?.ordersTrend || "0%",
-      };
-    }
-    return statsData?.overview ?? {};
+
+    const totalSalesVal = filteredSalesTrend.reduce((sum, item) => sum + (Number(item.sales || item.totalSales || 0)), 0);
+    const totalOrdersVal = filteredSalesTrend.reduce((sum, item) => sum + (Number(item.orders || item.totalOrders || 0)), 0);
+    const aovVal = totalOrdersVal > 0 ? Math.round(totalSalesVal / totalOrdersVal) : 0;
+    return {
+      totalSales: `₹${totalSalesVal.toLocaleString("en-IN")}`,
+      totalOrders: totalOrdersVal.toString(),
+      avgOrderValue: `₹${aovVal.toLocaleString("en-IN")}`,
+      conversionRate: statsData?.overview?.conversionRate || "0%",
+      salesTrend: statsData?.overview?.salesTrend || "0%",
+      ordersTrend: statsData?.overview?.ordersTrend || "0%",
+    };
   }, [statsData?.overview, filteredSalesTrend, dateRangeBounds]);
 
   const stats = [
@@ -483,7 +492,7 @@ const Analytics = () => {
             <div className="h-[400px] w-full min-w-0 mt-4">
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <AreaChart
-                  data={statsData?.salesTrend || []}
+                  data={filteredSalesTrend}
                   margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">

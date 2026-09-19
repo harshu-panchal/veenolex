@@ -95,7 +95,7 @@ async function computeSellerStats(sellerOid, range) {
     trendStartDate.setDate(trendStartDate.getDate() - 28);
     aggregationFormat = "%Y-%U";
   } else {
-    trendStartDate.setDate(trendStartDate.getDate() - 7);
+    trendStartDate.setDate(trendStartDate.getDate() - 40);
   }
 
   // 40 days data lock for Sellers
@@ -145,7 +145,7 @@ async function computeSellerStats(sellerOid, range) {
           { $match: { createdAt: { $gte: trendStartDate } } },
           {
             $group: {
-              _id: { $dateToString: { format: aggregationFormat, date: "$createdAt" } },
+              _id: { $dateToString: { format: aggregationFormat, date: "$createdAt", timezone: "+05:30" } },
               sales: { $sum: { $ifNull: ["$pricing.total", 0] } },
               orders: { $sum: 1 },
             },
@@ -231,6 +231,8 @@ async function computeSellerStats(sellerOid, range) {
       const dateStr = d.toISOString().slice(0, 7);
       const data = salesTrend.find((item) => item._id === dateStr);
       chartData.push({
+        _id: dateStr,
+        date: dateStr,
         name: MONTH_NAMES[d.getMonth()],
         sales: data ? data.sales : 0,
         orders: data ? data.orders : 0,
@@ -240,6 +242,8 @@ async function computeSellerStats(sellerOid, range) {
   } else if (range === "weekly") {
     chartData = salesTrend
       .map((item, idx) => ({
+        _id: item._id,
+        date: item._id,
         name: `Week ${idx + 1}`,
         sales: item.sales,
         orders: item.orders,
@@ -247,13 +251,18 @@ async function computeSellerStats(sellerOid, range) {
       }))
       .slice(-4);
   } else {
-    for (let i = 6; i >= 0; i--) {
+    for (let i = 39; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split("T")[0];
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      const dateStr = `${year}-${month}-${day}`;
       const data = salesTrend.find((item) => item._id === dateStr);
       chartData.push({
-        name: DAY_NAMES[d.getDay()],
+        _id: dateStr,
+        date: dateStr,
+        name: `${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`,
         sales: data ? data.sales : 0,
         orders: data ? data.orders : 0,
         traffic: 0,
