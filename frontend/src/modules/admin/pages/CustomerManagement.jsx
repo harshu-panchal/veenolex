@@ -14,13 +14,21 @@ import {
     UserPlus,
     RotateCw,
     Activity,
-    Loader2
+    Loader2,
+    MapPin
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import Pagination from '@shared/components/ui/Pagination';
 import { adminApi } from '../services/adminApi';
 import { toast } from 'sonner';
+
+const LOCATION_SOURCE_LABELS = {
+    order: 'Last order',
+    login: 'App location',
+    address: 'Saved address',
+    profile: 'Profile location',
+};
 
 const CustomerManagement = () => {
     const navigate = useNavigate();
@@ -218,6 +226,7 @@ const CustomerManagement = () => {
                             <tr>
                                 <th className="ds-table-header-cell">Customer</th>
                                 <th className="ds-table-header-cell">Activity</th>
+                                <th className="ds-table-header-cell">Location</th>
                                 <th className="ds-table-header-cell">Total Spend</th>
                                 <th className="ds-table-header-cell">Status</th>
                                 <th className="ds-table-header-cell text-right">Actions</th>
@@ -226,7 +235,7 @@ const CustomerManagement = () => {
                         <tbody>
                             {!loading && filteredCustomers.length === 0 ? (
                                 <tr>
-                                    <td colSpan="5" className="px-6 py-20 text-center">
+                                    <td colSpan="6" className="px-6 py-20 text-center">
                                         <div className="flex flex-col items-center gap-3">
                                             <div className="p-4 bg-gray-50 rounded-full">
                                                 <Users className="h-8 w-8 text-gray-300" />
@@ -268,6 +277,24 @@ const CustomerManagement = () => {
                                                 </div>
                                                 <p className="ds-body-sm text-gray-400 mt-0.5">Last: {getTimeAgo(cust.lastOrderDate)}</p>
                                             </div>
+                                        </td>
+                                        <td className="ds-table-cell">
+                                            {cust.location ? (
+                                                <div className="max-w-[220px]" title={cust.location.address || undefined}>
+                                                    <div className="flex items-center gap-1.5 ds-body font-semibold">
+                                                        <MapPin className="ds-icon-sm text-primary shrink-0" />
+                                                        <span className="truncate">
+                                                            {[cust.location.city, cust.location.state].filter(Boolean).join(', ') || cust.location.address}
+                                                        </span>
+                                                    </div>
+                                                    <p className="ds-body-sm text-gray-400 mt-0.5">
+                                                        {LOCATION_SOURCE_LABELS[cust.location.source] || 'Location'}
+                                                        {cust.location.at ? ` · ${getTimeAgo(cust.location.at)}` : ''}
+                                                    </p>
+                                                </div>
+                                            ) : (
+                                                <span className="ds-body-sm text-gray-400">Not available</span>
+                                            )}
                                         </td>
                                         <td className="ds-table-cell ds-h4">
                                             ₹{(cust.totalSpent || 0).toLocaleString()}

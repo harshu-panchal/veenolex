@@ -20,7 +20,7 @@ export const sellerApi = {
     getCategoryTree: () => axiosInstance.get('/admin/categories?tree=true'),
 
     // Others
-    getStats: (range) => axiosInstance.get('/seller/stats', { params: { range } }),
+    getStats: (range, dates) => axiosInstance.get('/seller/stats', { params: { range, ...dates } }),
     getOrders: (params) => axiosInstance.get('/orders/seller-orders', { params }),
     updateOrderStatus: (orderId, data) => axiosInstance.put(`/orders/status/${orderId}`, data),
     getDeliveryPartners: () => axiosInstance.get('/orders/delivery-partners'),

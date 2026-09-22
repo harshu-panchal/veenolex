@@ -27,6 +27,7 @@ export const STORAGE_KEYS = Object.freeze({
 
     // ── Address & location ───────────────────────────────────────────────────
     LOCATION: 'location_v2',
+    LOCATION_SYNC: 'customer_location_sync_v1',
     RECIPIENT_ADDRESS: 'appzeto_checkout_recipient_v1',
     GEOCODE_CACHE: 'qc_geocode_cache_v1',
 

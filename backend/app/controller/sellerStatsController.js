@@ -14,6 +14,8 @@ export const getSellerStats = async (req, res) => {
     try {
         const result = await getSellerStatsFromService(req.user.id, {
             range: req.query?.range,
+            from: req.query?.from || req.query?.date,
+            to: req.query?.to || req.query?.date,
         });
         return handleResponse(res, 200, "Stats fetched successfully", result);
     } catch (error) {

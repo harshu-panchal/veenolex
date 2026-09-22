@@ -13,6 +13,9 @@ import {
   ArrowUpRight,
   Plus,
   Eye,
+  CalendarDays,
+  X,
+  Loader2,
 } from "lucide-react";
 import {
   HiOutlineTruck,
@@ -39,6 +42,25 @@ import { sellerApi } from "../services/sellerApi";
 import { toast } from "sonner";
 import { useSellerOrders } from "../context/SellerOrdersContext";
 
+const formatLocalDate = (d) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const shiftDays = (days) => {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return formatLocalDate(d);
+};
+
+const formatDateLabel = (value) =>
+  new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+
+// Sellers can only look back 40 days (enforced by the API as well).
+const SELLER_LOOKBACK_DAYS = 40;
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const { orders: ordersFromContext, ordersLoading, refreshOrders } =
@@ -47,13 +69,39 @@ const Dashboard = () => {
   const [statsData, setStatsData] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const todayStr = formatLocalDate(new Date());
+  const minDateStr = shiftDays(-(SELLER_LOOKBACK_DAYS - 1));
+
+  // Either bound alone means a single day; swapped bounds are normalised.
+  const rangeStart = fromDate && toDate ? (fromDate <= toDate ? fromDate : toDate) : (fromDate || toDate);
+  const rangeEnd = fromDate && toDate ? (fromDate <= toDate ? toDate : fromDate) : (fromDate || toDate);
+  const isFiltered = Boolean(rangeStart);
+  const isSingleDay = isFiltered && rangeStart === rangeEnd;
+
+  const applyRange = (from, to) => {
+    setFromDate(from);
+    setToDate(to);
+  };
+
+  const presets = [
+    { label: "Today", from: todayStr, to: todayStr },
+    { label: "Yesterday", from: shiftDays(-1), to: shiftDays(-1) },
+    { label: "Last 7 days", from: shiftDays(-6), to: todayStr },
+    { label: "Last 30 days", from: shiftDays(-29), to: todayStr },
+  ];
 
   useEffect(() => {
     let cancelled = false;
     const fetchStats = async () => {
       try {
-        setLoading(true);
-        const statsRes = await sellerApi.getStats();
+        setRefreshing(true);
+        const statsRes = await sellerApi.getStats(
+          undefined,
+          isFiltered ? { from: rangeStart, to: rangeEnd } : undefined
+        );
         if (cancelled) return;
         if (statsRes.data.success) setStatsData(statsRes.data.result);
       } catch (error) {
@@ -62,12 +110,26 @@ const Dashboard = () => {
           toast.error("Failed to load dashboard data");
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     };
     fetchStats();
     return () => { cancelled = true; };
-  }, []);
+  }, [isFiltered, rangeStart, rangeEnd]);
+
+  const daySummary = isFiltered ? statsData?.daySummary : null;
+  const rangeLabel = !isFiltered
+    ? ""
+    : isSingleDay
+      ? formatDateLabel(rangeStart)
+      : `${formatDateLabel(rangeStart)} – ${formatDateLabel(rangeEnd)}`;
+  // "on 22 Sept 2026" or "from 1 Sept 2026 to 22 Sept 2026"
+  const rangePhrase = isSingleDay
+    ? `on ${rangeLabel}`
+    : isFiltered ? `from ${formatDateLabel(rangeStart)} to ${formatDateLabel(rangeEnd)}` : "";
 
   const safeOrders = Array.isArray(ordersFromContext) ? ordersFromContext : [];
   const loadingOrStats = loading || ordersLoading;
@@ -92,46 +154,61 @@ const Dashboard = () => {
 
   const stats = [
     {
-      label: "Total Revenue",
+      label: isFiltered ? "Revenue" : "Total Revenue",
       value: statsData?.overview?.totalSales || "₹0",
-      change: "+12.5%",
+      change: isFiltered ? null : "+12.5%",
       changeType: "increase",
       icon: DollarSign,
       iconBg: "bg-brand-50",
       iconColor: "text-brand-600",
-      description: "vs last month",
+      description: isFiltered ? "excl. cancelled" : "vs last month",
     },
     {
-      label: "Total Orders",
+      label: isFiltered ? "Orders" : "Total Orders",
       value: statsData?.overview?.totalOrders || "0",
-      change: "+8.2%",
+      change: isFiltered ? null : "+8.2%",
       changeType: "increase",
       icon: ShoppingBag,
       iconBg: "bg-brand-50",
       iconColor: "text-brand-600",
-      description: "vs last month",
+      description: isFiltered ? rangePhrase : "vs last month",
     },
     {
       label: "Avg Order Value",
       value: statsData?.overview?.avgOrderValue || "₹0",
-      change: "+2",
+      change: isFiltered ? null : "+2",
       changeType: "increase",
       icon: Package,
       iconBg: "bg-purple-50",
       iconColor: "text-purple-600",
       description: "per order",
     },
-    {
-      label: "Pending Orders",
-      value: safeOrders.filter(o => o.status === 'pending').length.toString(),
-      change: "-3",
-      changeType: "decrease",
-      icon: Clock,
-      iconBg: "bg-orange-50",
-      iconColor: "text-orange-600",
-      description: "need attention",
-    },
+    isFiltered
+      ? {
+        label: "Cancelled Orders",
+        value: String(daySummary?.cancelledOrders ?? 0),
+        change: null,
+        changeType: "decrease",
+        icon: Clock,
+        iconBg: "bg-orange-50",
+        iconColor: "text-orange-600",
+        description: rangePhrase,
+      }
+      : {
+        label: "Pending Orders",
+        value: safeOrders.filter(o => o.status === 'pending').length.toString(),
+        change: "-3",
+        changeType: "decrease",
+        icon: Clock,
+        iconBg: "bg-orange-50",
+        iconColor: "text-orange-600",
+        description: "need attention",
+      },
   ];
+
+  const tableOrders = isFiltered
+    ? (Array.isArray(statsData?.orders) ? statsData.orders : [])
+    : safeOrders.slice(0, 5);
 
   const quickActions = [
     {
@@ -236,7 +313,65 @@ const Dashboard = () => {
       <PageHeader
         title="Dashboard"
         description="Welcome back! Here's what's happening with your store today."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white pl-3 pr-1 h-9">
+              <CalendarDays className="h-4 w-4 text-slate-400 shrink-0" />
+              <input
+                type="date"
+                value={fromDate}
+                min={minDateStr}
+                max={toDate || todayStr}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="h-8 px-1 bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+                aria-label="From date"
+              />
+              <span className="text-xs font-bold text-slate-400">to</span>
+              <input
+                type="date"
+                value={toDate}
+                min={fromDate || minDateStr}
+                max={todayStr}
+                onChange={(e) => setToDate(e.target.value)}
+                className="h-8 px-1 bg-transparent text-sm font-semibold text-slate-700 focus:outline-none"
+                aria-label="To date"
+              />
+            </div>
+            {presets.map((preset) => {
+              const active = rangeStart === preset.from && rangeEnd === preset.to;
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => applyRange(preset.from, preset.to)}
+                  className={cn(
+                    "h-9 px-3 rounded-xl text-xs font-bold transition-all",
+                    active ? "bg-primary text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100"
+                  )}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+            {isFiltered && (
+              <button
+                type="button"
+                onClick={() => applyRange("", "")}
+                className="h-9 px-3 rounded-xl bg-slate-50 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-all flex items-center gap-1"
+              >
+                <X className="h-3.5 w-3.5" /> Clear
+              </button>
+            )}
+            {refreshing && <Loader2 className="h-4 w-4 text-primary animate-spin" />}
+          </div>
+        }
       />
+
+      {isFiltered && (
+        <p className="text-sm font-semibold text-slate-500">
+          Showing data for <span className="text-slate-900">{rangeLabel}</span>
+        </p>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -247,15 +382,17 @@ const Dashboard = () => {
                 <p className="text-base font-medium text-slate-600">{stat.label}</p>
                 <p className="text-2xl font-bold text-slate-900 mt-2">{stat.value}</p>
                 <div className="flex items-center gap-2 mt-2">
-                  <span
-                    className={cn(
-                      "text-xs font-semibold flex items-center gap-1",
-                      stat.changeType === "increase" ? "text-brand-600" : "text-red-600"
-                    )}
-                  >
-                    <TrendingUp className={cn("h-3 w-3", stat.changeType === "decrease" && "rotate-180")} />
-                    {stat.change}
-                  </span>
+                  {stat.change && (
+                    <span
+                      className={cn(
+                        "text-xs font-semibold flex items-center gap-1",
+                        stat.changeType === "increase" ? "text-brand-600" : "text-red-600"
+                      )}
+                    >
+                      <TrendingUp className={cn("h-3 w-3", stat.changeType === "decrease" && "rotate-180")} />
+                      {stat.change}
+                    </span>
+                  )}
                   <span className="text-sm text-slate-600">{stat.description}</span>
                 </div>
               </div>
@@ -266,6 +403,37 @@ const Dashboard = () => {
           </Card>
         ))}
       </div>
+
+      {daySummary && (
+        <Card
+          title={isSingleDay ? "Day Summary" : "Period Summary"}
+          subtitle={`Sales breakdown for ${rangeLabel}`}
+        >
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
+            {[
+              { label: "Gross Sales", value: `₹${Number(daySummary.grossSales || 0).toLocaleString("en-IN")}`, hint: "Excl. cancelled" },
+              { label: "Orders", value: Number(daySummary.totalOrders || 0).toLocaleString() },
+              { label: "Delivered", value: Number(daySummary.deliveredOrders || 0).toLocaleString() },
+              { label: "Cancelled", value: Number(daySummary.cancelledOrders || 0).toLocaleString() },
+            ].map((item) => (
+              <div key={item.label} className="p-4 rounded-xl bg-slate-50">
+                <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">{item.label}</p>
+                <p className="text-xl font-bold text-slate-900 mt-1">{item.value}</p>
+                {item.hint && <p className="text-[10px] font-semibold text-slate-400 mt-1">{item.hint}</p>}
+              </div>
+            ))}
+          </div>
+          {daySummary.ordersByStatus?.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-4">
+              {daySummary.ordersByStatus.map((row) => (
+                <Badge key={row.status} variant={getStatusColor(row.status)} className="capitalize">
+                  {row.status.replace(/_/g, " ")}: {row.count}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -319,7 +487,11 @@ const Dashboard = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Revenue Chart */}
-        <Card title="Revenue Overview" subtitle="Last 7 days performance" className="lg:col-span-2">
+        <Card
+          title="Revenue Overview"
+          subtitle={isFiltered ? `${isSingleDay ? "Hourly" : "Daily"} sales ${rangePhrase}` : "Last 40 days performance"}
+          className="lg:col-span-2"
+        >
           <div className="h-[300px] min-h-[280px] w-full min-w-0 mt-4">
             <ResponsiveContainer width="100%" height={300} minWidth={0} minHeight={0}>
               <AreaChart data={revenueChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -353,7 +525,7 @@ const Dashboard = () => {
                     color: "#334155",
                   }}
                   formatter={(value) => [`₹${Number(value).toLocaleString()}`, "Revenue"]}
-                  labelFormatter={(label) => `Day: ${label}`}
+                  labelFormatter={(label) => (isSingleDay ? `Time: ${label}` : `Day: ${label}`)}
                 />
                 <Area
                   type="monotone"
@@ -401,8 +573,8 @@ const Dashboard = () => {
 
       {/* Recent Orders */}
       <Card
-        title="Recent Orders"
-        subtitle="Latest transactions from your store"
+        title={isFiltered ? "Orders" : "Recent Orders"}
+        subtitle={isFiltered ? `Orders placed ${rangePhrase}` : "Latest transactions from your store"}
         actions={
           <button
             onClick={() => navigate("/seller/orders")}
@@ -438,7 +610,7 @@ const Dashboard = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {safeOrders.slice(0, 5).map((order) => (
+              {tableOrders.map((order) => (
                 <tr key={order.orderId} className="hover:bg-slate-50/50 transition-colors">
                   <td className="py-4 px-4 align-middle">
                     <span className="text-sm font-semibold text-slate-900">{order.orderId}</span>
@@ -452,7 +624,11 @@ const Dashboard = () => {
                     </div>
                   </td>
                   <td className="py-4 px-4 align-middle">
-                    <span className="text-sm text-slate-600">{new Date(order.createdAt).toLocaleDateString()}</span>
+                    <span className="text-sm text-slate-600">
+                      {isFiltered
+                        ? new Date(order.createdAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true })
+                        : new Date(order.createdAt).toLocaleDateString()}
+                    </span>
                   </td>
                   <td className="py-4 px-4 align-middle">
                     <span className="text-sm font-semibold text-slate-900">₹{order.pricing?.total || 0}</span>
@@ -475,6 +651,13 @@ const Dashboard = () => {
                   </td>
                 </tr>
               ))}
+              {tableOrders.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-10 text-center text-sm text-slate-400">
+                    No orders for this period
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -5,7 +5,7 @@ import axiosInstance from '@core/api/axios';
  * Per-domain split (P4.5).
  */
 export const adminUsersApi = {
-    getStats: () => axiosInstance.get('/admin/stats'),
+    getStats: (params) => axiosInstance.get('/admin/stats', { params }),
     getReports: () => axiosInstance.get('/admin/reports'),
 
     getUsers: (params) => axiosInstance.get('/admin/users', { params }),

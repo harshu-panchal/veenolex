@@ -9,6 +9,12 @@ import React, {
 import { customerApi } from "../services/customerApi";
 import { hasValidStoredAuthToken } from "@core/utils/authStorage";
 import { getJSON, setJSON, STORAGE_KEYS } from "@core/utils/storage";
+import {
+  DEFAULT_APP_LOCATION,
+  markLocationSynced,
+  shouldSyncLocation,
+  toReportedLocation,
+} from "../utils/appLocation";
 
 const LocationContext = createContext(undefined);
 const STORAGE_KEY = STORAGE_KEYS.LOCATION;
@@ -20,13 +26,8 @@ const LOCATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const LocationProvider = ({ children }) => {
   // Default location (used until we can resolve a better one)
   const [currentLocation, setCurrentLocation] = useState({
-    name: "214, Rajshri Palace Colony, Pipliyahana, Indore, Madhya Pradesh 452018, India",
-    time: "12-15 mins",
-    city: "Indore",
-    state: "Madhya Pradesh",
-    pincode: "452018",
-    latitude: 22.711140989838025,
-    longitude: 75.9001552518043,
+    ...DEFAULT_APP_LOCATION,
+    isDefault: true,
   });
 
   // Address list for drawer UI – will be hydrated from profile API.
@@ -62,6 +63,8 @@ export const LocationProvider = ({ children }) => {
         longitude: newLoc.longitude,
         // Internal app properties
         time: newLoc.time,
+        // Marks the placeholder location so it is never reported as the customer's.
+        ...(newLoc.isDefault ? { isDefault: true } : {}),
       };
       setJSON(STORAGE_KEY, payload, { ttlMs: LOCATION_TTL_MS });
     }
@@ -317,6 +320,19 @@ export const LocationProvider = ({ children }) => {
     // Live fetch happens only when user taps location pill or "Use current location"
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keep the customer's last known app location up to date on their account
+  // (shown to admins). Sent at most once a day unless the location changes;
+  // failures are ignored so this can never affect the storefront.
+  useEffect(() => {
+    if (!hasValidStoredAuthToken("auth_customer")) return;
+    const reported = toReportedLocation(currentLocation);
+    if (!shouldSyncLocation(reported)) return;
+    customerApi
+      .updateLastLocation(reported)
+      .then(() => markLocationSynced(reported))
+      .catch(() => {});
+  }, [currentLocation]);
 
   const locationValue = useMemo(() => ({
     currentLocation,

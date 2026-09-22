@@ -112,6 +112,18 @@ const userSchema = new mongoose.Schema(
             updatedAt: { type: Date, default: null }
         },
 
+        // Where the customer was (their app delivery location) at their most
+        // recent login. Shown to admins as a fallback when there is no order.
+        lastLoginLocation: {
+            latitude: { type: Number, default: null },
+            longitude: { type: Number, default: null },
+            address: { type: String, default: "" },
+            city: { type: String, default: "" },
+            state: { type: String, default: "" },
+            pincode: { type: String, default: "" },
+            capturedAt: { type: Date, default: null }
+        },
+
         addresses: [addressSchema],
 
         /**

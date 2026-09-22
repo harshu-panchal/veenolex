@@ -3,62 +3,155 @@ import Seller from "../../models/seller.js";
 import Delivery from "../../models/delivery.js";
 import Order from "../../models/order.js";
 import Product from "../../models/product.js";
+import {
+  IST_OFFSET,
+  DAY_MS,
+  getIstDateRange,
+  toIstDateString,
+  formatIstTime,
+} from "../../utils/istDateRange.js";
 
 const DASHBOARD_CATEGORY_COLORS = ["#4f46e5", "#10b981", "#f59e0b", "#ef4444"];
+export async function getAdminDashboardStats({ from, to } = {}) {
+  const dayRange = getIstDateRange(from, to);
+  const dateMatch = dayRange
+    ? { createdAt: { $gte: dayRange.start, $lt: dayRange.end } }
+    : {};
 
-export async function getAdminDashboardStats() {
   const [totalCustomers, totalSellers, totalRiders, totalOrders] =
     await Promise.all([
-      User.countDocuments({ role: "user" }),
-      Seller.countDocuments(),
-      Delivery.countDocuments(),
-      Order.countDocuments(),
+      User.countDocuments({ role: "user", ...dateMatch }),
+      Seller.countDocuments(dateMatch),
+      Delivery.countDocuments(dateMatch),
+      Order.countDocuments(dateMatch),
     ]);
 
   const totalUsers = totalCustomers + totalSellers + totalRiders;
-  const activeSellers = await Seller.countDocuments({ isVerified: true });
+  const activeSellers = dayRange
+    ? (await Order.distinct("seller", { ...dateMatch, status: { $ne: "cancelled" } })).filter(Boolean).length
+    : await Seller.countDocuments({ isVerified: true });
 
   const revenueData = await Order.aggregate([
-    { $match: { status: "delivered" } },
+    { $match: { status: "delivered", ...dateMatch } },
     { $group: { _id: null, total: { $sum: "$pricing.total" } } },
   ]);
   const totalRevenue = revenueData[0]?.total || 0;
 
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-  const historyAggregation = await Order.aggregate([
-    { $match: { createdAt: { $gte: thirtyDaysAgo }, status: "delivered" } },
-    {
-      $group: {
-        _id: {
-          $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+  let revenueHistory = [];
+  if (dayRange?.days === 1) {
+    // Hour-by-hour breakdown of the selected day (IST)
+    const hourlyAggregation = await Order.aggregate([
+      { $match: { ...dateMatch, status: { $ne: "cancelled" } } },
+      {
+        $group: {
+          _id: { $hour: { date: "$createdAt", timezone: IST_OFFSET } },
+          revenue: { $sum: { $ifNull: ["$pricing.total", 0] } },
+          orders: { $sum: 1 },
         },
-        revenue: { $sum: "$pricing.total" },
       },
-    },
-    { $sort: { _id: 1 } },
-  ]);
+    ]);
+    const hourMap = new Map(hourlyAggregation.map((item) => [item._id, item]));
+    for (let h = 0; h < 24; h++) {
+      const suffix = h < 12 ? "AM" : "PM";
+      const hour12 = h % 12 === 0 ? 12 : h % 12;
+      revenueHistory.push({
+        name: `${hour12} ${suffix}`,
+        revenue: hourMap.get(h)?.revenue || 0,
+        orders: hourMap.get(h)?.orders || 0,
+      });
+    }
+  } else if (dayRange) {
+    // Day-by-day breakdown of the selected range (IST)
+    const dailyAggregation = await Order.aggregate([
+      { $match: { ...dateMatch, status: { $ne: "cancelled" } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: IST_OFFSET } },
+          revenue: { $sum: { $ifNull: ["$pricing.total", 0] } },
+          orders: { $sum: 1 },
+        },
+      },
+    ]);
+    const dailyMap = new Map(dailyAggregation.map((item) => [item._id, item]));
+    for (let i = 0; i < dayRange.days; i++) {
+      const d = new Date(dayRange.start.getTime() + i * DAY_MS);
+      const dateStr = toIstDateString(d);
+      revenueHistory.push({
+        name: d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }),
+        revenue: dailyMap.get(dateStr)?.revenue || 0,
+        orders: dailyMap.get(dateStr)?.orders || 0,
+        fullDate: dateStr,
+      });
+    }
+  } else {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  // Create a map of existing revenue data
-  const revenueMap = new Map(historyAggregation.map(item => [item._id, item.revenue]));
-  
-  // Fill in the last 30 days with 0 where no data exists
-  const revenueHistory = [];
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split('T')[0];
-    revenueHistory.push({
-      name: d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
-      revenue: revenueMap.get(dateStr) || 0,
-      fullDate: dateStr
-    });
+    const historyAggregation = await Order.aggregate([
+      { $match: { createdAt: { $gte: thirtyDaysAgo }, status: "delivered" } },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: IST_OFFSET },
+          },
+          revenue: { $sum: "$pricing.total" },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    // Create a map of existing revenue data
+    const revenueMap = new Map(historyAggregation.map(item => [item._id, item.revenue]));
+
+    // Fill in the last 30 days with 0 where no data exists
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(Date.now() - i * DAY_MS);
+      const dateStr = toIstDateString(d);
+      revenueHistory.push({
+        name: d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }),
+        revenue: revenueMap.get(dateStr) || 0,
+        fullDate: dateStr
+      });
+    }
   }
 
-  const recentOrders = await Order.find()
+  let daySummary = null;
+  if (dayRange) {
+    const statusAggregation = await Order.aggregate([
+      { $match: dateMatch },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+          amount: { $sum: { $ifNull: ["$pricing.total", 0] } },
+        },
+      },
+    ]);
+    const ordersByStatus = statusAggregation.map((s) => ({
+      status: s._id || "unknown",
+      count: s.count,
+      amount: s.amount,
+    }));
+    const nonCancelled = ordersByStatus.filter((s) => s.status !== "cancelled");
+    const grossSales = nonCancelled.reduce((sum, s) => sum + s.amount, 0);
+    const grossOrders = nonCancelled.reduce((sum, s) => sum + s.count, 0);
+    daySummary = {
+      from: dayRange.from,
+      to: dayRange.to,
+      days: dayRange.days,
+      grossSales,
+      avgOrderValue: grossOrders > 0 ? Math.round(grossSales / grossOrders) : 0,
+      cancelledOrders: ordersByStatus.find((s) => s.status === "cancelled")?.count || 0,
+      newCustomers: totalCustomers,
+      newSellers: totalSellers,
+      newRiders: totalRiders,
+      ordersByStatus,
+    };
+  }
+
+  const recentOrders = await Order.find(dateMatch)
     .sort({ createdAt: -1 })
-    .limit(5)
+    .limit(dayRange ? 50 : 5)
     .populate("customer", "name");
 
   const categoryData = await Product.aggregate([
@@ -77,6 +170,7 @@ export async function getAdminDashboardStats() {
   ]);
 
   const topProducts = await Order.aggregate([
+    ...(dayRange ? [{ $match: { ...dateMatch, status: { $ne: "cancelled" } } }] : []),
     { $unwind: "$items" },
     {
       $group: {
@@ -116,6 +210,7 @@ export async function getAdminDashboardStats() {
       totalRevenue,
     },
     revenueHistory,
+    daySummary,
     recentOrders: recentOrders.map((order) => ({
       id: order.orderId,
       customer: order.customer?.name || "Guest",
@@ -126,8 +221,8 @@ export async function getAdminDashboardStats() {
           : order.status === "cancelled"
             ? "error"
             : "warning",
-      amount: `\u20B9${order.pricing.total}`,
-      time: "Recently",
+      amount: `\u20B9${order.pricing?.total ?? 0}`,
+      time: dayRange ? formatIstTime(order.createdAt, dayRange.days > 1) : "Recently",
     })),
     categoryData: categoryData.map((category, index) => ({
       ...category,

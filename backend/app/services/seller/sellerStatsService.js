@@ -16,6 +16,9 @@
  * Inputs:
  *   sellerId — string (Mongo ObjectId hex), normalised internally.
  *   range    — "daily" | "weekly" | "monthly" (controls trend buckets).
+ *   from/to  — optional YYYY-MM-DD (IST) bounds. When given, every figure is
+ *              scoped to that window (clamped to the 40-day seller lock) and
+ *              the payload also carries `daySummary` and `orders`.
  *
  * Output shape is **byte-for-byte identical** to the legacy controller
  * response so existing frontend consumers see no change.
@@ -26,6 +29,15 @@ import mongoose from "mongoose";
 import Order from "../../models/order.js";
 import Product from "../../models/product.js";
 import { buildKey, getOrSet, getTTL } from "../cacheService.js";
+import {
+  IST_OFFSET,
+  DAY_MS,
+  getIstDateRange,
+  toIstDateString,
+} from "../../utils/istDateRange.js";
+
+// Sellers may only look back this many days (including today).
+const SELLER_LOCK_DAYS = 40;
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = [
@@ -65,22 +77,40 @@ function normalizeRange(value) {
  * Public read API. Cached for ~60s (`sellerStats` TTL) — absorbs dashboard
  * polling without amplifying the underlying $facet aggregation.
  */
-export async function getSellerStats(sellerId, { range = "daily" } = {}) {
+export async function getSellerStats(sellerId, { range = "daily", from, to } = {}) {
   const sellerOid = toSellerOid(sellerId);
   const normRange = normalizeRange(range);
+  const dayRange = resolveSellerDateRange(from, to);
   const cacheKey = buildKey(
     "seller",
     "stats",
-    `${sellerOid.toString()}:${normRange}`,
+    `${sellerOid.toString()}:${normRange}${dayRange ? `:${dayRange.from}:${dayRange.to}` : ""}`,
   );
   return getOrSet(
     cacheKey,
-    () => computeSellerStats(sellerOid, normRange),
+    () => computeSellerStats(sellerOid, normRange, dayRange),
     getTTL("sellerStats"),
   );
 }
 
-async function computeSellerStats(sellerOid, range) {
+/** Resolves from/to into an IST range kept inside the seller's 40-day window. */
+function resolveSellerDateRange(from, to) {
+  const lockFrom = toIstDateString(new Date(Date.now() - (SELLER_LOCK_DAYS - 1) * DAY_MS));
+  const today = toIstDateString(new Date());
+  const range = getIstDateRange(from, to, { maxDays: SELLER_LOCK_DAYS });
+  if (!range) return null;
+  const clampedFrom = range.from < lockFrom ? lockFrom : range.from;
+  const clampedTo = range.to > today ? today : range.to;
+  if (clampedFrom > clampedTo) return getIstDateRange(clampedTo, clampedTo);
+  return getIstDateRange(clampedFrom, clampedTo);
+}
+
+function formatHourLabel(h) {
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12} ${h < 12 ? "AM" : "PM"}`;
+}
+
+async function computeSellerStats(sellerOid, range, dayRange = null) {
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   const fourteenDaysAgo = new Date();
@@ -102,12 +132,51 @@ async function computeSellerStats(sellerOid, range) {
   const fortyDaysAgo = new Date();
   fortyDaysAgo.setDate(fortyDaysAgo.getDate() - 40);
 
+  const windowMatch = dayRange
+    ? { $gte: dayRange.start, $lt: dayRange.end }
+    : { $gte: fortyDaysAgo };
+
+  let salesTrendPipeline;
+  if (dayRange?.days === 1) {
+    salesTrendPipeline = [
+      {
+        $group: {
+          _id: { $hour: { date: "$createdAt", timezone: IST_OFFSET } },
+          sales: { $sum: { $ifNull: ["$pricing.total", 0] } },
+          orders: { $sum: 1 },
+        },
+      },
+    ];
+  } else if (dayRange) {
+    salesTrendPipeline = [
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: IST_OFFSET } },
+          sales: { $sum: { $ifNull: ["$pricing.total", 0] } },
+          orders: { $sum: 1 },
+        },
+      },
+    ];
+  } else {
+    salesTrendPipeline = [
+      { $match: { createdAt: { $gte: trendStartDate } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: aggregationFormat, date: "$createdAt", timezone: IST_OFFSET } },
+          sales: { $sum: { $ifNull: ["$pricing.total", 0] } },
+          orders: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ];
+  }
+
   const [statsResult] = await Order.aggregate([
     {
       $match: {
         seller: sellerOid,
         status: { $ne: "cancelled" },
-        createdAt: { $gte: fortyDaysAgo },
+        createdAt: windowMatch,
       },
     },
     {
@@ -141,30 +210,20 @@ async function computeSellerStats(sellerOid, range) {
             },
           },
         ],
-        salesTrend: [
-          { $match: { createdAt: { $gte: trendStartDate } } },
-          {
-            $group: {
-              _id: { $dateToString: { format: aggregationFormat, date: "$createdAt", timezone: "+05:30" } },
-              sales: { $sum: { $ifNull: ["$pricing.total", 0] } },
-              orders: { $sum: 1 },
-            },
-          },
-          { $sort: { _id: 1 } },
-        ],
+        salesTrend: salesTrendPipeline,
         topCities: [
           { $group: { _id: "$address.city", count: { $sum: 1 } } },
           { $sort: { count: -1 } },
           { $limit: 1 },
         ],
         peakHours: [
-          { $project: { hour: { $hour: "$createdAt" } } },
+          { $project: { hour: { $hour: { date: "$createdAt", timezone: IST_OFFSET } } } },
           { $group: { _id: "$hour", count: { $sum: 1 } } },
           { $sort: { count: -1 } },
           { $limit: 1 },
         ],
         topProductsCurrent: [
-          { $match: { createdAt: { $gte: sevenDaysAgo } } },
+          ...(dayRange ? [] : [{ $match: { createdAt: { $gte: sevenDaysAgo } } }]),
           { $unwind: "$items" },
           {
             $group: {
@@ -224,7 +283,33 @@ async function computeSellerStats(sellerOid, range) {
 
   const salesTrend = statsResult.salesTrend;
   let chartData = [];
-  if (range === "monthly") {
+  if (dayRange?.days === 1) {
+    for (let h = 0; h < 24; h++) {
+      const data = salesTrend.find((item) => item._id === h);
+      chartData.push({
+        _id: h,
+        date: dayRange.from,
+        name: formatHourLabel(h),
+        sales: data ? data.sales : 0,
+        orders: data ? data.orders : 0,
+        traffic: 0,
+      });
+    }
+  } else if (dayRange) {
+    for (let i = 0; i < dayRange.days; i++) {
+      const d = new Date(dayRange.start.getTime() + i * DAY_MS);
+      const dateStr = toIstDateString(d);
+      const data = salesTrend.find((item) => item._id === dateStr);
+      chartData.push({
+        _id: dateStr,
+        date: dateStr,
+        name: `${Number(dateStr.slice(8, 10))} ${MONTH_NAMES[Number(dateStr.slice(5, 7)) - 1]}`,
+        sales: data ? data.sales : 0,
+        orders: data ? data.orders : 0,
+        traffic: 0,
+      });
+    }
+  } else if (range === "monthly") {
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
@@ -323,7 +408,8 @@ async function computeSellerStats(sellerOid, range) {
         name: item.name,
         sales: currSales,
         revenue: `₹${(item.revenue || 0).toLocaleString()}`,
-        trend,
+        // Week-over-week trend has no meaning for a custom window.
+        trend: dayRange ? null : trend,
       };
     })
     .slice(0, 5);
@@ -341,7 +427,51 @@ async function computeSellerStats(sellerOid, range) {
   const devicePerc =
     totalOrders > 0 ? Math.round((topDeviceCount / totalOrders) * 100) : 0;
 
+  let daySummary = null;
+  let rangeOrders = null;
+  if (dayRange) {
+    const rangeFilter = {
+      seller: sellerOid,
+      createdAt: { $gte: dayRange.start, $lt: dayRange.end },
+    };
+    const [statusAggregation, orderDocs] = await Promise.all([
+      Order.aggregate([
+        { $match: rangeFilter },
+        {
+          $group: {
+            _id: "$status",
+            count: { $sum: 1 },
+            amount: { $sum: { $ifNull: ["$pricing.total", 0] } },
+          },
+        },
+      ]),
+      Order.find(rangeFilter)
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .populate("customer", "name phone")
+        .lean(),
+    ]);
+    const ordersByStatus = statusAggregation.map((row) => ({
+      status: row._id || "unknown",
+      count: row.count,
+      amount: row.amount,
+    }));
+    daySummary = {
+      from: dayRange.from,
+      to: dayRange.to,
+      days: dayRange.days,
+      grossSales: totalSales,
+      totalOrders,
+      avgOrderValue: Math.round(avgOrderValue),
+      cancelledOrders: ordersByStatus.find((row) => row.status === "cancelled")?.count || 0,
+      deliveredOrders: ordersByStatus.find((row) => row.status === "delivered")?.count || 0,
+      ordersByStatus,
+    };
+    rangeOrders = orderDocs;
+  }
+
   return {
+    ...(dayRange ? { daySummary, orders: rangeOrders } : {}),
     overview: {
       totalSales: `₹${totalSales.toLocaleString()}`,
       totalOrders: totalOrders.toLocaleString(),

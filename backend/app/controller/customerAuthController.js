@@ -10,6 +10,7 @@ import {
 import {
     sendLoginOtpSchema,
     sendSignupOtpSchema,
+    updateLastLocationSchema,
     validateSchema,
     verifyOtpSchema,
 } from "../validation/customerAuthValidation.js";
@@ -63,6 +64,57 @@ export const loginCustomer = async (req, res) => {
 /* ===============================
    VERIFY OTP – Login / Signup
 ================================ */
+/**
+ * Best-effort: records the app location the customer logged in from.
+ * Failures are logged and swallowed so they can never block a login.
+ */
+async function saveLastLoginLocation(customerId, location) {
+    if (!location) return false;
+    const hasCoords = Number.isFinite(location.latitude) && Number.isFinite(location.longitude);
+    if (!location.city && !location.address && !hasCoords) return false;
+    try {
+        await Customer.updateOne(
+            { _id: customerId },
+            {
+                $set: {
+                    lastLoginLocation: {
+                        latitude: hasCoords ? location.latitude : null,
+                        longitude: hasCoords ? location.longitude : null,
+                        address: location.address || "",
+                        city: location.city || "",
+                        state: location.state || "",
+                        pincode: location.pincode || "",
+                        capturedAt: new Date(),
+                    },
+                },
+            },
+        );
+        return true;
+    } catch (error) {
+        console.error("Failed to save login location:", error.message);
+        return false;
+    }
+}
+
+/* ===============================
+   UPDATE LAST KNOWN APP LOCATION
+   Called by the storefront for already-logged-in customers (throttled
+   client-side), so the admin customer list has a location even for
+   customers who haven't re-logged in or ordered.
+================================ */
+export const updateLastLocation = async (req, res) => {
+    try {
+        const { location } = validateSchema(updateLastLocationSchema, req.body || {});
+        const saved = await saveLastLoginLocation(req.user.id, location);
+        if (!saved) {
+            return handleResponse(res, 400, "No usable location provided");
+        }
+        return handleResponse(res, 200, "Location updated");
+    } catch (error) {
+        return handleResponse(res, error.statusCode || 500, error.message);
+    }
+};
+
 export const verifyCustomerOTP = async (req, res) => {
     try {
         const payload = validateSchema(verifyOtpSchema, req.body || {});
@@ -72,6 +124,8 @@ export const verifyCustomerOTP = async (req, res) => {
             ipAddress: req.ip,
         });
         const token = generateToken(customer);
+
+        await saveLastLoginLocation(customer._id, payload.location);
 
         return handleResponse(
             res,

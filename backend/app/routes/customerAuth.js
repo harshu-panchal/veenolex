@@ -5,9 +5,10 @@ import {
     verifyCustomerOTP,
     getCustomerProfile,
     updateCustomerProfile,
+    updateLastLocation,
     getCustomerTransactions,
 } from "../controller/customerAuthController.js";
-import { verifyToken } from "../middleware/authMiddleware.js";
+import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
 import {
     authRouteRateLimiter,
     createContentLengthGuard,
@@ -26,6 +27,7 @@ router.post("/verify-otp", authRouteRateLimiter, otpRouteRateLimiter, smallAuthP
 // Profile routes
 router.get("/profile", verifyToken, getCustomerProfile);
 router.put("/profile", verifyToken, updateCustomerProfile);
+router.put("/last-location", verifyToken, allowRoles("customer", "user"), smallAuthPayload, updateLastLocation);
 
 // Wallet
 router.get("/transactions", verifyToken, getCustomerTransactions);

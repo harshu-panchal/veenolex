@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { customerApi } from '../services/customerApi';
+import { getStoredReportedLocation, markLocationSynced } from '../utils/appLocation';
 import BgImage from '@/assets/image.png';
 
 const CATEGORIES = [
@@ -137,8 +138,10 @@ const CustomerAuth = () => {
         }
         setIsLoading(true);
         try {
-            const response = await customerApi.verifyOtp({ phone: formData.phone, otp: formData.otp });
+            const loginLocation = getStoredReportedLocation();
+            const response = await customerApi.verifyOtp({ phone: formData.phone, otp: formData.otp, location: loginLocation });
             const { token, customer } = response.data.result;
+            if (loginLocation) markLocationSynced(loginLocation);
             login({ ...customer, token, role: 'customer' });
             toast.success('Successfully Logged In!');
             navigate('/');
