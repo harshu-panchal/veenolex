@@ -1,4 +1,5 @@
 import axiosInstance from '@core/api/axios';
+import { invalidateCache } from '@core/api/dedupe';
 
 /**
  * Admin content-management endpoints: FAQs, Experience Studio, Hero config,
@@ -31,8 +32,10 @@ export const adminContentApi = {
     // Hero config (separate hero banners + categories per page)
     getHeroConfig: (params) =>
         axiosInstance.get('/admin/experience/hero', { params }),
-    setHeroConfig: (data) =>
-        axiosInstance.put('/admin/experience/hero', data),
+    setHeroConfig: (data) => {
+        invalidateCache('/experience/hero');
+        return axiosInstance.put('/admin/experience/hero', data);
+    },
 
     // Offers Management
     getOffers: (params) => axiosInstance.get('/admin-offers', { params }),

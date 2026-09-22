@@ -101,7 +101,9 @@ const ExperienceBannerCarousel = ({ section, items, fullWidth = true, slideGap =
       >
         {visibleItems.map((banner, idx) => {
           const useDesktopRatio = !isMobile;
-          const activeImageUrl = (useDesktopRatio && banner.desktopImageUrl) ? banner.desktopImageUrl : banner.imageUrl;
+          const activeImageUrl = useDesktopRatio
+            ? (banner.desktopImageUrl || banner.imageUrl)
+            : (banner.imageUrl || banner.desktopImageUrl);
           const aspectClass = useDesktopRatio
             ? "aspect-[21/7] max-h-[460px]"
             : "aspect-[16/6] sm:aspect-[18/6.5] max-h-[280px]";

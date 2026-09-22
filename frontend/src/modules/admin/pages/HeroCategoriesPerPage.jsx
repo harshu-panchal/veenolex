@@ -114,7 +114,17 @@ export default function HeroCategoriesPerPage() {
       const catIds = result.categoryIds || [];
       setFormBanners(
         items.length
-          ? items.map((b) => ({ ...b, isUploading: false, isDesktopUploading: false }))
+          ? items.map((b) => ({
+              imageUrl: b.imageUrl || "",
+              desktopImageUrl: b.desktopImageUrl || "",
+              title: b.title || "",
+              subtitle: b.subtitle || "",
+              linkType: b.linkType || "none",
+              linkValue: b.linkValue || "",
+              status: b.status || "active",
+              isUploading: false,
+              isDesktopUploading: false,
+            }))
           : [emptyBannerItem()]
       );
       setFormCategoryIds(Array.isArray(catIds) ? catIds : []);
@@ -123,6 +133,8 @@ export default function HeroCategoriesPerPage() {
     }
     setModalOpen(true);
   };
+
+  const MAX_BANNERS = 20;
 
   const updateBannerItem = (idx, changes) => {
     setFormBanners((prev) => {
@@ -133,6 +145,10 @@ export default function HeroCategoriesPerPage() {
   };
 
   const addBannerItem = () => {
+    if (formBanners.length >= MAX_BANNERS) {
+      showToast(`Maximum ${MAX_BANNERS} banners allowed per page`, "warning");
+      return;
+    }
     setFormBanners((prev) => [...prev, emptyBannerItem()]);
   };
 
@@ -187,15 +203,22 @@ export default function HeroCategoriesPerPage() {
       showToast("Please wait for all uploads to complete", "warning");
       return;
     }
-    const items = formBanners.filter((b) => b.imageUrl).map((b) => ({
-      imageUrl: b.imageUrl,
-      desktopImageUrl: b.desktopImageUrl || "",
-      title: b.title || "",
-      subtitle: b.subtitle || "",
-      linkType: b.linkType || "none",
-      linkValue: b.linkValue || "",
-      status: b.status || "active",
-    }));
+    const items = formBanners
+      .filter((b) => Boolean((b.imageUrl && b.imageUrl.trim()) || (b.desktopImageUrl && b.desktopImageUrl.trim())))
+      .slice(0, MAX_BANNERS)
+      .map((b) => {
+        const mob = (b.imageUrl || "").trim();
+        const desk = (b.desktopImageUrl || "").trim();
+        return {
+          imageUrl: mob || desk,
+          desktopImageUrl: desk || mob,
+          title: b.title || "",
+          subtitle: b.subtitle || "",
+          linkType: b.linkType || "none",
+          linkValue: b.linkValue || "",
+          status: b.status || "active",
+        };
+      });
 
     if (!editingRow) return;
     setSaving(true);
@@ -348,18 +371,24 @@ export default function HeroCategoriesPerPage() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  Hero banners
+                  Hero banners ({formBanners.length}/{MAX_BANNERS})
                 </label>
-                <button
-                  type="button"
-                  onClick={addBannerItem}
-                  className="flex items-center gap-1 text-[10px] font-bold text-primary"
-                >
-                  <HiOutlinePlus className="h-3 w-3" />
-                  Add banner
-                </button>
+                {formBanners.length < MAX_BANNERS ? (
+                  <button
+                    type="button"
+                    onClick={addBannerItem}
+                    className="flex items-center gap-1 text-[10px] font-bold text-primary hover:underline cursor-pointer"
+                  >
+                    <HiOutlinePlus className="h-3 w-3" />
+                    Add banner
+                  </button>
+                ) : (
+                  <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md">
+                    Max limit (20)
+                  </span>
+                )}
               </div>
-              <div className="space-y-3 max-h-48 overflow-y-auto">
+              <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
                 {formBanners.map((item, idx) => (
                   <Card key={idx} className="p-3 bg-white border-slate-100">
                     <div className="flex items-start gap-3">

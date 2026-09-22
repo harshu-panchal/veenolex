@@ -511,10 +511,11 @@ export const upsertHeroConfig = async (req, res) => {
 
     const bannerItems = Array.isArray(banners?.items)
       ? banners.items
-        .filter((b) => b && b.imageUrl)
+        .filter((b) => b && (b.imageUrl || b.desktopImageUrl))
+        .slice(0, 20)
         .map((b) => ({
-          imageUrl: b.imageUrl,
-          desktopImageUrl: b.desktopImageUrl || "",
+          imageUrl: b.imageUrl || b.desktopImageUrl || "",
+          desktopImageUrl: b.desktopImageUrl || b.imageUrl || "",
           title: b.title || "",
           subtitle: b.subtitle || "",
           linkType: b.linkType || "none",
