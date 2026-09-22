@@ -33,8 +33,10 @@ export const isDefaultAppLocation = (loc) => {
  */
 export const toReportedLocation = (loc) => {
   if (isDefaultAppLocation(loc)) return undefined;
-  const lat = Number(loc.latitude);
-  const lng = Number(loc.longitude);
+  // Number(null) / Number("") are 0, so check presence before converting.
+  const hasValue = (v) => v !== null && v !== undefined && v !== "";
+  const lat = hasValue(loc.latitude) ? Number(loc.latitude) : NaN;
+  const lng = hasValue(loc.longitude) ? Number(loc.longitude) : NaN;
   const coords =
     Number.isFinite(lat) && Number.isFinite(lng) ? { latitude: lat, longitude: lng } : null;
   const address = String(loc.address || loc.name || "").slice(0, 300);

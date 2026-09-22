@@ -1084,6 +1084,38 @@ const CheckoutPage = () => {
                 theme: {
                   color: "#27AE60",
                 },
+                config: {
+                  display: {
+                    blocks: {
+                      upi: {
+                        name: "Pay via UPI / QR",
+                        instruments: [
+                          {
+                            method: "upi",
+                          },
+                        ],
+                      },
+                      other: {
+                        name: "Cards, NetBanking & Wallets",
+                        instruments: [
+                          {
+                            method: "card",
+                          },
+                          {
+                            method: "netbanking",
+                          },
+                          {
+                            method: "wallet",
+                          },
+                        ],
+                      },
+                    },
+                    sequence: ["block.upi", "block.other"],
+                    preferences: {
+                      show_default_blocks: true,
+                    },
+                  },
+                },
               };
 
               const rzp = new window.Razorpay(options);

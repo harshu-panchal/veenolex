@@ -1104,14 +1104,7 @@ export const getProductById = async (req, res) => {
 
     let nearbySellerSet = null;
     const coords = parseCustomerCoordinates(req.query || {});
-    if (enforceRadius) {
-      if (!coords.valid) {
-        return handleResponse(
-          res,
-          400,
-          "lat and lng are required for customer product visibility",
-        );
-      }
+    if (coords.valid) {
       const nearbySellerIds = await getNearbySellerIdsForCustomer(
         coords.lat,
         coords.lng,
@@ -1125,7 +1118,7 @@ export const getProductById = async (req, res) => {
       async () =>
         Product.findById(id)
           .select(
-            "name slug description sku price salePrice stock lowStockAlert brand weight offerText marketedBy manufacturedBy bestBefore licenseNo ingredients mainImage galleryImages resultImages tabbedSections headerId categoryId subcategoryId sellerId status approvalStatus approvalRequestedAt approvalReviewedAt approvalReviewedBy approvalNote lastSubmittedByRole isFeatured variants createdAt",
+            "name slug description sku price salePrice stock lowStockAlert brand weight offerText marketedBy manufacturedBy bestBefore licenseNo ingredients mainImage galleryImages resultImages tabbedSections headerId categoryId subcategoryId sellerId status approvalStatus approvalRequestedAt approvalReviewedAt approvalReviewedBy approvalNote lastSubmittedByRole isFeatured variants createdAt zoneOutDeliveryEnabled shippingPartner zoneOutPrice",
           )
           .populate("headerId", "name")
           .populate("categoryId", "name")
@@ -1141,23 +1134,55 @@ export const getProductById = async (req, res) => {
 
     if (enforceRadius) {
       const approvalState = resolveProductApprovalStatus(product);
-      if (product.status !== "active" || approvalState !== PRODUCT_APPROVAL_STATUS.APPROVED) {
+      if (product.status !== "active" && product.status !== "coming_soon") {
+        return handleResponse(res, 404, "Product not found");
+      }
+      if (approvalState !== PRODUCT_APPROVAL_STATUS.APPROVED) {
         return handleResponse(res, 404, "Product not found");
       }
     }
 
-    if (enforceRadius) {
-      const sellerIdForProduct = String(product?.sellerId?._id || product?.sellerId);
-      if (!nearbySellerSet || !nearbySellerSet.has(sellerIdForProduct)) {
-        return handleResponse(res, 404, "Product not available in your area");
+    let isInZone = true;
+    let deliveryMethod = "SELLER_DIRECT";
+    let estimatedDeliveryTime = "2-3 hours";
+    let deliveryBadge = "Fast Local Delivery";
+    let shippingCost = 0;
+
+    const sellerIdForProduct = String(product?.sellerId?._id || product?.sellerId || "");
+
+    if (coords.valid && sellerIdForProduct) {
+      isInZone = nearbySellerSet ? nearbySellerSet.has(sellerIdForProduct) : false;
+      if (!isInZone) {
+        if (product.zoneOutDeliveryEnabled) {
+          deliveryMethod = "SHIPROCKET";
+          estimatedDeliveryTime = "2-3 days";
+          deliveryBadge = "Standard Delivery";
+          shippingCost = product.zoneOutPrice || 0;
+        } else if (enforceRadius) {
+          return handleResponse(res, 404, "Product not available in your area");
+        }
       }
+    } else if (product.zoneOutDeliveryEnabled) {
+      deliveryMethod = "SHIPROCKET";
+      estimatedDeliveryTime = "2-3 days";
+      deliveryBadge = "Standard Delivery";
+      shippingCost = product.zoneOutPrice || 0;
     }
+
+    const enrichedProduct = {
+      ...product,
+      isInZone,
+      deliveryMethod,
+      estimatedDeliveryTime,
+      deliveryBadge,
+      shippingCost,
+    };
 
     return handleResponse(
       res,
       200,
       "Product details fetched",
-      normalizeProductDocumentModeration(product),
+      normalizeProductDocumentModeration(enrichedProduct),
     );
   } catch (error) {
     return handleResponse(res, 500, error.message);

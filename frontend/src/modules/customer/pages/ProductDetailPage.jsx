@@ -1136,8 +1136,8 @@ const ProductDetailPage = () => {
                             {renderOfferSection()}
                         </div>
 
-                        {/* Desktop Only Rating, Category & Price Block */}
-                        <div className="hidden md:flex items-center gap-3 mb-6 mt-4">
+                        {/* Desktop Only Rating, Category, Delivery & Price Block */}
+                        <div className="hidden md:flex flex-wrap items-center gap-2.5 mb-6 mt-4">
                             {product.status === "coming_soon" && (
                                 <span className="bg-purple-100 border border-purple-200 text-purple-700 px-3.5 py-1.5 rounded-full text-xs font-black uppercase tracking-wider">
                                     COMING SOON
@@ -1146,6 +1146,15 @@ const ProductDetailPage = () => {
                             <span className="bg-brand-50 border border-[#e2e8f0] text-primary px-3.5 py-1.5 rounded-full text-xs font-black uppercase tracking-wider">
                                 {product.categoryId?.name || 'Essential'}
                             </span>
+                            {product.deliveryMethod === "SELLER_DIRECT" ? (
+                                <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3.5 py-1.5 rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
+                                    ⚡ {product.deliveryBadge || "Fast Local Delivery"}
+                                </span>
+                            ) : (
+                                <span className="bg-orange-50 border border-orange-200 text-orange-700 px-3.5 py-1.5 rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
+                                    🚚 {product.deliveryBadge || "Standard Delivery"}
+                                </span>
+                            )}
                             <div className="flex items-center gap-1.5 text-orange-500 font-extrabold bg-orange-50 border border-orange-100/50 px-3.5 py-1.5 rounded-full text-xs shadow-sm">
                                 <Star size={13} fill="currentColor" /> {reviews.length > 0 ? `${reviewBreakdown.avg} (${reviews.length})` : '0 (No reviews yet)'}
                             </div>
@@ -1172,6 +1181,11 @@ const ProductDetailPage = () => {
                                             </span>
                                         </>
                                     ) : null}
+                                    {product.shippingCost > 0 && product.deliveryMethod !== "SELLER_DIRECT" && (
+                                        <span className="text-xs text-slate-500 font-bold bg-amber-50 border border-amber-200/80 px-2.5 py-1 rounded-lg">
+                                            +₹{product.shippingCost} Standard Shipping
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -1179,6 +1193,50 @@ const ProductDetailPage = () => {
                         {applicableCoupons.length > 0 && (
                             <div className="hidden md:block mb-6">
                                 {renderOfferSection()}
+                            </div>
+                        )}
+
+                        {/* Desktop Variant Selector */}
+                        {displayVariants.length > 0 && (
+                            <div className="hidden md:block space-y-3 mb-6">
+                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Select Size / Pack</h3>
+                                <div className="flex flex-wrap gap-3">
+                                    {displayVariants.map((v, idx) => {
+                                        const isSelected = selectedVariant ? selectedVariant.sku === v.sku : defaultVariant?.sku === v.sku;
+                                        const isOutOfStock = v.stock <= 0;
+                                        const priceVal = Number(v.salePrice || v.price || 0);
+                                        const originalVal = Number(v.price || 0);
+                                        const discountVal = originalVal > priceVal ? Math.round(((originalVal - priceVal) / originalVal) * 100) : 0;
+
+                                        return (
+                                            <button
+                                                key={v.sku || idx}
+                                                type="button"
+                                                onClick={() => !isOutOfStock && setSelectedVariant(v)}
+                                                className={cn(
+                                                    "relative px-4 py-3 rounded-2xl bg-white border text-left transition-all duration-200 cursor-pointer min-w-[130px]",
+                                                    isSelected 
+                                                        ? "border-primary shadow-md shadow-brand-500/10 ring-2 ring-primary/20 bg-brand-50/20"
+                                                        : "border-slate-200/80 hover:border-slate-300",
+                                                    isOutOfStock && "opacity-50 cursor-not-allowed bg-slate-50"
+                                                )}
+                                            >
+                                                {discountVal > 0 && !isOutOfStock && (
+                                                    <span className="absolute -top-2 left-2 px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[8px] font-black uppercase">
+                                                        {discountVal}% OFF
+                                                    </span>
+                                                )}
+                                                <div className="font-bold text-slate-800 text-xs">{v.name}</div>
+                                                <div className="flex items-baseline gap-1 mt-0.5">
+                                                    <span className="font-black text-slate-900 text-sm">₹{priceVal}</span>
+                                                    {originalVal > priceVal && (
+                                                        <span className="text-[10px] text-slate-400 line-through">₹{originalVal}</span>
+                                                    )}
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         )}
 
@@ -1225,24 +1283,33 @@ const ProductDetailPage = () => {
                             <span className="text-xs font-black text-primary uppercase tracking-widest flex items-center justify-center sm:justify-start gap-1.5">
                                 <ShieldCheck size={16} /> Quality Guaranteed
                             </span>
-                            <span className="text-sm font-bold text-slate-400 flex items-center justify-center sm:justify-start gap-1.5">
-                                <Clock size={16} /> Delivered in 10-15 mins
-                            </span>
+                            {product.deliveryMethod === "SELLER_DIRECT" ? (
+                                <span className="text-sm font-bold text-emerald-600 flex items-center justify-center sm:justify-start gap-1.5">
+                                    <Clock size={16} /> ⚡ Fast Local Delivery ({product.estimatedDeliveryTime || "2-3 hours"})
+                                </span>
+                            ) : (
+                                <span className="text-sm font-bold text-amber-600 flex items-center justify-center sm:justify-start gap-1.5">
+                                    <Truck size={16} /> 🚚 Standard Delivery ({product.estimatedDeliveryTime || "2-3 days"})
+                                    {product.shippingCost > 0 && (
+                                        <span className="text-xs text-slate-500 font-semibold">(+₹{product.shippingCost} Shipping)</span>
+                                    )}
+                                </span>
+                            )}
                         </div>
                     </div>
 
                     <div className="hidden md:grid grid-cols-3 gap-4">
                         <div className="bg-white/80 p-5 rounded-[1.75rem] border border-slate-100 shadow-sm text-center transition-all hover:shadow-md hover:bg-white">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Weight</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Weight / Unit</p>
                             <p className="text-base font-black text-slate-800">{activeVariant?.name || product.weight || '1 unit'}</p>
                         </div>
                         <div className="bg-white/80 p-5 rounded-[1.75rem] border border-slate-100 shadow-sm text-center transition-all hover:shadow-md hover:bg-white">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Stock</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Stock Status</p>
                             <p className="text-base font-black text-slate-800">{product.stock > 0 ? 'In Stock' : 'Out of Stock'}</p>
                         </div>
                         <div className="bg-white/80 p-5 rounded-[1.75rem] border border-slate-100 shadow-sm text-center transition-all hover:shadow-md hover:bg-white">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Brand</p>
-                            <p className="text-base font-black text-slate-800">{product.brand || 'Premium'}</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Seller / Store</p>
+                            <p className="text-base font-black text-slate-800 truncate">{product.sellerId?.shopName || product.brand || 'Veenolex'}</p>
                         </div>
                     </div>
 
@@ -1325,8 +1392,34 @@ const ProductDetailPage = () => {
                         {/* Delivery Estimate Box */}
                         <div className="bg-white border border-slate-200/60 rounded-[2rem] p-5 shadow-sm space-y-4">
                             <div>
-                                <h4 className="text-xs font-bold text-slate-800 leading-tight">80% orders gets delivered in 1-day</h4>
-                                <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Get estimated delivery date</p>
+                                <div className="flex items-center gap-2 mb-1.5">
+                                    {product.deliveryMethod === "SELLER_DIRECT" ? (
+                                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                                            ⚡ Fast Local Delivery
+                                        </span>
+                                    ) : (
+                                        <span className="bg-orange-50 text-orange-700 border border-orange-200 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                                            🚚 Standard Delivery
+                                        </span>
+                                    )}
+                                    {product.sellerId?.shopName && (
+                                        <span className="text-[10px] font-bold text-slate-400 truncate">
+                                            by {product.sellerId.shopName}
+                                        </span>
+                                    )}
+                                </div>
+                                <h4 className="text-xs font-bold text-slate-800 leading-tight">
+                                    {product.deliveryMethod === "SELLER_DIRECT" 
+                                        ? `Estimated Delivery in ${product.estimatedDeliveryTime || "2-3 hours"}` 
+                                        : `Estimated Delivery in ${product.estimatedDeliveryTime || "2-3 days"}`}
+                                </h4>
+                                <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                                    {product.deliveryMethod === "SELLER_DIRECT" 
+                                        ? "Dispatched directly from local partner store" 
+                                        : product.shippingCost > 0 
+                                            ? `Standard courier delivery (+₹${product.shippingCost} Shipping)` 
+                                            : "Shipped via standard courier partner"}
+                                </p>
                             </div>
 
                             {/* Pincode Input */}

@@ -93,15 +93,21 @@ export async function getSellerStats(sellerId, { range = "daily", from, to } = {
   );
 }
 
-/** Resolves from/to into an IST range kept inside the seller's 40-day window. */
+/**
+ * Resolves from/to into an IST range kept inside the seller's 40-day window
+ * (lock start → today). The requested range is clamped to that window; a
+ * range entirely outside it is rejected rather than silently shifted.
+ */
 function resolveSellerDateRange(from, to) {
+  const range = getIstDateRange(from, to);
+  if (!range) return null;
   const lockFrom = toIstDateString(new Date(Date.now() - (SELLER_LOCK_DAYS - 1) * DAY_MS));
   const today = toIstDateString(new Date());
-  const range = getIstDateRange(from, to, { maxDays: SELLER_LOCK_DAYS });
-  if (!range) return null;
   const clampedFrom = range.from < lockFrom ? lockFrom : range.from;
   const clampedTo = range.to > today ? today : range.to;
-  if (clampedFrom > clampedTo) return getIstDateRange(clampedTo, clampedTo);
+  if (clampedFrom > clampedTo) {
+    throw svcErr(`Sellers can only view data from the last ${SELLER_LOCK_DAYS} days`, 400);
+  }
   return getIstDateRange(clampedFrom, clampedTo);
 }
 
