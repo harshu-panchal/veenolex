@@ -28,7 +28,7 @@ const CheckoutPricingBreakdown = React.memo(function CheckoutPricingBreakdown({
   cartTotal,
   selectedCoupon,
   discountAmount,
-  isShipRocket = false,
+  deliveryText = null,
 }) {
   const deliveryFee = pricingPreview?.deliveryFeeCharged || 0;
   const handlingFee = pricingPreview?.handlingFeeCharged || 0;
@@ -70,9 +70,9 @@ const CheckoutPricingBreakdown = React.memo(function CheckoutPricingBreakdown({
               Order Summary
             </h3>
           </div>
-          {isShipRocket && (
-            <p className="text-[13px] font-bold text-orange-500 mt-1.5 pl-12 text-left">
-              Estimated delivery: 2-3 days
+          {deliveryText && (
+            <p className="text-[13px] font-bold text-slate-600 mt-1.5 pl-12 text-left">
+              {deliveryText}
             </p>
           )}
         </div>

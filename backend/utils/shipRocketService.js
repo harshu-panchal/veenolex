@@ -109,133 +109,301 @@ export const getPickupLocation = async (token) => {
 
 let cachedPickupLocation = null;
 
-export const createShipRocketOrder = async (order, user, userAddress, seller, items) => {
+const isShiprocketUnconfigured = () =>
+  process.env.NODE_ENV === "development" ||
+  !process.env.SHIPROCKET_EMAIL ||
+  process.env.SHIPROCKET_EMAIL === "your_shiprocket_email";
+
+function buildMockShipment() {
+  return {
+    orderId: `MOCK_SR_${Date.now()}`,
+    shipmentId: null,
+    trackingNumber: `MOCK_AWB_${Math.floor(100000000 + Math.random() * 900000000)}`,
+    status: "NEW",
+    estimatedDelivery: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+  };
+}
+
+function formatShiprocketDate(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function tenDigitPhone(value) {
+  const digits = String(value || "").replace(/[^0-9]/g, "");
+  return digits.length >= 10 ? digits.slice(-10) : "";
+}
+
+const SHIPROCKET_API = "https://apiv2.shiprocket.in/v1/external";
+
+async function shiprocketRequest(token, path, { method = "GET", body } = {}) {
+  const response = await fetch(`${SHIPROCKET_API}${path}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const err = new Error(data?.message || `Shiprocket ${path} failed (${response.status})`);
+    err.response = data;
+    throw err;
+  }
+  return data;
+}
+
+/**
+ * Parse a Shiprocket date ("Oct 02, 2026", "2026-10-02 23:59:59", ...).
+ * Date-only values mean "during that day", so they are pinned to 8 PM.
+ */
+export function parseShiprocketDate(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  const isoLike = /^\d{4}-\d{2}-\d{2}(\s+\d{2}:\d{2}(:\d{2})?)?$/.test(raw)
+    ? raw.replace(" ", "T")
+    : raw;
+  const date = new Date(isoLike);
+  if (Number.isNaN(date.getTime())) return null;
+  const hasTime = /\d{1,2}:\d{2}/.test(raw);
+  if (!hasTime) date.setHours(20, 0, 0, 0);
+  return date;
+}
+
+/**
+ * Couriers that can ship pickup → delivery pincode, with the courier
+ * Shiprocket recommends and its expected delivery date.
+ */
+export async function checkShiprocketServiceability({ pickupPostcode, deliveryPostcode, weightKg = 0.5, cod = false }) {
+  if (!/^[0-9]{6}$/.test(String(pickupPostcode || "")) || !/^[0-9]{6}$/.test(String(deliveryPostcode || ""))) {
+    return null;
+  }
+  const token = await getShiprocketToken();
+  if (!token) return null;
+
+  const query = new URLSearchParams({
+    pickup_postcode: String(pickupPostcode),
+    delivery_postcode: String(deliveryPostcode),
+    weight: String(weightKg || 0.5),
+    cod: cod ? "1" : "0",
+  });
+  const data = await shiprocketRequest(token, `/courier/serviceability/?${query}`);
+  const couriers = data?.data?.available_courier_companies || [];
+  if (!couriers.length) return null;
+
+  const recommendedId = data?.data?.recommended_courier_company_id;
+  const courier =
+    couriers.find((c) => Number(c.courier_company_id) === Number(recommendedId)) || couriers[0];
+  const days = Number(courier.estimated_delivery_days);
+  const etd =
+    parseShiprocketDate(courier.etd) ||
+    (Number.isFinite(days) && days > 0 ? new Date(Date.now() + days * 24 * 60 * 60 * 1000) : null);
+
+  return {
+    courierCompanyId: Number(courier.courier_company_id),
+    courierName: courier.courier_name || "",
+    etd,
+    estimatedDeliveryDays: Number.isFinite(days) ? days : null,
+  };
+}
+
+async function assignAwbAndSchedulePickup(token, shipmentId, courierCompanyId) {
+  const assigned = await shiprocketRequest(token, "/courier/assign/awb", {
+    method: "POST",
+    body: {
+      shipment_id: String(shipmentId),
+      ...(courierCompanyId ? { courier_id: String(courierCompanyId) } : {}),
+    },
+  });
+  const awbData = assigned?.response?.data || {};
+  if (!awbData.awb_code) {
+    throw new Error(assigned?.message || "Shiprocket did not assign an AWB");
+  }
+
+  try {
+    await shiprocketRequest(token, "/courier/generate/pickup", {
+      method: "POST",
+      body: { shipment_id: [String(shipmentId)] },
+    });
+  } catch (pickupErr) {
+    // The shipment is booked; the pickup can be requested again from the
+    // Shiprocket panel, so this is logged rather than failing the dispatch.
+    console.warn(`Shiprocket pickup request failed for shipment ${shipmentId}:`, pickupErr.message);
+  }
+
+  return {
+    awbCode: String(awbData.awb_code),
+    courierCompanyId: Number(awbData.courier_company_id) || courierCompanyId || null,
+    courierName: awbData.courier_name || "",
+  };
+}
+
+/** Latest expected delivery date for an AWB (null when unknown). */
+export async function fetchShiprocketTrackingEtd(awbCode) {
+  if (!awbCode || String(awbCode).startsWith("MOCK_")) return null;
+  const token = await getShiprocketToken();
+  if (!token) return null;
+  const data = await shiprocketRequest(token, `/courier/track/awb/${encodeURIComponent(awbCode)}`);
+  const tracking = data?.tracking_data || {};
+  const shipmentTrack = Array.isArray(tracking.shipment_track) ? tracking.shipment_track[0] : null;
+  return parseShiprocketDate(tracking.etd || shipmentTrack?.edd);
+}
+
+/**
+ * Create a Shiprocket (adhoc) order for a customer order.
+ *
+ * @param {Object} options.pickupLocation Shiprocket pickup nickname to ship
+ *   from (e.g. the admin warehouse); defaults to the account's primary one.
+ */
+export const createShipRocketOrder = async (order, user, userAddress, seller, items, options = {}) => {
+  const saveDetails = async (details) => {
+    order.shipRocketDetails = details;
+    if (typeof order.save === "function") {
+      await order.save();
+    }
+    return details;
+  };
+
   try {
     const token = await getShiprocketToken();
-    const channelId = await getChannelId(token);
-    const pickupLocation = await getPickupLocation(token);
 
     if (!token) {
-      if (
-        process.env.NODE_ENV === "development" || 
-        !process.env.SHIPROCKET_EMAIL || 
-        process.env.SHIPROCKET_EMAIL === "your_shiprocket_email"
-      ) {
+      if (isShiprocketUnconfigured()) {
         console.warn("Falling back to Mock ShipRocket order details (No valid ShipRocket credentials)");
-        const mockDetails = {
-          orderId: `MOCK_SR_${Date.now()}`,
-          trackingNumber: `MOCK_AWB_${Math.floor(100000000 + Math.random() * 900000000)}`,
-          status: "NEW",
-          estimatedDelivery: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
-        };
-        order.shipRocketDetails = mockDetails;
-        if (typeof order.save === 'function') {
-          await order.save();
-        }
-        return mockDetails;
+        return saveDetails(buildMockShipment());
       }
       throw new Error("ShipRocket authentication failed. Please check SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD.");
     }
 
-    const url = "https://apiv2.shiprocket.in/v1/orders/create/bulk";
-    
-    // Map internal order items to ShipRocket format
-    const orderItems = items.map(item => ({
-      sku: item.product?.sku || item.sku || "UNKNOWN_SKU",
-      hsn_code: "9999",
-      quantity: item.quantity,
-      price: item.price
+    const channelId = await getChannelId(token);
+    const pickupLocation = options.pickupLocation || (await getPickupLocation(token));
+    const address = userAddress || {};
+    const customer = user || {};
+
+    const pincode = String(address.pincode || "").trim();
+    if (!/^[0-9]{6}$/.test(pincode)) {
+      throw new Error("Delivery address has no valid 6-digit pincode; Shiprocket needs one to ship.");
+    }
+
+    const orderItems = (items || []).map((item, idx) => ({
+      name: item.name || item.productName || `Product-${idx + 1}`,
+      sku: String(item.sku || item.variantSlot || item.product?._id || item.product || `SKU-${idx + 1}`),
+      units: Number(item.quantity || 1),
+      selling_price: Number(item.price || 0),
+      discount: 0,
+      tax: 0,
+      hsn: 9999,
     }));
 
-    const payload = [
-      {
-        channel_id: channelId || undefined,
-        order_id: order._id.toString(),
-        order_date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
-        pickup_location_id: pickupLocation,
-        billing_customer_name: user.name,
-        billing_email: user.email,
-        billing_phone: user.phone,
-        billing_address: userAddress.street || userAddress.address,
-        billing_city: userAddress.city,
-        billing_state: userAddress.state || "Maharashtra", // Fallback state
-        billing_pincode: userAddress.pincode || "000000",
-        shipping_is_default: true,
-        order_items: orderItems,
-        payment_method: "PREPAID",
-        sub_total: order.pricing?.total || order.total || 0
-      }
-    ];
+    const [firstName, ...rest] = String(address.name || customer.name || "Customer").trim().split(/\s+/);
+    const isCod = String(order.paymentMode || "").toUpperCase() === "COD";
+    const subTotal = Number(order.paymentBreakdown?.grandTotal || order.pricing?.total || 0);
 
-    const response = await fetch(url, {
+    const payload = {
+      order_id: String(order.orderId || order._id),
+      order_date: formatShiprocketDate(),
+      pickup_location: pickupLocation,
+      channel_id: channelId || undefined,
+      billing_customer_name: firstName,
+      billing_last_name: rest.join(" "),
+      billing_address: address.address || address.street || "",
+      billing_address_2: address.landmark || "",
+      billing_city: address.city || "",
+      billing_pincode: pincode,
+      billing_state: address.state || "",
+      billing_country: "India",
+      billing_email: customer.email || "orders@veenolex.com",
+      billing_phone: tenDigitPhone(address.phone || customer.phone),
+      shipping_is_billing: true,
+      order_items: orderItems,
+      payment_method: isCod ? "COD" : "Prepaid",
+      shipping_charges: 0,
+      giftwrap_charges: 0,
+      transaction_charges: 0,
+      total_discount: 0,
+      sub_total: subTotal,
+      length: 10,
+      breadth: 10,
+      height: 10,
+      weight: 0.5,
+    };
+
+    const response = await fetch("https://apiv2.shiprocket.in/v1/external/orders/create/adhoc", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
+        "Authorization": `Bearer ${token}`,
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
-
     const data = await response.json();
 
-    if (!response.ok) {
+    if (!response.ok || (data.status_code === 0 && !data.order_id)) {
       console.error("ShipRocket API Error:", data);
-      if (
-        process.env.NODE_ENV === "development" || 
-        !process.env.SHIPROCKET_EMAIL || 
-        process.env.SHIPROCKET_EMAIL === "your_shiprocket_email"
-      ) {
-        console.warn("Falling back to Mock ShipRocket order details for development environment");
-        const mockDetails = {
-          orderId: `MOCK_SR_${Date.now()}`,
-          trackingNumber: `MOCK_AWB_${Math.floor(100000000 + Math.random() * 900000000)}`,
-          status: "NEW",
-          estimatedDelivery: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
-        };
-        order.shipRocketDetails = mockDetails;
-        if (typeof order.save === 'function') {
-          await order.save();
-        }
-        return mockDetails;
-      }
-      throw new Error(data.message || "Failed to create ShipRocket order");
+      throw new Error(data.message || (data.errors ? JSON.stringify(data.errors) : "Failed to create ShipRocket order"));
     }
 
     const shipRocketOrder = Array.isArray(data) ? data[0] : data;
+    if (!shipRocketOrder || (!shipRocketOrder.order_id && !shipRocketOrder.id)) {
+      throw new Error(data.message || "Shiprocket API returned no valid order ID");
+    }
 
-    order.shipRocketDetails = {
-      orderId: shipRocketOrder.order_id?.toString() || shipRocketOrder.id?.toString(),
-      trackingNumber: shipRocketOrder.awb_code || null,
+    const shipmentId = shipRocketOrder.shipment_id ? String(shipRocketOrder.shipment_id) : null;
+    const details = {
+      orderId: (shipRocketOrder.order_id || shipRocketOrder.id).toString(),
+      shipmentId,
+      trackingNumber: shipRocketOrder.awb_code || "AWB_PENDING",
       status: shipRocketOrder.status || "NEW",
-      estimatedDelivery: null
+      estimatedDelivery: null,
+      etdCheckedAt: new Date(),
     };
 
-    if (typeof order.save === 'function') {
-      await order.save();
+    // Pick the recommended courier (and its delivery date), then book the
+    // AWB and pickup so the parcel actually gets collected.
+    let serviceability = null;
+    try {
+      serviceability = await checkShiprocketServiceability({
+        pickupPostcode: options.pickupPostcode,
+        deliveryPostcode: pincode,
+        weightKg: options.weightKg,
+        cod: isCod,
+      });
+    } catch (svcErr) {
+      console.warn("Shiprocket serviceability check failed:", svcErr.message);
+    }
+    if (serviceability) {
+      details.courierCompanyId = serviceability.courierCompanyId;
+      details.courierName = serviceability.courierName;
+      details.estimatedDelivery = serviceability.etd;
     }
 
-    return order.shipRocketDetails;
-
-  } catch (error) {
-    console.error("Error in createShipRocketOrder:", error);
-    if (
-      process.env.NODE_ENV === "development" || 
-      !process.env.SHIPROCKET_EMAIL || 
-      process.env.SHIPROCKET_EMAIL === "your_shiprocket_email"
-    ) {
-      console.warn("Falling back to Mock ShipRocket order details due to error in development");
-      const mockDetails = {
-        orderId: `MOCK_SR_${Date.now()}`,
-        trackingNumber: `MOCK_AWB_${Math.floor(100000000 + Math.random() * 900000000)}`,
-        status: "NEW",
-        estimatedDelivery: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
-      };
-      order.shipRocketDetails = mockDetails;
-      if (typeof order.save === 'function') {
-        await order.save();
+    if (shipmentId && !shipRocketOrder.awb_code) {
+      try {
+        const awb = await assignAwbAndSchedulePickup(token, shipmentId, serviceability?.courierCompanyId);
+        details.trackingNumber = awb.awbCode;
+        details.courierCompanyId = awb.courierCompanyId || details.courierCompanyId;
+        details.courierName = awb.courierName || details.courierName;
+        details.status = "PICKUP_SCHEDULED";
+      } catch (awbErr) {
+        console.error(`Shiprocket AWB assignment failed for ${details.orderId}:`, awbErr.message);
+        details.status = "AWB_PENDING";
       }
-      return mockDetails;
     }
+
+    return saveDetails(details);
+  } catch (error) {
+    console.error("Error in createShipRocketOrder:", error.message);
+    if (isShiprocketUnconfigured()) {
+      console.warn("Falling back to Mock ShipRocket order details due to error in development");
+      return saveDetails(buildMockShipment());
+    }
+    await saveDetails({
+      orderId: `FAILED_SR_${order.orderId || order._id}`,
+      trackingNumber: null,
+      status: "SHIPMENT_FAILED",
+      estimatedDelivery: null,
+    });
     throw error;
   }
 };

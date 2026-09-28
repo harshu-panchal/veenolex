@@ -25,7 +25,6 @@ import healthRoute from "./healthRoutes.js";
 import metricsRoute from "./metricsRoutes.js";
 import franchiseRoute from "./franchiseRoutes.js";
 import authOtpRoute from "../modules/otp/otp.routes.js";
-import checkoutRoute from "./checkoutRoutes.js";
 import userRoute from "./userRoutes.js";
 import ordersWithRoleFilterRoutes from "./ordersWithRoleFilter.js";
 import reportsWithRoleFilterRoutes from "./reportsWithRoleFilter.js";
@@ -34,6 +33,7 @@ import offlineSalesRoutes from "./offlineSalesRoutes.js";
 import sellerInventoryRoutes from "./sellerInventoryRoutes.js";
 import adminPosRoutes from "./adminPosRoutes.js";
 import sellerPosRoutes from "./sellerPosRoutes.js";
+import adminFulfillmentRoutes from "./adminFulfillmentRoutes.js";
 
 import express from "express";
 
@@ -44,7 +44,6 @@ const setupRoutes = (app) => {
     app.use("/health", healthRoute);
     app.use("/metrics", metricsRoute);
 
-    router.use("/checkout", checkoutRoute);
     router.use("/user", userRoute);
     router.use("/customer", customerRoute);
     router.use("/delivery", deliveryRoute);
@@ -54,6 +53,7 @@ const setupRoutes = (app) => {
     // Same router, two URL surfaces. Do not deduplicate without coordinated frontend changes.
     router.use("/admin/categories", categoryRoute);
     router.use("/admin/reports", franchiseRoute);
+    router.use("/admin/fulfillment", adminFulfillmentRoutes);
     router.use("/admin", adminRoute);
     router.use("/admin", adminPosRoutes);
     router.use("/seller", sellerRoute);

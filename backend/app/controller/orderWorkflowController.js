@@ -26,6 +26,10 @@ import { sendSmsIndiaHubOtp } from "../services/smsIndiaHubService.js";
 import { creditWallet } from "../services/finance/walletService.js";
 import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../modules/notifications/notification.constants.js";
+import {
+  ADMIN_FULFILLER,
+  getFulfillmentWarehouse,
+} from "../services/fulfillmentRoutingService.js";
 
 export const confirmPickup = async (req, res) => {
   try {
@@ -260,6 +264,16 @@ export const getOrderRoute = async (req, res) => {
       }
     } else {
       order = await Order.findOne(orderKey).populate("seller").lean();
+      // Warehouse orders: route from the warehouse instead of a shop.
+      if (order && order.fulfilledBy === ADMIN_FULFILLER && !order.seller) {
+        const warehouse = await getFulfillmentWarehouse();
+        if (warehouse.hasLocation) {
+          order.seller = {
+            shopName: warehouse.name,
+            location: { type: "Point", coordinates: [warehouse.lng, warehouse.lat] },
+          };
+        }
+      }
     }
 
     if (!order) {

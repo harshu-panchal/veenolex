@@ -20,6 +20,7 @@ import { structuredRequestLogger, correlationIdMiddleware } from "./app/middlewa
 import { trackInFlightRequests } from "./app/middleware/metricsMiddleware.js";
 import { errorHandler, notFoundHandler } from "./app/middleware/errorMiddleware.js";
 import { getProcessRole, isComponentEnabled } from "./app/core/processRole.js";
+import { isRedisEnabled } from "./app/config/redis.js";
 import { startup } from "./app/core/startup.js";
 import {
   registerShutdownHandlers,
@@ -51,6 +52,11 @@ import {
   getPaymentReconciliationJobInterval,
   isPaymentReconciliationJobEnabled,
 } from "./app/jobs/paymentReconciliationJob.js";
+import {
+  getShiprocketEtaRefreshJobHandler,
+  getShiprocketEtaRefreshJobInterval,
+  isShiprocketEtaRefreshJobEnabled,
+} from "./app/jobs/shiprocketEtaRefreshJob.js";
 import logger from "./app/services/logger.js";
 import { stopScheduledJobs } from "./app/services/distributedScheduler.js";
 import mapsRouter from "./routes/maps.js";
@@ -381,6 +387,15 @@ async function startScheduler() {
     getPaymentReconciliationJobHandler()
   );
 
+  // Courier orders: keep the customer's arrival date in sync with tracking.
+  if (isShiprocketEtaRefreshJobEnabled()) {
+    registerScheduledJob(
+      'shiprocketEtaRefreshJob',
+      getShiprocketEtaRefreshJobInterval(),
+      getShiprocketEtaRefreshJobHandler()
+    );
+  }
+
   // Start all registered jobs
   await startScheduledJobs();
   registerSchedulerStopper(stopScheduledJobs);
@@ -389,8 +404,30 @@ async function startScheduler() {
   if (isPayoutBatchJobEnabled()) scheduledJobs.push('payoutBatchJob');
   if (isWalletLedgerVerifierEnabled()) scheduledJobs.push('walletLedgerVerifierJob');
   if (isFirebaseTrackingCleanupJobEnabled()) scheduledJobs.push('firebaseTrackingCleanupJob');
+  if (isShiprocketEtaRefreshJobEnabled()) scheduledJobs.push('shiprocketEtaRefreshJob');
   logger.info('Scheduler started', {
     jobs: scheduledJobs,
+    role: getProcessRole()
+  });
+}
+
+/**
+ * Without Redis there are no Bull timeout jobs, so the only thing that
+ * expires seller / rider accept windows is `orderAutoCancelJob`. An API-only
+ * process would otherwise never hand an unaccepted order on to the next
+ * seller or the admin warehouse. It also runs here (not in a separate
+ * scheduler process) so the socket alerts it emits reach connected clients.
+ */
+async function startOrderTimeoutsInline() {
+  registerScheduledJob(
+    'orderAutoCancelJob',
+    getOrderAutoCancelJobInterval(),
+    getOrderAutoCancelJobHandler()
+  );
+  await startScheduledJobs();
+  registerSchedulerStopper(stopScheduledJobs);
+  logger.warn('Redis disabled: running order accept timeouts inside the API process', {
+    jobs: ['orderAutoCancelJob'],
     role: getProcessRole()
   });
 }
@@ -484,6 +521,8 @@ async function main() {
       if (!isComponentEnabled('http')) {
         await startHealthCheckServer();
       }
+    } else if (isComponentEnabled('http') && !isRedisEnabled()) {
+      await startOrderTimeoutsInline();
     }
     
     logger.info('Application started successfully', {

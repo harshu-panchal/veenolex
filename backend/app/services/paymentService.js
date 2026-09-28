@@ -14,6 +14,10 @@ import {
 import { handleOnlineOrderFinance } from "./finance/orderFinanceService.js";
 import { DEFAULT_SELLER_TIMEOUT_MS, WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
 import { afterPlaceOrderV2 } from "./orderWorkflowService.js";
+import {
+  ADMIN_FULFILLER,
+  getFulfillmentWarehouse,
+} from "./fulfillmentRoutingService.js";
 import { releaseReservedStockForOrder } from "./stockService.js";
 import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../modules/notifications/notification.constants.js";
@@ -271,7 +275,13 @@ async function transitionPaymentState(payment, {
 
 async function moveOrderToSellerPendingAfterPayment(orderId) {
   const now = new Date();
-  const sellerPendingUntil = new Date(now.getTime() + DEFAULT_SELLER_TIMEOUT_MS());
+  // Warehouse orders get the (longer) admin accept window.
+  const pendingOrder = await Order.findById(orderId).select("fulfilledBy").lean();
+  const windowMs =
+    pendingOrder?.fulfilledBy === ADMIN_FULFILLER
+      ? (await getFulfillmentWarehouse()).adminAcceptTimeoutMs
+      : DEFAULT_SELLER_TIMEOUT_MS();
+  const sellerPendingUntil = new Date(now.getTime() + windowMs);
   const updatedOrder = await Order.findOneAndUpdate(
     {
       _id: orderId,

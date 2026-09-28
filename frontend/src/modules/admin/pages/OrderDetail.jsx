@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@shared/components/ui/Toast';
+import { formatArrivalText } from '@shared/utils/deliveryTime';
 
 const OrderDetail = () => {
     const { orderId } = useParams();
@@ -203,6 +204,12 @@ const OrderDetail = () => {
                             <Calendar className="h-3.5 w-3.5" />
                             {new Date(order.createdAt).toLocaleDateString()} • <Clock className="h-3.5 w-3.5 ml-1" /> {new Date(order.createdAt).toLocaleTimeString()}
                         </p>
+                        {formatArrivalText(order.deliveryEta) && !['DELIVERED', 'CANCELLED'].includes(order.workflowStatus) && (
+                            <p className="text-xs font-bold text-slate-600 mt-1">
+                                Customer sees: {formatArrivalText(order.deliveryEta)}
+                                {order.deliveryEta?.confidence === 'estimate' ? ' (estimate)' : ''}
+                            </p>
+                        )}
                     </div>
                 </div>
                 <div className="flex items-center gap-3">

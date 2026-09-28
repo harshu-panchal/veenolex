@@ -13,9 +13,8 @@ const STATUS_TO_STAGE = {
 
 const OrderProgressTracker = ({
   order,
-  estimatedArrivalText = "12:45 PM",
-  arrivingInText = "8 mins",
-  totalDistanceText = "—",
+  // Delivery time only, e.g. "Arriving by 6:30 PM" / "Arriving by Thu, 2 Oct".
+  arrivalText = null,
 }) => {
   const status = getLegacyStatusFromOrder(order);
   const currentStage = STATUS_TO_STAGE[status] || "confirmed";
@@ -157,29 +156,18 @@ const OrderProgressTracker = ({
         })}
       </motion.div>
 
-      {/* ETA Display */}
-      {status !== "delivered" && (
+      {/* Delivery time — the only delivery detail customers see */}
+      {status !== "delivered" && arrivalText && (
         <div className="mt-6 pt-5 border-t border-slate-100">
-          <div className="flex items-center justify-between bg-amber-50 rounded-2xl p-4 gap-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 bg-amber-100 rounded-xl flex items-center justify-center">
-                <Clock size={20} className="text-amber-600" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">
-                  Estimated Time
-                </p>
-                <p className="text-lg font-black text-amber-900">{estimatedArrivalText}</p>
-              </div>
+          <div className="flex items-center gap-3 bg-amber-50 rounded-2xl p-4">
+            <div className="h-10 w-10 bg-amber-100 rounded-xl flex items-center justify-center">
+              <Clock size={20} className="text-amber-600" />
             </div>
-            <div className="text-right flex flex-col items-end gap-1">
-              <div>
-                <p className="text-xs text-amber-600 font-semibold">Arriving in</p>
-                <p className="text-2xl font-black text-amber-900">{arrivingInText}</p>
-              </div>
-              <div className="inline-flex items-center rounded-full bg-white/80 px-3 py-1 text-[11px] font-bold text-amber-700 ring-1 ring-amber-200">
-                Total distance: {totalDistanceText}
-              </div>
+            <div>
+              <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">
+                Delivery time
+              </p>
+              <p className="text-lg font-black text-amber-900">{arrivalText}</p>
             </div>
           </div>
         </div>

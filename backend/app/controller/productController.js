@@ -8,6 +8,35 @@ import {
   getNearbySellerIdsForCustomer,
 } from "../services/customerVisibilityService.js";
 import {
+  annotateMasterAvailability,
+  getFulfillmentWarehouse,
+} from "../services/fulfillmentRoutingService.js";
+import { productDeliveryEstimate } from "../services/deliveryEtaService.js";
+
+// Customers only see how long delivery takes, never how it is delivered.
+const CUSTOMER_HIDDEN_PRODUCT_FIELDS = [
+  "deliveryMethod",
+  "deliveryBadge",
+  "estimatedDeliveryTime",
+  "fulfillmentSource",
+  "localStock",
+  "warehouseStock",
+  "shippingPartner",
+  "zoneOutDeliveryEnabled",
+  "zoneOutPrice",
+];
+
+function withCustomerDeliveryEstimate(product, warehouse) {
+  if (!product) return product;
+  const fromLocalSeller = product.sellerId
+    ? product.isInZone !== false
+    : product.fulfillmentSource === "LOCAL_SELLER";
+  const clean = { ...product };
+  for (const field of CUSTOMER_HIDDEN_PRODUCT_FIELDS) delete clean[field];
+  clean.deliveryEstimate = productDeliveryEstimate({ fromLocalSeller, warehouse });
+  return clean;
+}
+import {
   enqueueProductIndex,
   enqueueProductRemoval,
 } from "../services/searchSyncService.js";
@@ -321,23 +350,31 @@ export const getProducts = async (req, res) => {
         ? requestedSellerIds.filter((id) => nearbySet.has(String(id)))
         : nearbySellerIds;
 
-      let locationCondition = [];
-      if (finalSellerIds.length > 0) {
-        locationCondition.push({ sellerId: { $in: finalSellerIds } });
-      }
-      
-      let outOfZoneCondition = { zoneOutDeliveryEnabled: true };
       if (requestedSellerIds.length > 0) {
-        outOfZoneCondition.sellerId = { $in: requestedSellerIds };
-      }
-
-      if (locationCondition.length > 0) {
-        query.$or = [...locationCondition, outOfZoneCondition];
-      } else {
-        query.zoneOutDeliveryEnabled = true;
-        if (requestedSellerIds.length > 0) {
-           query.sellerId = { $in: requestedSellerIds };
+        // Browsing a specific store: that store's own listing.
+        let locationCondition = [];
+        if (finalSellerIds.length > 0) {
+          locationCondition.push({ sellerId: { $in: finalSellerIds } });
         }
+        const outOfZoneCondition = {
+          zoneOutDeliveryEnabled: true,
+          sellerId: { $in: requestedSellerIds },
+        };
+        if (locationCondition.length > 0) {
+          query.$or = [...locationCondition, outOfZoneCondition];
+        } else {
+          Object.assign(query, outOfZoneCondition);
+        }
+      } else {
+        // Main catalog: one card per admin master product (fulfilment is
+        // routed to a local seller or the admin warehouse at checkout).
+        // Seller clones of masters are hidden to avoid duplicate cards;
+        // sellers' own products follow the usual zone rules.
+        query.$or = [
+          { sellerId: null },
+          { sellerId: { $in: nearbySellerIds }, adminProductId: null },
+          { zoneOutDeliveryEnabled: true, sellerId: { $ne: null }, adminProductId: null },
+        ];
       }
     }
 
@@ -473,8 +510,16 @@ export const getProducts = async (req, res) => {
         };
       });
 
+      let withAvailability = shouldApplyLocationFilter
+        ? await annotateMasterAvailability(products, [...nearbySet])
+        : products;
+      if (enforceRadius) {
+        const warehouse = await getFulfillmentWarehouse();
+        withAvailability = withAvailability.map((p) => withCustomerDeliveryEstimate(p, warehouse));
+      }
+
       return {
-        items: normalizeProductListModeration(products),
+        items: normalizeProductListModeration(withAvailability),
         page,
         limit,
         total,
@@ -1150,6 +1195,23 @@ export const getProductById = async (req, res) => {
 
     const sellerIdForProduct = String(product?.sellerId?._id || product?.sellerId || "");
 
+    if (!sellerIdForProduct) {
+      // Admin master product: availability comes from local sellers + warehouse.
+      const [annotated] = await annotateMasterAvailability(
+        [product],
+        nearbySellerSet ? [...nearbySellerSet] : [],
+      );
+      const masterPayload = enforceRadius
+        ? withCustomerDeliveryEstimate(annotated, await getFulfillmentWarehouse())
+        : annotated;
+      return handleResponse(
+        res,
+        200,
+        "Product details fetched",
+        normalizeProductDocumentModeration({ ...masterPayload, shippingCost: 0 }),
+      );
+    }
+
     if (coords.valid && sellerIdForProduct) {
       isInZone = nearbySellerSet ? nearbySellerSet.has(sellerIdForProduct) : false;
       if (!isInZone) {
@@ -1182,7 +1244,11 @@ export const getProductById = async (req, res) => {
       res,
       200,
       "Product details fetched",
-      normalizeProductDocumentModeration(enrichedProduct),
+      normalizeProductDocumentModeration(
+        enforceRadius
+          ? withCustomerDeliveryEstimate(enrichedProduct, await getFulfillmentWarehouse())
+          : enrichedProduct,
+      ),
     );
   } catch (error) {
     return handleResponse(res, 500, error.message);

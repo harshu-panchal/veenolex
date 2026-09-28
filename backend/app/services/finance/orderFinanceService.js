@@ -58,7 +58,9 @@ async function findOrderForUpdate(orderOrId, session) {
 
 function computeOverallSettlement(order) {
   const settlement = order.settlementStatus || {};
-  const sellerDone = settlement.sellerPayout === "COMPLETED";
+  const sellerDone =
+    settlement.sellerPayout === "COMPLETED" ||
+    settlement.sellerPayout === "NOT_APPLICABLE";
   const riderDone =
     settlement.riderPayout === "COMPLETED" ||
     settlement.riderPayout === "NOT_APPLICABLE";
@@ -274,7 +276,15 @@ export async function creditAdminEarning(order, { session, actorId } = {}) {
     return null;
   }
 
-  const adminEarning = roundCurrency(order.paymentBreakdown?.platformTotalEarning || 0);
+  // Admin-fulfilled orders have no seller: the product share that would
+  // have been paid out to a seller is admin revenue as well.
+  const adminProductRevenue =
+    order.fulfilledBy === "ADMIN" && !order.seller
+      ? roundCurrency(order.paymentBreakdown?.sellerPayoutTotal || 0)
+      : 0;
+  const adminEarning = roundCurrency(
+    Number(order.paymentBreakdown?.platformTotalEarning || 0) + adminProductRevenue,
+  );
   if (adminEarning <= 0) {
     order.settlementStatus = {
       ...(order.settlementStatus || {}),
@@ -577,6 +587,7 @@ export async function settleDeliveredOrder(orderOrId, { actorId = null } = {}) {
 
     const now = new Date();
     const holdSellerPayout =
+      Boolean(order.seller) &&
       order.returnWindowExpiresAt instanceof Date && order.returnWindowExpiresAt > now;
 
     await createPendingSellerPayout(order, { session, actorId });

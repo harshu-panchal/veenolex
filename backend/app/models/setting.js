@@ -98,6 +98,31 @@ const settingSchema = new mongoose.Schema(
             min: 0,
         },
 
+        /**
+         * Admin fulfilment warehouse. Orders that no local seller can
+         * fulfil are picked up from here (rider broadcast / manual
+         * assignment / Shiprocket). Falls back to the admin profile
+         * location when lat/lng are not set.
+         */
+        fulfillmentWarehouse: {
+            name: { type: String, default: "Veenolex Warehouse" },
+            address: { type: String, default: "" },
+            city: { type: String, default: "" },
+            state: { type: String, default: "" },
+            pincode: { type: String, default: "" },
+            phone: { type: String, default: "" },
+            lat: { type: Number, default: null },
+            lng: { type: Number, default: null },
+            serviceRadiusKm: { type: Number, default: 10 },
+            shiprocketPickupLocation: { type: String, default: "" },
+            adminAcceptTimeoutMinutes: { type: Number, default: 10 },
+            // Customer delivery estimates for warehouse orders.
+            localDeliveryMaxHours: { type: Number, default: 24 },
+            standardDeliveryDaysMin: { type: Number, default: 1 },
+            standardDeliveryDaysMax: { type: Number, default: 3 },
+            packageWeightKg: { type: Number, default: 0.5 },
+        },
+
         // Returns / logistics configuration
         returnDeliveryCommission: {
             // Flat amount per return pickup, paid by seller

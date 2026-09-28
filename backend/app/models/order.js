@@ -75,6 +75,8 @@ const orderSchema = new mongoose.Schema(
       name: String,
       address: String,
       city: String,
+      state: String,
+      pincode: String,
       phone: String,
       landmark: String,
       location: {
@@ -588,14 +590,61 @@ const orderSchema = new mongoose.Schema(
     },
     shipRocketDetails: {
       orderId: String,
+      shipmentId: String,
+      courierCompanyId: Number,
+      courierName: String,
       trackingNumber: String,
       status: String,
-      estimatedDelivery: Date
+      estimatedDelivery: Date,
+      etdCheckedAt: Date,
+    },
+    // Customer-facing arrival window. The only delivery information a
+    // customer sees — never how it is delivered. `source` is internal.
+    deliveryEta: {
+      earliestAt: { type: Date, default: null },
+      latestAt: { type: Date, default: null },
+      confidence: { type: String, enum: ["estimate", "confirmed", null], default: null },
+      source: { type: String, default: null },
+      updatedAt: { type: Date, default: null },
     },
     isOutOfZone: {
       type: Boolean,
       default: false
     },
+    // Location-based fulfilment routing. SELLER = a local seller's stock
+    // (order.seller is set); ADMIN = the admin warehouse (order.seller is null).
+    fulfilledBy: {
+      type: String,
+      enum: ["SELLER", "ADMIN"],
+      default: "SELLER",
+      index: true,
+    },
+    routedReason: {
+      type: String,
+      enum: [
+        null,
+        "LOCAL_SELLER",
+        "NO_LOCAL_SELLER",
+        "LOCAL_SELLER_NO_STOCK",
+        "SELLER_REJECTED",
+        "SELLER_TIMEOUT",
+      ],
+      default: null,
+    },
+    routingHistory: [
+      {
+        fulfilledBy: { type: String, enum: ["SELLER", "ADMIN"] },
+        seller: { type: mongoose.Schema.Types.ObjectId, ref: "Seller", default: null },
+        reason: String,
+        outcome: {
+          type: String,
+          enum: ["ASSIGNED", "REJECTED", "TIMEOUT"],
+          default: "ASSIGNED",
+        },
+        at: { type: Date, default: Date.now },
+      },
+    ],
+    adminReminderCount: { type: Number, default: 0 },
     shippingCost: {
       type: Number,
       default: 0
@@ -609,6 +658,7 @@ orderSchema.index({ customer: 1, status: 1, createdAt: -1 });
 orderSchema.index({ status: 1, expiresAt: 1 });
 orderSchema.index({ seller: 1, returnStatus: 1, returnRequestedAt: -1 });
 orderSchema.index({ workflowStatus: 1, sellerPendingExpiresAt: 1 });
+orderSchema.index({ fulfilledBy: 1, workflowStatus: 1, createdAt: -1 });
 orderSchema.index({ workflowStatus: 1, deliverySearchExpiresAt: 1 });
 orderSchema.index({ returnStatus: 1, returnSearchExpiresAt: 1 });
 orderSchema.index({ deliveryBoy: 1, workflowStatus: 1 });

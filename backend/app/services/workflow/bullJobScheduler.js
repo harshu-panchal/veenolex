@@ -27,8 +27,10 @@ import logger from "../logger.js";
 const BULL_ADD_TIMEOUT_MS = () =>
   parseInt(process.env.BULL_ADD_TIMEOUT_MS || "10000", 10);
 
-function sellerJobId(orderId) {
-  return `order:${orderId}:seller`;
+// `key` distinguishes the accept window of each fulfiller after a reroute
+// (Bull ignores re-adding a jobId that is still active).
+function sellerJobId(orderId, key) {
+  return key ? `order:${orderId}:seller:${key}` : `order:${orderId}:seller`;
 }
 
 function deliveryJobId(orderId, attempt) {
@@ -52,15 +54,15 @@ async function raceWithTimeout(promise, timeoutMs, timeoutMessage) {
   ]);
 }
 
-async function scheduleSellerTimeout(orderId) {
-  const delay = DEFAULT_SELLER_TIMEOUT_MS();
+async function scheduleSellerTimeout(orderId, { delayMs, key } = {}) {
+  const delay = Number.isFinite(delayMs) && delayMs > 0 ? delayMs : DEFAULT_SELLER_TIMEOUT_MS();
   const addPromise = sellerTimeoutQueue
     .add(
       JOB_NAMES.SELLER_TIMEOUT,
       { orderId },
       {
         delay,
-        jobId: sellerJobId(orderId),
+        jobId: sellerJobId(orderId, key),
         removeOnComplete: true,
       },
     )
@@ -87,10 +89,10 @@ async function scheduleSellerTimeout(orderId) {
   }
 }
 
-async function removeSellerTimeout(orderId) {
+async function removeSellerTimeout(orderId, key) {
   const timeoutMs = BULL_ADD_TIMEOUT_MS();
   const work = (async () => {
-    const job = await sellerTimeoutQueue.getJob(sellerJobId(orderId));
+    const job = await sellerTimeoutQueue.getJob(sellerJobId(orderId, key));
     if (job) await job.remove();
   })().catch((err) => {
     logger.warn("removeSellerTimeoutJob get/remove failed", {

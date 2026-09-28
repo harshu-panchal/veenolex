@@ -200,6 +200,46 @@ export function onSellerOrderNew(getToken, handler) {
   return () => s.off("order:new", handler);
 }
 
+/** Customer: the order's delivery time window changed. */
+export function onOrderEta(getToken, handler) {
+  const s = getOrderSocket(getToken);
+  if (!s || typeof handler !== "function") return () => {};
+  s.on("order:eta", handler);
+  return () => s.off("order:eta", handler);
+}
+
+/** Seller: a pending order was handed to another seller / the warehouse. */
+export function onSellerOrderReassigned(getToken, handler) {
+  const s = getOrderSocket(getToken);
+  if (!s || typeof handler !== "function") return () => {};
+  s.on("order:reassigned", handler);
+  return () => s.off("order:reassigned", handler);
+}
+
+/** Admin: an order must be fulfilled from the warehouse (new or reminder). */
+export function onAdminOrderNew(getToken, handler) {
+  const s = getOrderSocket(getToken);
+  if (!s || typeof handler !== "function") return () => {};
+  s.on("order:new:admin", handler);
+  return () => s.off("order:new:admin", handler);
+}
+
+/** Admin: a warehouse order changed (accepted / dispatched / cancelled). */
+export function onAdminOrderUpdated(getToken, handler) {
+  const s = getOrderSocket(getToken);
+  if (!s || typeof handler !== "function") return () => {};
+  s.on("order:admin:updated", handler);
+  return () => s.off("order:admin:updated", handler);
+}
+
+/** Admin: rider broadcast for a warehouse order found nobody. */
+export function onAdminOrderNoRider(getToken, handler) {
+  const s = getOrderSocket(getToken);
+  if (!s || typeof handler !== "function") return () => {};
+  s.on("order:admin:no-rider", handler);
+  return () => s.off("order:admin:no-rider", handler);
+}
+
 export function onSellerReturnRequested(getToken, handler) {
   const s = getOrderSocket(getToken);
   if (!s || typeof handler !== "function") return () => {};

@@ -24,7 +24,6 @@ import {
   ArrowRight,
   User,
   Loader2,
-  Store,
   Navigation2,
   Camera,
   X,
@@ -43,11 +42,13 @@ import {
   joinOrderRoom,
   leaveOrderRoom,
   onOrderStatusUpdate,
+  onOrderEta,
   onCustomerOtp,
   onReturnPickupOtp,
   onReturnDropOtp,
 } from "@/core/services/orderSocket";
 import { getLegacyStatusFromOrder } from "@/shared/utils/orderStatus";
+import { formatArrivalText, formatDeliveredText } from "@shared/utils/deliveryTime";
 import { createSocketTokenReader } from "@core/utils/authStorage";
 import { STORAGE_KEYS } from "@core/utils/storage";
 
@@ -338,7 +339,7 @@ const OrderDetailPage = () => {
           if (update.workflowStatus === "RESCHEDULED") {
             toast.info(`Order rescheduled to ${new Date(update.rescheduledFor).toLocaleString()}`);
           } else if (update.workflowStatus === "CANCELLED") {
-            toast.error("Your order has been cancelled by the delivery partner.");
+            toast.error("Your order has been cancelled.");
           }
           return {
             ...prev,
@@ -368,6 +369,10 @@ const OrderDetailPage = () => {
     };
 
     const offStatus = onOrderStatusUpdate(getToken, handleStatusUpdate);
+    const offEta = onOrderEta(getToken, (update) => {
+      if (!matchesOrderIdentifier(update?.orderId, identifiersRef.current)) return;
+      setOrder((prev) => (prev ? { ...prev, deliveryEta: update.deliveryEta } : prev));
+    });
     const offOtp = onCustomerOtp(getToken, (payload) => {
       if (matchesOrderIdentifier(payload?.orderId, identifiersRef.current) && (payload?.code || payload?.otp)) {
         setHandoffOtp(payload.code || payload.otp);
@@ -383,6 +388,7 @@ const OrderDetailPage = () => {
 
     return () => {
       offStatus();
+      offEta();
       offOtp();
       offReturnOtp();
       leaveOrderRoom(orderId, getToken);
@@ -589,6 +595,23 @@ const OrderDetailPage = () => {
     status,
     clockTick,
   ]);
+
+  // Customers only ever see when the order arrives. While a rider is on the
+  // way with a live GPS fix the live estimate is used; otherwise the
+  // server's delivery window.
+  const hasLiveRider =
+    Boolean(order?.deliveryBoy) &&
+    ["DELIVERY_ASSIGNED", "PICKUP_READY", "OUT_FOR_DELIVERY"].includes(
+      String(order?.workflowStatus || "").toUpperCase(),
+    );
+  const hasLiveEstimate =
+    hasLiveRider && (hasValidLatLng(liveLocation) || Boolean(activeRoutePolyline));
+  const arrivalText =
+    status === "delivered"
+      ? formatDeliveredText(order?.deliveredAt)
+      : hasLiveEstimate
+        ? `Arriving in ${estimatedArrival.arrivingInText}`
+        : formatArrivalText(order?.deliveryEta, { now: clockTick });
 
   useEffect(() => {
     if (!orderId || status === "delivered" || status === "cancelled") return;
@@ -991,7 +1014,23 @@ const OrderDetailPage = () => {
         )}
 
         {/* Enhanced Map with Cleaner Design - Hide when delivered or cancelled */}
-        {!isAwaitingOnlinePayment && status !== "delivered" && (
+        {!isAwaitingOnlinePayment && status !== "delivered" && status !== "cancelled" && !hasLiveRider && arrivalText && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-3xl p-6 shadow-lg border border-slate-200/50 bg-gradient-to-br from-[#f0faf4] to-[#e8f5e9] flex items-center gap-4"
+          >
+            <div className="h-14 w-14 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-brand-200 shrink-0">
+              <Clock size={28} className="text-white" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Delivery time</p>
+              <h3 className="text-xl font-black text-slate-900">{arrivalText}</h3>
+            </div>
+          </motion.div>
+        )}
+
+        {!isAwaitingOnlinePayment && status !== "delivered" && hasLiveRider && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -999,7 +1038,7 @@ const OrderDetailPage = () => {
           >
             <LiveTrackingMap
               status={order.workflowStatus || order.status}
-              eta={estimatedArrival.arrivingInText}
+              eta={hasLiveEstimate ? estimatedArrival.arrivingInText : (arrivalText || "").replace(/^Arriving /, "")}
               riderName={order.deliveryBoy?.name || "Delivery Partner"}
               riderLocation={liveLocation}
               sellerLocation={sellerLocation}
@@ -1018,12 +1057,7 @@ const OrderDetailPage = () => {
  
         {/* Order Progress Tracker - New Component */}
         {!isAwaitingOnlinePayment && status !== "rescheduled" && status !== "scheduled" && status !== "cancelled" && (
-          <OrderProgressTracker
-            order={order}
-            estimatedArrivalText={estimatedArrival.arrivalTimeText}
-            arrivingInText={estimatedArrival.arrivingInText}
-            totalDistanceText={estimatedArrival.totalDistanceText}
-          />
+          <OrderProgressTracker order={order} arrivalText={arrivalText} />
         )}
 
         {/* Proximity-based Delivery OTP Display */}
@@ -1054,7 +1088,7 @@ const OrderDetailPage = () => {
                 </div>
               </div>
               <div className="flex-1">
-                <p className="text-xs font-semibold text-white/80 uppercase tracking-wider">Your Courier</p>
+                <p className="text-xs font-semibold text-white/80 uppercase tracking-wider">Your delivery partner</p>
                 <h3 className="font-bold text-white text-lg">{order.deliveryBoy?.name || "Delivery Partner"}</h3>
                 <p className="text-xs text-white/90 mt-0.5">On the way to you</p>
               </div>
@@ -1069,35 +1103,6 @@ const OrderDetailPage = () => {
             </div>
           </motion.div>
         )}
-
-        {/* Pickup Location Card - Redesigned */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100"
-        >
-          <div className="flex items-start gap-4">
-            <div className="h-12 w-12 rounded-2xl bg-orange-50 flex items-center justify-center flex-shrink-0">
-              <Store size={24} className="text-orange-600" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <p className="text-xs font-bold text-orange-600 uppercase tracking-wider">Pickup Location</p>
-              </div>
-              <h4 className="font-bold text-slate-900 text-base mb-1">Store Location</h4>
-              <p className="text-sm text-slate-500 leading-relaxed">
-                {order.address?.address || "Address not available"}
-              </p>
-            </div>
-            <button
-              onClick={handleOpenInMaps}
-              className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-colors flex-shrink-0"
-            >
-              <Navigation2 size={18} className="text-slate-700" />
-            </button>
-          </div>
-        </motion.div>
 
         {/* Delivery Address Card - Redesigned */}
         <motion.div

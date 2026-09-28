@@ -19,6 +19,15 @@ import { verifyClientPaymentCallback } from "../services/paymentService.js";
 import { buildCheckoutPricingSnapshot } from "../services/checkoutPricingService.js";
 import { validateBody as validateWithJoi } from "../middleware/validate.js";
 
+// Per-seller internals (which seller / the warehouse) stay server-side.
+function customerSafeBreakdown(breakdown = {}) {
+  const { snapshots: _snapshots, lineItems = [], ...rest } = breakdown;
+  return {
+    ...rest,
+    lineItems: lineItems.map(({ sellerId: _sellerId, ...line }) => line),
+  };
+}
+
 export const previewCheckoutFinance = async (req, res) => {
   try {
     const payload = validateWithJoi(checkoutPreviewSchema, req.body || {});
@@ -42,14 +51,20 @@ export const previewCheckoutFinance = async (req, res) => {
       customerId: req.user?.id || null,
     });
 
-    const sellerBreakdowns = pricingSnapshot.sellerBreakdownEntries.map((entry) => ({
-      sellerId: entry.sellerId,
-      distanceKm: entry.distanceKm,
-      breakdown: entry.breakdown,
-    }));
+    // Customers get one arrival window for the whole cart; which seller or
+    // the warehouse fulfils each part stays internal.
+    const { estimateCheckoutDelivery } = await import("../services/deliveryEtaService.js");
+    const deliveryEstimate = await estimateCheckoutDelivery(pricingSnapshot.sellerBreakdownEntries, {
+      address: payload.address,
+      paymentMode: payload.paymentMode,
+    });
+    const sellerBreakdowns = pricingSnapshot.sellerBreakdownEntries.map((entry) => {
+      const { sellerId: _sellerId, ...breakdown } = entry.breakdown || {};
+      return { distanceKm: entry.distanceKm, breakdown };
+    });
 
     const distanceDebug = String(process.env.FINANCE_DEBUG_DISTANCE || "").toLowerCase() === "true"
-      ? sellerBreakdowns.map((item) => ({
+      ? pricingSnapshot.sellerBreakdownEntries.map((item) => ({
           sellerId: item.sellerId,
           distanceKmDerived: item.distanceKm,
         }))
@@ -57,10 +72,11 @@ export const previewCheckoutFinance = async (req, res) => {
 
     return handleResponse(res, 200, "Checkout preview generated", {
       paymentMode: payload.paymentMode,
-      breakdown: pricingSnapshot.aggregateBreakdown,
+      breakdown: customerSafeBreakdown(pricingSnapshot.aggregateBreakdown),
       sellerCount: pricingSnapshot.sellerCount,
       itemCount: pricingSnapshot.itemCount,
       sellerBreakdowns,
+      deliveryEstimate,
       // Audit Phase 5: expose the resolved coupon snapshot so the
       // frontend can render "Coupon CODE applied — ₹X off" without
       // running its own math. `null` when no coupon was supplied or

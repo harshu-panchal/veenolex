@@ -31,6 +31,12 @@ export const adjustStock = async (req, res) => {
 
         // 1. Update Product Stock
         product.stock = finalStock;
+        // A single-variant product sells through its variant, so keep that
+        // stock in step with the number the seller manages.
+        if (Array.isArray(product.variants) && product.variants.length === 1) {
+            product.variants[0].stock = finalStock;
+            product.markModified("variants");
+        }
         await product.save();
 
         // 2. Create History Entry

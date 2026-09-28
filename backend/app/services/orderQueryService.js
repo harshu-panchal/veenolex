@@ -14,6 +14,43 @@ import {
 import { buildKey, getOrSet, getTTL } from "./cacheService.js";
 import { resolveWorkflowStatus } from "./orderWorkflowService.js";
 import logger from "./logger.js";
+import {
+  ADMIN_FULFILLER,
+  getFulfillmentWarehouse,
+} from "./fulfillmentRoutingService.js";
+import { toCustomerEta } from "./deliveryEtaService.js";
+
+// Internal fulfilment fields customers must never see: they only get the
+// arrival window (`deliveryEta`), not how the order is delivered.
+const CUSTOMER_HIDDEN_ORDER_FIELDS = [
+  "shipRocketDetails",
+  "deliveryType",
+  "fulfilledBy",
+  "routedReason",
+  "routingHistory",
+  "adminReminderCount",
+  "isOutOfZone",
+  "shippingCost",
+  "deliverySearchMeta",
+  "skippedBy",
+  "settlementStatus",
+  "financeFlags",
+];
+
+export function sanitizeOrderForCustomer(order) {
+  if (!order || typeof order !== "object") return order;
+  const clean = { ...order };
+  for (const field of CUSTOMER_HIDDEN_ORDER_FIELDS) delete clean[field];
+  // Keep only the pickup coordinates (the live map needs them while a
+  // rider is on the way); never the store / warehouse identity.
+  if (clean.seller && typeof clean.seller === "object") {
+    clean.seller = clean.seller.location ? { location: clean.seller.location } : null;
+  } else {
+    clean.seller = null;
+  }
+  clean.deliveryEta = toCustomerEta(order.deliveryEta);
+  return clean;
+}
 
 function svcErr(message, statusCode) {
   const error = new Error(message);
@@ -520,6 +557,36 @@ export async function fetchAvailableOrdersForDelivery({
       v2OrdersRaw,
       deliveryPartner.location.coordinates,
     );
+
+    // Warehouse orders searching for a rider near the warehouse.
+    const warehouse = await getFulfillmentWarehouse();
+    const [riderLng, riderLat] = deliveryPartner.location.coordinates || [];
+    if (warehouse.hasLocation && Number.isFinite(riderLat) && Number.isFinite(riderLng)) {
+      const riderToWarehouseM = distanceMeters(riderLat, riderLng, warehouse.lat, warehouse.lng);
+      const warehouseOrders = await Order.find({
+        workflowVersion: { $gte: 2 },
+        workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
+        fulfilledBy: ADMIN_FULFILLER,
+        deliveryBoy: null,
+        skippedBy: { $nin: [userId] },
+      })
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(limit)
+        .populate("customer", "name phone")
+        .lean();
+      const pickup = {
+        shopName: warehouse.name,
+        name: warehouse.name,
+        address: warehouse.address,
+        location: { type: "Point", coordinates: [warehouse.lng, warehouse.lat] },
+        isWarehouse: true,
+      };
+      v2Orders = v2Orders.concat(
+        warehouseOrders
+          .filter((o) => riderToWarehouseM <= Number(o.deliverySearchMeta?.radiusMeters || 5000))
+          .map((o) => ({ ...o, seller: pickup })),
+      );
+    }
   }
 
   let legacyOrders = [];
@@ -639,7 +706,7 @@ export async function getCustomerOrders(customerId, pagination) {
       const [orders, total] = await Promise.all([
         Order.find({ customer: customerId })
           .select(
-            "orderId checkoutGroupId customer seller items address payment pricing status workflowStatus workflowVersion returnStatus timeSlot createdAt",
+            "orderId checkoutGroupId customer items address payment pricing status workflowStatus workflowVersion returnStatus timeSlot deliveryEta deliveredAt createdAt",
           )
           .sort({ createdAt: -1, _id: -1 })
           .skip(skip)
@@ -650,7 +717,7 @@ export async function getCustomerOrders(customerId, pagination) {
       ]);
 
       return {
-        items: orders,
+        items: orders.map(sanitizeOrderForCustomer),
         page,
         limit,
         total,
@@ -892,6 +959,22 @@ export async function getOrderWithAccess(orderId, userId, role) {
     );
   }
 
+  // Warehouse orders have no seller: expose the warehouse as the pickup
+  // point in the same shape so maps / rider / admin screens keep working.
+  if (order.fulfilledBy === ADMIN_FULFILLER && !order.seller) {
+    const warehouse = await getFulfillmentWarehouse();
+    order.seller = {
+      shopName: warehouse.name,
+      name: warehouse.name,
+      address: [warehouse.address, warehouse.city, warehouse.pincode].filter(Boolean).join(", "),
+      phone: warehouse.phone,
+      location: warehouse.hasLocation
+        ? { type: "Point", coordinates: [warehouse.lng, warehouse.lat] }
+        : undefined,
+      isWarehouse: true,
+    };
+  }
+
   // Enrich order object with consistent customer, address, and pricing fallbacks
   const custName =
     order.customerName ||
@@ -959,7 +1042,7 @@ export async function getOrderWithAccess(orderId, userId, role) {
 
   return {
     isGroupSummary: false,
-    payload: order,
+    payload: isOwnerCustomer ? sanitizeOrderForCustomer(order) : order,
   };
 }
 

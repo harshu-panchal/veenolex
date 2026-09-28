@@ -19,6 +19,7 @@ import {
   sellerAcceptAtomic,
   sellerRejectAtomic,
   triggerOrderDeliveryBroadcast,
+  adminAssignDeliveryPartnerAtomic,
   deliveryAcceptAtomic,
   customerCancelV2,
   startReturnPickupBroadcast,
@@ -60,6 +61,7 @@ import { computeReturnWindowForOrder } from "../utils/returnWindow.js";
 import logger from "../services/logger.js";
 import { validateBody as validateWithJoi } from "../middleware/validate.js";
 import OrderReturnService from "../services/order/orderReturnService.js";
+import { refreshOrderDeliveryEta } from "../services/deliveryEtaService.js";
 
 function normalizePaymentMode(value) {
   const raw = String(value || "").trim().toUpperCase();
@@ -1578,6 +1580,11 @@ export const assignDeliveryBoyToOrder = async (req, res) => {
       return handleResponse(res, 403, "Not authorized to manage this order");
     }
 
+    if (order.fulfilledBy === "ADMIN") {
+      const assigned = await adminAssignDeliveryPartnerAtomic(userId, order.orderId, deliveryBoyId);
+      return handleResponse(res, 200, "Delivery partner assigned successfully", assigned);
+    }
+
     const deliveryPartner = await Delivery.findById(deliveryBoyId).lean();
     if (!deliveryPartner) {
       return handleResponse(res, 404, "Delivery partner not found");
@@ -1614,9 +1621,10 @@ export const assignDeliveryBoyToOrder = async (req, res) => {
       console.warn("Socket notification warning during driver assignment:", e.message);
     }
 
+    void refreshOrderDeliveryEta(order._id);
     return handleResponse(res, 200, "Delivery partner assigned successfully", order);
   } catch (error) {
-    return handleResponse(res, 500, error.message);
+    return handleResponse(res, error.statusCode || 500, error.message);
   }
 };
 
@@ -1643,11 +1651,17 @@ export const broadcastDeliveryForOrder = async (req, res) => {
     }
 
     // Trigger delivery search broadcast to active nearby delivery partners
-    const updated = await triggerOrderDeliveryBroadcast(order.seller || userId, order.orderId);
+    const isWarehouseOrder = order.fulfilledBy === "ADMIN";
+    if (isWarehouseOrder && role !== "admin") {
+      return handleResponse(res, 403, "Not authorized to manage this order");
+    }
+    const updated = isWarehouseOrder
+      ? await triggerOrderDeliveryBroadcast(null, order.orderId, { asAdmin: true })
+      : await triggerOrderDeliveryBroadcast(order.seller || userId, order.orderId);
 
     return handleResponse(res, 200, "Delivery search broadcast triggered successfully", updated);
   } catch (error) {
-    return handleResponse(res, 500, error.message);
+    return handleResponse(res, error.statusCode || 500, error.message);
   }
 };
 

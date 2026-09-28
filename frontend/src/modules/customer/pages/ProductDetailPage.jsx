@@ -10,6 +10,7 @@ import { customerApi } from '../services/customerApi';
 import { useLocation as useAppLocation } from '../context/LocationContext';
 import { applyCloudinaryTransform } from '@/core/utils/imageUtils';
 import { useSettings } from '@core/context/SettingsContext';
+import { formatDeliveryText } from '@shared/utils/deliveryTime';
 import Lottie from 'lottie-react';
 import LogoImage from '@/assets/Logo.png';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -525,6 +526,7 @@ const ProductDetailPage = () => {
     const activePrice = Number(activeVariant?.salePrice || activeVariant?.price || product?.salePrice || product?.price || 0);
     const activeOriginalPrice = Number(activeVariant?.price || product?.price || 0);
     const finalPrice = appliedCoupon ? getDiscountedPrice(activePrice) : activePrice;
+    const deliveryText = formatDeliveryText(product?.deliveryEstimate);
     const activeDiscountPercent = activeOriginalPrice > activePrice 
         ? Math.round(((activeOriginalPrice - activePrice) / activeOriginalPrice) * 100) 
         : 0;
@@ -1146,13 +1148,9 @@ const ProductDetailPage = () => {
                             <span className="bg-brand-50 border border-[#e2e8f0] text-primary px-3.5 py-1.5 rounded-full text-xs font-black uppercase tracking-wider">
                                 {product.categoryId?.name || 'Essential'}
                             </span>
-                            {product.deliveryMethod === "SELLER_DIRECT" ? (
-                                <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3.5 py-1.5 rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
-                                    ⚡ {product.deliveryBadge || "Fast Local Delivery"}
-                                </span>
-                            ) : (
-                                <span className="bg-orange-50 border border-orange-200 text-orange-700 px-3.5 py-1.5 rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
-                                    🚚 {product.deliveryBadge || "Standard Delivery"}
+                            {deliveryText && (
+                                <span className="bg-slate-50 border border-slate-200 text-slate-700 px-3.5 py-1.5 rounded-full text-xs font-black tracking-wide flex items-center gap-1.5 shadow-sm">
+                                    <Clock size={13} /> {deliveryText}
                                 </span>
                             )}
                             <div className="flex items-center gap-1.5 text-orange-500 font-extrabold bg-orange-50 border border-orange-100/50 px-3.5 py-1.5 rounded-full text-xs shadow-sm">
@@ -1181,9 +1179,9 @@ const ProductDetailPage = () => {
                                             </span>
                                         </>
                                     ) : null}
-                                    {product.shippingCost > 0 && product.deliveryMethod !== "SELLER_DIRECT" && (
+                                    {product.shippingCost > 0 && (
                                         <span className="text-xs text-slate-500 font-bold bg-amber-50 border border-amber-200/80 px-2.5 py-1 rounded-lg">
-                                            +₹{product.shippingCost} Standard Shipping
+                                            +₹{product.shippingCost} delivery
                                         </span>
                                     )}
                                 </div>
@@ -1283,15 +1281,11 @@ const ProductDetailPage = () => {
                             <span className="text-xs font-black text-primary uppercase tracking-widest flex items-center justify-center sm:justify-start gap-1.5">
                                 <ShieldCheck size={16} /> Quality Guaranteed
                             </span>
-                            {product.deliveryMethod === "SELLER_DIRECT" ? (
-                                <span className="text-sm font-bold text-emerald-600 flex items-center justify-center sm:justify-start gap-1.5">
-                                    <Clock size={16} /> ⚡ Fast Local Delivery ({product.estimatedDeliveryTime || "2-3 hours"})
-                                </span>
-                            ) : (
-                                <span className="text-sm font-bold text-amber-600 flex items-center justify-center sm:justify-start gap-1.5">
-                                    <Truck size={16} /> 🚚 Standard Delivery ({product.estimatedDeliveryTime || "2-3 days"})
+                            {deliveryText && (
+                                <span className="text-sm font-bold text-slate-700 flex items-center justify-center sm:justify-start gap-1.5">
+                                    <Clock size={16} /> {deliveryText}
                                     {product.shippingCost > 0 && (
-                                        <span className="text-xs text-slate-500 font-semibold">(+₹{product.shippingCost} Shipping)</span>
+                                        <span className="text-xs text-slate-500 font-semibold">(+₹{product.shippingCost} delivery)</span>
                                     )}
                                 </span>
                             )}
@@ -1392,34 +1386,14 @@ const ProductDetailPage = () => {
                         {/* Delivery Estimate Box */}
                         <div className="bg-white border border-slate-200/60 rounded-[2rem] p-5 shadow-sm space-y-4">
                             <div>
-                                <div className="flex items-center gap-2 mb-1.5">
-                                    {product.deliveryMethod === "SELLER_DIRECT" ? (
-                                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
-                                            ⚡ Fast Local Delivery
-                                        </span>
-                                    ) : (
-                                        <span className="bg-orange-50 text-orange-700 border border-orange-200 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
-                                            🚚 Standard Delivery
-                                        </span>
-                                    )}
-                                    {product.sellerId?.shopName && (
-                                        <span className="text-[10px] font-bold text-slate-400 truncate">
-                                            by {product.sellerId.shopName}
-                                        </span>
-                                    )}
-                                </div>
-                                <h4 className="text-xs font-bold text-slate-800 leading-tight">
-                                    {product.deliveryMethod === "SELLER_DIRECT" 
-                                        ? `Estimated Delivery in ${product.estimatedDeliveryTime || "2-3 hours"}` 
-                                        : `Estimated Delivery in ${product.estimatedDeliveryTime || "2-3 days"}`}
+                                <h4 className="text-xs font-bold text-slate-800 leading-tight flex items-center gap-1.5">
+                                    <Clock size={14} /> {deliveryText || "Delivery time shown at checkout"}
                                 </h4>
-                                <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                                    {product.deliveryMethod === "SELLER_DIRECT" 
-                                        ? "Dispatched directly from local partner store" 
-                                        : product.shippingCost > 0 
-                                            ? `Standard courier delivery (+₹${product.shippingCost} Shipping)` 
-                                            : "Shipped via standard courier partner"}
-                                </p>
+                                {product.shippingCost > 0 && (
+                                    <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                                        +₹{product.shippingCost} delivery charge
+                                    </p>
+                                )}
                             </div>
 
                             {/* Pincode Input */}

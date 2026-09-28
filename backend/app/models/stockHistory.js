@@ -10,7 +10,8 @@ const stockHistorySchema = new mongoose.Schema(
         seller: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Seller",
-            required: true,
+            // null for admin-warehouse stock movements
+            default: null,
         },
         type: {
             type: String,

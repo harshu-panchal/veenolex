@@ -4,6 +4,7 @@ import { Package, ChevronRight, Clock, CheckCircle, Loader2, ChevronLeft } from 
 import { customerApi } from '../services/customerApi';
 import { getOrderStatusLabel, getLegacyStatusFromOrder } from '@/shared/utils/orderStatus';
 import { applyCloudinaryTransform } from '@/core/utils/imageUtils';
+import { formatArrivalText } from '@shared/utils/deliveryTime';
 
 function hexToRgba(hex, alpha = 0.95) {
   if (!hex || typeof hex !== "string" || !hex.startsWith("#")) {
@@ -187,10 +188,17 @@ const OrdersPage = () => {
                                         </span>
                                         <span>{getOrderStatusLabel(order).toUpperCase()}</span>
                                     </span>
-                                    <span className="inline-flex items-center text-[10px] font-medium text-slate-400">
-                                        <span className="h-1 w-1 rounded-full bg-slate-300 mr-1" />
-                                        Tap to view details
-                                    </span>
+                                    {legacy !== 'delivered' && legacy !== 'cancelled' && formatArrivalText(order.deliveryEta) ? (
+                                        <span className="inline-flex items-center text-[10px] font-semibold text-slate-600">
+                                            <span className="h-1 w-1 rounded-full bg-primary mr-1" />
+                                            {formatArrivalText(order.deliveryEta)}
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center text-[10px] font-medium text-slate-400">
+                                            <span className="h-1 w-1 rounded-full bg-slate-300 mr-1" />
+                                            Tap to view details
+                                        </span>
+                                    )}
                                 </div>
                             </div>
 

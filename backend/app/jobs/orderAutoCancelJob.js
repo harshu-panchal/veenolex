@@ -19,6 +19,14 @@ const AUTO_CANCEL_INTERVAL_MS = parseInt(
   10,
 );
 
+// Accept windows that ended longer ago than this are left alone instead of
+// being handed on: after a long outage (or on a dev DB with old test orders)
+// that would flood the next seller / the admin with week-old orders.
+const SELLER_TIMEOUT_STALE_AFTER_MS = parseInt(
+  process.env.SELLER_TIMEOUT_STALE_AFTER_MS || `${6 * 60 * 60 * 1000}`,
+  10,
+);
+
 /**
  * Fallback when Bull/Redis is unavailable: reconciles expired seller-pending orders (v2)
  * by delegating to the same handler as the queue worker.
@@ -33,7 +41,10 @@ const autoCancelExpiredOrders = async () => {
     const v2Expired = await Order.find({
       workflowVersion: { $gte: 2 },
       workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
-      sellerPendingExpiresAt: { $lte: now },
+      sellerPendingExpiresAt: {
+        $lte: now,
+        $gte: new Date(now.getTime() - SELLER_TIMEOUT_STALE_AFTER_MS),
+      },
     })
       .select("orderId")
       .lean();

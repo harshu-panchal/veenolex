@@ -17,6 +17,11 @@ import SellerProductRequest from "../models/sellerProductRequest.js";
 import User from "../models/customer.js";
 import { createShipRocketOrder, createShipRocketOrderForRequest } from "../../utils/shipRocketService.js";
 import { isRedisEnabled } from "../config/redis.js";
+import {
+  ADMIN_FULFILLER,
+  getFulfillmentWarehouse,
+} from "../services/fulfillmentRoutingService.js";
+import { refreshOrderDeliveryEta } from "../services/deliveryEtaService.js";
 import logger from "../services/logger.js";
 import { incrementCounter, recordHistogram } from "../services/metrics.js";
 
@@ -311,7 +316,19 @@ export function registerOrderQueueProcessors() {
         const order = await Order.findById(id).populate("seller");
         if (!order) throw new Error(`Order ${id} not found`);
         const user = await User.findById(order.customer).lean();
-        await createShipRocketOrder(order, user || {}, order.address, order.seller, order.items);
+        const options = {};
+        if (order.fulfilledBy === ADMIN_FULFILLER) {
+          const warehouse = await getFulfillmentWarehouse();
+          if (warehouse.shiprocketPickupLocation) {
+            options.pickupLocation = warehouse.shiprocketPickupLocation;
+          }
+          options.pickupPostcode = warehouse.pincode;
+          options.weightKg = warehouse.packageWeightKg;
+        } else if (order.seller?.pincode) {
+          options.pickupPostcode = order.seller.pincode;
+        }
+        await createShipRocketOrder(order, user || {}, order.address, order.seller, order.items, options);
+        await refreshOrderDeliveryEta(order._id);
       } else if (type === "REQUEST") {
         const request = await SellerProductRequest.findById(id).populate("sellerId");
         if (!request) throw new Error(`Request ${id} not found`);

@@ -85,7 +85,7 @@ function eventDefinition(eventType) {
         role: NOTIFICATION_ROLES.CUSTOMER,
         recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
         title: () => "Order Confirmed",
-        body: () => "Seller has confirmed your order.",
+        body: () => "Your order has been confirmed.",
       };
     case NOTIFICATION_EVENTS.ORDER_PACKED:
       return {
@@ -367,6 +367,23 @@ function eventDefinition(eventType) {
           },
         ],
       };
+    case NOTIFICATION_EVENTS.ADMIN_FULFILLMENT_ORDER:
+      return {
+        role: NOTIFICATION_ROLES.ADMIN,
+        recipientIds: (payload) => normalizeIdList(payload.adminIds),
+        title: (payload) =>
+          payload.isReminder ? "Warehouse order still waiting" : "New warehouse order",
+        body: (payload) => {
+          const reasons = {
+            NO_LOCAL_SELLER: "no local seller serves this area",
+            LOCAL_SELLER_NO_STOCK: "local sellers are out of stock",
+            SELLER_REJECTED: "local sellers rejected it",
+            SELLER_TIMEOUT: "local sellers did not respond",
+          };
+          const why = reasons[payload.reason] ? ` (${reasons[payload.reason]})` : "";
+          return `Order #${payload.orderId} needs to be fulfilled from the warehouse${why}.`;
+        },
+      };
     case NOTIFICATION_EVENTS.LOW_STOCK_ALERT:
       return {
         role: NOTIFICATION_ROLES.SELLER,
@@ -420,6 +437,15 @@ function eventData(eventType, payload = {}, role) {
 
   const orderId = String(payload.orderId || "").trim() || undefined;
   const checkoutGroupId = String(payload.checkoutGroupId || "").trim() || undefined;
+  if (eventType === NOTIFICATION_EVENTS.ADMIN_FULFILLMENT_ORDER) {
+    return {
+      eventType,
+      orderId,
+      reason: payload.reason || undefined,
+      link: `${getFrontendBaseUrl()}/admin/warehouse-orders`,
+      ...(payload.data || {}),
+    };
+  }
   return {
     eventType,
     orderId,

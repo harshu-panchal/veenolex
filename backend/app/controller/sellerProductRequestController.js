@@ -455,6 +455,33 @@ export const approveSellerRequest = async (req, res) => {
             approvalNote: "Automatically approved from admin warehouse delivery.",
           });
         }
+
+        // Stock supplied to the seller leaves the admin warehouse, so the
+        // master product's stock (what warehouse orders are fulfilled
+        // from) goes down by the same amount.
+        if (quantity > 0 && !baseProduct.sellerId) {
+          const shortBy = quantity - Number(baseProduct.stock || 0);
+          if (shortBy > 0) {
+            console.warn(
+              `⚠️ Warehouse stock for ${baseProduct.name} was ${baseProduct.stock || 0}, supplied ${quantity}; clamping to 0.`,
+            );
+          }
+          baseProduct.stock = Math.max(0, Number(baseProduct.stock || 0) - quantity);
+          if (Array.isArray(baseProduct.variants) && baseProduct.variants.length > 0) {
+            let vIndex = -1;
+            if (item.variantSku) {
+              vIndex = baseProduct.variants.findIndex(
+                (v) => String(v.sku || "").trim() === String(item.variantSku).trim()
+              );
+            }
+            if (vIndex === -1) vIndex = 0;
+            const variant = baseProduct.variants[vIndex];
+            if (variant) {
+              variant.stock = Math.max(0, Number(variant.stock || 0) - quantity);
+            }
+          }
+          await baseProduct.save();
+        }
       }
     }
 

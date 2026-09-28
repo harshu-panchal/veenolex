@@ -67,6 +67,19 @@ export function emitOrderStatusUpdate(orderId, payload, customerId) {
   }
 }
 
+/**
+ * Customer-facing arrival window changed. Separate from
+ * `order:status:update` so listeners don't treat it as a status change.
+ */
+export function emitOrderEtaUpdate(orderId, deliveryEta, customerId) {
+  const s = getIo();
+  if (!s) return;
+  const body = { orderId, deliveryEta, at: new Date().toISOString() };
+  s.to(`order:${orderId}`).emit("order:eta", body);
+  const cid = customerId != null ? String(customerId?._id || customerId) : null;
+  if (cid) s.to(`customer:${cid}`).emit("order:eta", body);
+}
+
 export function emitToSeller(sellerId, { event, payload }) {
   const s = getIo();
   if (!s || !sellerId) return;
@@ -86,6 +99,16 @@ export function emitToDelivery(deliveryId, { event, payload }) {
  * `notification:new` deltas that should only wake up the specific
  * admin who owns the Notification row.
  */
+/**
+ * Broadcast to every connected admin (the `admin:orders` room every admin
+ * socket joins). Used for warehouse fulfilment alerts.
+ */
+export function emitToAllAdmins({ event, payload }) {
+  const s = getIo();
+  if (!s || !event) return;
+  s.to("admin:orders").emit(event, payload);
+}
+
 export function emitToAdmin(adminId, { event, payload }) {
   const s = getIo();
   if (!s || !adminId || !event) return;

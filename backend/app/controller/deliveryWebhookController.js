@@ -4,6 +4,7 @@ import SellerProductRequest from "../models/sellerProductRequest.js";
 import DeliveryShipment from "../models/deliveryShipment.js";
 import DeliveryWebhookEvent from "../models/deliveryWebhookEvent.js";
 import { emitToOrder } from "../services/orderSocketEmitter.js";
+import { parseShiprocketDate } from "../../utils/shipRocketService.js";
 
 // Mapping of Shiprocket status codes/strings to internal workflow statuses
 const MAP_STATUSES = {
@@ -21,6 +22,13 @@ const MAP_STATUSES = {
   "READY FOR PICKUP": "PICKUP_READY",
   "READY_FOR_PICKUP": "PICKUP_READY",
 };
+
+// Loaded lazily (like the settlement service) to keep this handler's
+// import graph small.
+async function refreshOrderDeliveryEta(orderMongoId) {
+  const { refreshOrderDeliveryEta: refresh } = await import("../services/deliveryEtaService.js");
+  return refresh(orderMongoId);
+}
 
 export const handleShiprocketWebhook = async (req, res) => {
   try {
@@ -45,6 +53,7 @@ export const handleShiprocketWebhook = async (req, res) => {
     const shipRocketOrderId = payload.order_id?.toString() || payload.id?.toString();
     const currentStatus = payload.current_status || payload.status || "UNKNOWN";
     const awb = payload.awb || payload.awb_code;
+    const etd = parseShiprocketDate(payload.etd || payload.edd);
 
     // 2. Idempotency Check (duplicate event ID -> 200, no-op)
     const payloadHash = crypto.createHash("sha256").update(bodyStr).digest("hex");
@@ -120,7 +129,7 @@ export const handleShiprocketWebhook = async (req, res) => {
       if (targetType === "ORDER") {
         target.shipRocketDetails.status = currentStatus;
         if (awb) target.shipRocketDetails.trackingNumber = awb;
-        if (payload.etd) target.shipRocketDetails.estimatedDelivery = new Date(payload.etd);
+        if (etd) target.shipRocketDetails.estimatedDelivery = etd;
 
         if (mappedWorkflowStatus === "DELIVERED") {
           target.workflowStatus = "DELIVERED";
@@ -134,21 +143,33 @@ export const handleShiprocketWebhook = async (req, res) => {
         }
         await target.save();
 
-        // Emit real-time tracking update to standard order rooms
+        // Courier-delivered orders still need the normal delivered-order
+        // finance settlement (payouts, admin earning, return window).
+        if (mappedWorkflowStatus === "DELIVERED" && target.workflowVersion >= 2) {
+          try {
+            const { applyDeliveredSettlement } = await import("../services/orderSettlement.js");
+            await applyDeliveredSettlement(target, target.orderId);
+          } catch (settleErr) {
+            console.error(`❌ Settlement after Shiprocket delivery failed for ${target.orderId}:`, settleErr.message);
+          }
+        }
+
+        // Customers only get the status here; the arrival time follows
+        // on `order:eta`. Courier details never go to customer rooms.
         emitToOrder(target.orderId, {
           event: "order:status:update",
           payload: {
             orderId: target.orderId,
             status: target.status,
             workflowStatus: target.workflowStatus,
-            shipRocketDetails: target.shipRocketDetails
           }
         });
+        await refreshOrderDeliveryEta(target._id);
       } else {
         // SellerProductRequest transition
         target.shipRocketDetails.status = currentStatus;
         if (awb) target.shipRocketDetails.trackingNumber = awb;
-        if (payload.etd) target.shipRocketDetails.estimatedDelivery = new Date(payload.etd);
+        if (etd) target.shipRocketDetails.estimatedDelivery = etd;
 
         if (mappedWorkflowStatus === "DELIVERED") {
           target.status = "DELIVERED";
@@ -166,7 +187,11 @@ export const handleShiprocketWebhook = async (req, res) => {
       // Just save the details on target shipRocketDetails without changing core order status
       target.shipRocketDetails.status = currentStatus;
       if (awb) target.shipRocketDetails.trackingNumber = awb;
+      if (etd) target.shipRocketDetails.estimatedDelivery = etd;
       await target.save();
+      if (targetType === "ORDER" && etd) {
+        await refreshOrderDeliveryEta(target._id);
+      }
     }
 
     return res.status(200).send("OK: Webhook processed successfully");

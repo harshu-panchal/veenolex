@@ -43,6 +43,11 @@ import {
   validateIdempotencyKey,
 } from "./idempotencyService.js";
 import { buildCheckoutPricingSnapshot } from "./checkoutPricingService.js";
+import { refreshOrderDeliveryEta } from "./deliveryEtaService.js";
+import {
+  ADMIN_FULFILLER,
+  getFulfillmentWarehouse,
+} from "./fulfillmentRoutingService.js";
 import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../modules/notifications/notification.constants.js";
 import * as logger from "./logger.js";
@@ -449,19 +454,27 @@ export async function placeOrderAtomic({
     const pendingLowStockAlerts = [];
     const sellerTimeoutMs = DEFAULT_SELLER_TIMEOUT_MS();
     const shouldStartSellerWorkflow = paymentMode === "COD";
+    const hasAdminGroup = pricingSnapshot.sellerBreakdownEntries.some(
+      (entry) => entry.sellerId === ADMIN_FULFILLER,
+    );
+    const adminTimeoutMs = hasAdminGroup
+      ? (await getFulfillmentWarehouse()).adminAcceptTimeoutMs
+      : 0;
 
     for (let index = 0; index < pricingSnapshot.sellerBreakdownEntries.length; index += 1) {
       const entry = pricingSnapshot.sellerBreakdownEntries[index];
+      const isAdminFulfilled = entry.sellerId === ADMIN_FULFILLER;
+      const orderSellerId = isAdminFulfilled ? null : entry.sellerId;
       const orderId = await generateUniquePublicOrderId({ session });
       const orderReservation = computeStockReservationWindow(paymentMode);
       const sellerPendingUntil = shouldStartSellerWorkflow
-        ? new Date(Date.now() + sellerTimeoutMs)
+        ? new Date(Date.now() + (isAdminFulfilled ? adminTimeoutMs : sellerTimeoutMs))
         : null;
       const orderExpiresAt = orderReservation.expiresAt || sellerPendingUntil || null;
 
       const sellerLowStockAlerts = await reserveStockForItems({
         items: entry.items,
-        sellerId: entry.sellerId,
+        sellerId: orderSellerId,
         orderId,
         session,
         paymentMode,
@@ -495,7 +508,18 @@ export async function placeOrderAtomic({
       const order = new Order({
         orderId,
         customer: customerId,
-        seller: entry.sellerId,
+        seller: orderSellerId,
+        fulfilledBy: isAdminFulfilled ? ADMIN_FULFILLER : "SELLER",
+        routedReason: entry.routedReason || null,
+        routingHistory: [
+          {
+            fulfilledBy: isAdminFulfilled ? ADMIN_FULFILLER : "SELLER",
+            seller: orderSellerId,
+            reason: entry.routedReason || null,
+            outcome: "ASSIGNED",
+            at: new Date(),
+          },
+        ],
         items: mapOrderItemsForPersistence(entry.items),
         address: normalizedAddress,
         paymentMode,
@@ -536,7 +560,7 @@ export async function placeOrderAtomic({
         },
         settlementStatus: {
           overall: "PENDING",
-          sellerPayout: "PENDING",
+          sellerPayout: isAdminFulfilled ? "NOT_APPLICABLE" : "PENDING",
           riderPayout: "PENDING",
           adminEarningCredited: false,
         },
@@ -550,7 +574,8 @@ export async function placeOrderAtomic({
     checkoutGroup.orderIds = orders.map((order) => order._id);
     checkoutGroup.publicOrderIds = orders.map((order) => order.orderId);
     checkoutGroup.sellerBreakdown = orders.map((order, index) => ({
-      seller: order.seller,
+      seller: order.seller || null,
+      fulfilledBy: order.fulfilledBy,
       order: order._id,
       publicOrderId: order.orderId,
       itemCount: order.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
@@ -616,7 +641,8 @@ export async function placeOrderAtomic({
       }, { session });
     }
 
-    const transactionRows = orders.map((order) => ({
+    // Seller ledger rows only; admin-fulfilled orders have no seller.
+    const transactionRows = orders.filter((order) => order.seller).map((order) => ({
       user: order.seller,
       userModel: "Seller",
       order: order._id,
@@ -732,6 +758,7 @@ export async function placeOrderAtomic({
     }
 
     for (const order of orders) {
+      void refreshOrderDeliveryEta(order._id);
       emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_PLACED, {
         orderId: order.orderId,
         checkoutGroupId,

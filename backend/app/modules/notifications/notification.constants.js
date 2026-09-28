@@ -26,6 +26,8 @@ export const NOTIFICATION_EVENTS = Object.freeze({
   RETURN_QC_FAILED: "RETURN_QC_FAILED",
   SUPPORT_TICKET_MESSAGE: "SUPPORT_TICKET_MESSAGE",
   LOW_STOCK_ALERT: "LOW_STOCK_ALERT",
+  // An order no local seller could fulfil is waiting for admin.
+  ADMIN_FULFILLMENT_ORDER: "ADMIN_FULFILLMENT_ORDER",
 });
 
 export const NOTIFICATION_ROLES = Object.freeze({
@@ -111,6 +113,8 @@ export function roleFromEvent(eventType) {
     case NOTIFICATION_EVENTS.RETURN_QC_PASSED:
     case NOTIFICATION_EVENTS.RETURN_QC_FAILED:
       return NOTIFICATION_ROLES.CUSTOMER;
+    case NOTIFICATION_EVENTS.ADMIN_FULFILLMENT_ORDER:
+      return NOTIFICATION_ROLES.ADMIN;
     default:
       return NOTIFICATION_ROLES.CUSTOMER;
   }

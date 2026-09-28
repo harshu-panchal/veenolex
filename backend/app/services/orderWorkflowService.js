@@ -37,13 +37,25 @@ import {
 import {
   emitOrderStatusUpdate,
   emitToSeller,
+  emitToAllAdmins,
   emitDeliveryBroadcastForSeller,
+  emitDeliveryBroadcastForLocation,
   emitReturnBroadcastForCustomer,
   emitToCustomer,
   emitToOrder,
   emitToDelivery,
   retractDeliveryBroadcastForOrder,
 } from "./orderSocketEmitter.js";
+import StockHistory from "../models/stockHistory.js";
+import Transaction from "../models/transaction.js";
+import {
+  ADMIN_FULFILLER,
+  ROUTED_REASON,
+  getFulfillmentWarehouse,
+  resolveMasterProductId,
+  routeMasterLines,
+} from "./fulfillmentRoutingService.js";
+import { refreshOrderDeliveryEta } from "./deliveryEtaService.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import { applyDeliveredSettlement } from "./orderSettlement.js";
 import { requireCanonicalOrderId } from "../utils/orderLookup.js";
@@ -100,12 +112,85 @@ export function resolveWorkflowStatus(order) {
   return workflowFromLegacyStatus(order.status);
 }
 
+export function isAdminFulfilledOrder(order) {
+  return order?.fulfilledBy === ADMIN_FULFILLER;
+}
+
 /**
- * After creating a new order document (v2), schedule seller timeout and emit.
+ * Bull job key for the current fulfiller's accept window. Each reroute adds
+ * an ASSIGNED history entry, so the key changes and a fresh job can be
+ * scheduled while the previous one is still running.
+ */
+function sellerTimeoutKeyFor(order) {
+  const assignments = (order?.routingHistory || []).filter(
+    (entry) => (entry?.outcome || "ASSIGNED") === "ASSIGNED",
+  ).length;
+  return assignments > 1 ? String(assignments - 1) : undefined;
+}
+
+function adminOrderAlertPayload(order, extra = {}) {
+  return {
+    orderId: order.orderId,
+    workflowStatus: order.workflowStatus,
+    fulfilledBy: ADMIN_FULFILLER,
+    routedReason: order.routedReason || null,
+    sellerPendingExpiresAt: order.sellerPendingExpiresAt,
+    paymentMode: order.paymentMode,
+    total: order.pricing?.total ?? order.paymentBreakdown?.grandTotal ?? 0,
+    items: (order.items || []).map((item) => ({
+      name: item.name,
+      quantity: item.quantity,
+      price: item.price,
+      image: item.image,
+    })),
+    address: {
+      name: order.address?.name,
+      address: order.address?.address,
+      city: order.address?.city,
+      phone: order.address?.phone,
+    },
+    ...extra,
+  };
+}
+
+async function notifyAdminsOfFulfillmentOrder(order, { isReminder = false } = {}) {
+  const payload = adminOrderAlertPayload(order, { isReminder });
+  emitToAllAdmins({ event: "order:new:admin", payload });
+
+  const admins = await Admin.find({}).select("_id").lean();
+  if (admins.length) {
+    emitNotificationEvent(NOTIFICATION_EVENTS.ADMIN_FULFILLMENT_ORDER, {
+      orderId: order.orderId,
+      adminIds: admins.map((admin) => admin._id),
+      reason: order.routedReason,
+      isReminder,
+      // Distinct dedupe key per reminder so repeats are not swallowed.
+      messageId: isReminder
+        ? `${order.orderId}:reminder:${order.adminReminderCount || 0}`
+        : undefined,
+    });
+  }
+}
+
+/**
+ * After creating a new order document (v2), schedule the accept timeout and
+ * alert whoever fulfils it: the routed local seller, or every admin when
+ * the order is fulfilled from the admin warehouse.
  */
 export async function afterPlaceOrderV2(orderDoc) {
   const orderId = orderDoc.orderId;
-  await scheduleSellerTimeoutJob(orderId);
+  const expiresAt = orderDoc.sellerPendingExpiresAt
+    ? new Date(orderDoc.sellerPendingExpiresAt).getTime()
+    : null;
+  const delayMs = expiresAt ? Math.max(1000, expiresAt - Date.now()) : undefined;
+  await scheduleSellerTimeoutJob(orderId, { delayMs, key: sellerTimeoutKeyFor(orderDoc) });
+  void refreshOrderDeliveryEta(orderDoc._id);
+
+  if (isAdminFulfilledOrder(orderDoc)) {
+    await notifyAdminsOfFulfillmentOrder(orderDoc);
+    return;
+  }
+
   emitToSeller(orderDoc.seller?.toString(), {
     event: "order:new",
     payload: {
@@ -119,12 +204,12 @@ export async function afterPlaceOrderV2(orderDoc) {
 // Workflow timeout scheduling delegates to the jobSchedulerPort (P2.6).
 // The function names below remain for in-file callers; the implementation
 // lives in services/workflow/bullJobScheduler.js behind the port.
-export async function scheduleSellerTimeoutJob(orderId) {
-  return scheduleSellerTimeout(orderId);
+export async function scheduleSellerTimeoutJob(orderId, options = {}) {
+  return scheduleSellerTimeout(orderId, options);
 }
 
-export async function removeSellerTimeoutJob(orderId) {
-  return removeSellerTimeout(orderId);
+export async function removeSellerTimeoutJob(orderId, key) {
+  return removeSellerTimeout(orderId, key);
 }
 
 export async function scheduleDeliveryTimeoutJob(orderId, attempt = 1) {
@@ -185,7 +270,13 @@ export async function sellerAcceptAtomic(sellerId, orderId) {
     throw err;
   }
 
-  await removeSellerTimeoutJob(orderId);
+  await afterOrderAccepted(updated);
+  return updated;
+}
+
+async function afterOrderAccepted(updated) {
+  await removeSellerTimeoutJob(updated.orderId, sellerTimeoutKeyFor(updated));
+  void refreshOrderDeliveryEta(updated._id);
 
   emitOrderStatusUpdate(
     updated.orderId,
@@ -201,15 +292,275 @@ export async function sellerAcceptAtomic(sellerId, orderId) {
     userId: updated.customer?._id || updated.customer,
     sellerId: updated.seller?._id || updated.seller,
   });
+}
 
+/**
+ * Admin accepts a warehouse order: SELLER_PENDING -> SELLER_ACCEPTED.
+ * No expiry check — the admin window only drives reminders, it never
+ * cancels the order.
+ */
+export async function adminAcceptAtomic(adminId, orderId) {
+  orderId = await requireCanonicalOrderId(orderId);
+  const now = new Date();
+
+  const updated = await Order.findOneAndUpdate(
+    {
+      orderId,
+      fulfilledBy: ADMIN_FULFILLER,
+      workflowVersion: { $gte: 2 },
+      workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
+      $or: [
+        { paymentMode: { $ne: "ONLINE" } },
+        { paymentStatus: "PAID" },
+      ],
+    },
+    {
+      $set: {
+        workflowStatus: WORKFLOW_STATUS.SELLER_ACCEPTED,
+        status: legacyStatusFromWorkflow(WORKFLOW_STATUS.SELLER_ACCEPTED),
+        sellerAcceptedAt: now,
+      },
+      $unset: { expiresAt: 1 },
+    },
+    { new: true },
+  ).populate("customer", "name phone");
+
+  if (!updated) {
+    const err = new Error("Order not available for acceptance (already handled?)");
+    err.statusCode = 409;
+    throw err;
+  }
+
+  await afterOrderAccepted(updated);
+  // Close the alert on every other admin's screen.
+  emitToAllAdmins({
+    event: "order:admin:updated",
+    payload: { orderId: updated.orderId, workflowStatus: updated.workflowStatus, by: String(adminId || "") },
+  });
   return updated;
+}
+
+/**
+ * Admin rejects a warehouse order: there is no further fulfiller, so the
+ * order is cancelled and the customer refunded.
+ */
+export async function adminRejectAtomic(adminId, orderId, reason = "") {
+  orderId = await requireCanonicalOrderId(orderId);
+  const order = await Order.findOneAndUpdate(
+    {
+      orderId,
+      fulfilledBy: ADMIN_FULFILLER,
+      workflowVersion: { $gte: 2 },
+      workflowStatus: { $in: [WORKFLOW_STATUS.SELLER_PENDING, WORKFLOW_STATUS.SELLER_ACCEPTED] },
+      deliveryBoy: null,
+    },
+    {
+      $set: {
+        workflowStatus: WORKFLOW_STATUS.CANCELLED,
+        status: "cancelled",
+        cancelledBy: "admin",
+        cancelReason: reason || "Not available",
+      },
+    },
+    { new: true },
+  );
+
+  if (!order) {
+    const err = new Error("Order not available to reject");
+    err.statusCode = 409;
+    throw err;
+  }
+
+  await removeSellerTimeoutJob(orderId, sellerTimeoutKeyFor(order));
+  await compensateOrderCancellation(order, orderId);
+
+  emitOrderStatusUpdate(order.orderId, { workflowStatus: WORKFLOW_STATUS.CANCELLED }, order.customer);
+  emitToAllAdmins({
+    event: "order:admin:updated",
+    payload: { orderId: order.orderId, workflowStatus: WORKFLOW_STATUS.CANCELLED, by: String(adminId || "") },
+  });
+  emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_CANCELLED, {
+    orderId: order.orderId,
+    customerId: order.customer,
+    userId: order.customer,
+    customerMessage: "Sorry, this item is currently unavailable. Your order was cancelled and refunded.",
+  });
+  return order;
+}
+
+/**
+ * Admin sends a warehouse order via Shiprocket instead of a local rider.
+ * The Shiprocket worker creates the shipment; the webhook drives status.
+ */
+export async function adminDispatchViaShiprocket(adminId, orderId) {
+  orderId = await requireCanonicalOrderId(orderId);
+  const updated = await Order.findOneAndUpdate(
+    {
+      orderId,
+      fulfilledBy: ADMIN_FULFILLER,
+      workflowVersion: { $gte: 2 },
+      workflowStatus: WORKFLOW_STATUS.SELLER_ACCEPTED,
+      deliveryBoy: null,
+      // Allow a retry only when the previous Shiprocket attempt failed.
+      $or: [
+        { deliveryType: { $ne: "SHIPROCKET" } },
+        { "shipRocketDetails.status": "SHIPMENT_FAILED" },
+      ],
+    },
+    {
+      $set: {
+        deliveryType: "SHIPROCKET",
+        shipRocketDetails: {
+          orderId: `PENDING_SR_${orderId}`,
+          trackingNumber: "Assigning...",
+          status: "PENDING",
+          estimatedDelivery: null,
+        },
+      },
+    },
+    { new: true },
+  );
+
+  if (!updated) {
+    const err = new Error("Accept the order before dispatching it (or it was already dispatched)");
+    err.statusCode = 409;
+    throw err;
+  }
+
+  emitOrderStatusUpdate(updated.orderId, { workflowStatus: updated.workflowStatus }, updated.customer);
+  void refreshOrderDeliveryEta(updated._id);
+  emitToAllAdmins({
+    event: "order:admin:updated",
+    payload: { orderId: updated.orderId, workflowStatus: updated.workflowStatus, deliveryType: "SHIPROCKET", by: String(adminId || "") },
+  });
+  return updated;
+}
+
+/**
+ * Admin assigns a specific rider to a warehouse order (after accepting it,
+ * or while a rider broadcast is still searching).
+ */
+export async function adminAssignDeliveryPartnerAtomic(adminId, orderId, deliveryBoyId) {
+  orderId = await requireCanonicalOrderId(orderId);
+  const deliveryOid = toDeliveryObjectId(deliveryBoyId);
+  const partner = deliveryOid
+    ? await Delivery.findById(deliveryOid).select("_id name").lean()
+    : null;
+  if (!partner) {
+    const err = new Error("Delivery partner not found");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const before = await Order.findOne({ orderId, fulfilledBy: ADMIN_FULFILLER })
+    .select("workflowStatus deliverySearchMeta")
+    .lean();
+  const now = new Date();
+  const updated = await Order.findOneAndUpdate(
+    {
+      orderId,
+      fulfilledBy: ADMIN_FULFILLER,
+      workflowVersion: { $gte: 2 },
+      workflowStatus: { $in: [WORKFLOW_STATUS.SELLER_ACCEPTED, WORKFLOW_STATUS.DELIVERY_SEARCH] },
+      deliveryBoy: null,
+      deliveryType: { $ne: "SHIPROCKET" },
+    },
+    {
+      $set: {
+        deliveryBoy: deliveryOid,
+        workflowStatus: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
+        status: legacyStatusFromWorkflow(WORKFLOW_STATUS.DELIVERY_ASSIGNED),
+        assignedAt: now,
+        deliveryRiderStep: 1,
+      },
+      $inc: { assignmentVersion: 1 },
+    },
+    { new: true },
+  );
+
+  if (!updated) {
+    const err = new Error("Accept the order first (or a rider is already assigned)");
+    err.statusCode = 409;
+    throw err;
+  }
+
+  if (before?.workflowStatus === WORKFLOW_STATUS.DELIVERY_SEARCH) {
+    await removeDeliveryTimeoutJob(orderId, before.deliverySearchMeta?.attempt || 1);
+    await DeliveryAssignment.updateMany(
+      { orderId, status: "broadcasting" },
+      { $set: { status: "assigned", winnerDeliveryId: deliveryOid } },
+    ).catch(() => {});
+    await retractDeliveryBroadcastForOrder(orderId, deliveryOid);
+  }
+
+  const warehouse = await getFulfillmentWarehouse();
+  emitToDelivery(String(deliveryOid), {
+    event: "delivery:assigned",
+    payload: {
+      orderId: updated.orderId,
+      sourceType: "ORDER",
+      fulfilledBy: ADMIN_FULFILLER,
+      workflowStatus: WORKFLOW_STATUS.DELIVERY_ASSIGNED,
+      pickupLocation: warehouse.hasLocation ? { lat: warehouse.lat, lng: warehouse.lng } : null,
+      preview: {
+        pickup: warehouse.name,
+        drop: updated.address?.address || updated.address?.city || "Customer Address",
+        total: updated.pricing?.total || 0,
+      },
+    },
+  });
+  emitNotificationEvent(NOTIFICATION_EVENTS.DELIVERY_ASSIGNED, {
+    orderId: updated.orderId,
+    deliveryId: deliveryOid,
+    customerId: updated.customer,
+  });
+  emitOrderStatusUpdate(
+    updated.orderId,
+    { workflowStatus: WORKFLOW_STATUS.DELIVERY_ASSIGNED, deliveryBoyId: String(deliveryOid) },
+    updated.customer,
+  );
+  void refreshOrderDeliveryEta(updated._id);
+  emitToAllAdmins({
+    event: "order:admin:updated",
+    payload: { orderId: updated.orderId, workflowStatus: updated.workflowStatus, by: String(adminId || "") },
+  });
+  return updated;
+}
+
+/**
+ * Emit a rider broadcast for an order. Warehouse orders broadcast around
+ * the warehouse; seller orders around the seller's shop.
+ */
+async function emitOrderDeliveryBroadcast(order, extra = {}) {
+  const payload = deliveryBroadcastPayloadFromOrder(order, extra);
+  if (!isAdminFulfilledOrder(order)) {
+    return emitDeliveryBroadcastForSeller(order.seller, payload);
+  }
+
+  const warehouse = await getFulfillmentWarehouse();
+  payload.fulfilledBy = ADMIN_FULFILLER;
+  payload.preview = { ...payload.preview, pickup: warehouse.name };
+  if (!warehouse.hasLocation) {
+    logger.warn("[emitOrderDeliveryBroadcast] Warehouse location is not configured", {
+      orderId: order.orderId,
+    });
+    return undefined;
+  }
+  payload.pickupLocation = { lat: warehouse.lat, lng: warehouse.lng };
+  const radiusKm = Number(payload.radiusMeters || INITIAL_DELIVERY_RADIUS_M()) / 1000;
+  return emitDeliveryBroadcastForLocation(
+    { lat: warehouse.lat, lng: warehouse.lng },
+    radiusKm,
+    payload,
+  );
 }
 
 /**
  * Trigger Delivery Broadcast for order: SELLER_ACCEPTED / SELLER_PENDING -> DELIVERY_SEARCH.
  * Broadcasts delivery request alert to all nearby active delivery partners.
+ * Pass `sellerId = null` with `{ asAdmin: true }` for warehouse orders.
  */
-export async function triggerOrderDeliveryBroadcast(sellerId, orderId) {
+export async function triggerOrderDeliveryBroadcast(sellerId, orderId, { asAdmin = false } = {}) {
   orderId = await requireCanonicalOrderId(orderId);
   const now = new Date();
   const deliveryMs = DEFAULT_DELIVERY_TIMEOUT_MS();
@@ -217,7 +568,7 @@ export async function triggerOrderDeliveryBroadcast(sellerId, orderId) {
   const updated = await Order.findOneAndUpdate(
     {
       orderId,
-      seller: sellerId,
+      ...(asAdmin ? { fulfilledBy: ADMIN_FULFILLER } : { seller: sellerId }),
       workflowVersion: { $gte: 2 },
       workflowStatus: {
         $in: [
@@ -227,6 +578,7 @@ export async function triggerOrderDeliveryBroadcast(sellerId, orderId) {
         ],
       },
       deliveryBoy: null,
+      deliveryType: { $ne: "SHIPROCKET" },
     },
     {
       $set: {
@@ -252,7 +604,7 @@ export async function triggerOrderDeliveryBroadcast(sellerId, orderId) {
     throw err;
   }
 
-  await removeSellerTimeoutJob(orderId);
+  await removeSellerTimeoutJob(orderId, sellerTimeoutKeyFor(updated));
   await scheduleDeliveryTimeoutJob(orderId, 1);
 
   await DeliveryAssignment.create({
@@ -274,28 +626,283 @@ export async function triggerOrderDeliveryBroadcast(sellerId, orderId) {
     },
     updated.customer?._id || updated.customer,
   );
-  await emitDeliveryBroadcastForSeller(
-    updated.seller,
-    deliveryBroadcastPayloadFromOrder(updated),
-  );
+  await emitOrderDeliveryBroadcast(updated);
+  void refreshOrderDeliveryEta(updated._id);
+  if (asAdmin) {
+    emitToAllAdmins({
+      event: "order:admin:updated",
+      payload: { orderId: updated.orderId, workflowStatus: updated.workflowStatus },
+    });
+  }
 
   return updated;
 }
 
+function insufficientStockError(message) {
+  const err = new Error(message);
+  err.statusCode = 409;
+  err.code = "REROUTE_NO_STOCK";
+  return err;
+}
+
+async function moveLineStock({ fromProductId, toProductId, variantSku, quantity, order, toSellerId, session }) {
+  const sku = String(variantSku || "").trim();
+  const reserveFilter = sku
+    ? { _id: toProductId, stock: { $gte: quantity }, variants: { $elemMatch: { sku, stock: { $gte: quantity } } } }
+    : { _id: toProductId, stock: { $gte: quantity } };
+  const reserveInc = sku
+    ? { stock: -quantity, "variants.$.stock": -quantity }
+    : { stock: -quantity };
+  const reserved = await Product.findOneAndUpdate(reserveFilter, { $inc: reserveInc }, { new: true, session });
+  if (!reserved) {
+    throw insufficientStockError(`Insufficient stock to reroute order ${order.orderId}`);
+  }
+
+  const releaseFilter = sku ? { _id: fromProductId, "variants.sku": sku } : { _id: fromProductId };
+  const releaseInc = sku
+    ? { stock: quantity, "variants.$.stock": quantity }
+    : { stock: quantity };
+  await Product.updateOne(releaseFilter, { $inc: releaseInc }, { session });
+
+  const stockType = order.paymentMode === "ONLINE" ? "Reservation" : "Sale";
+  const suffix = sku ? ` [variant: ${sku}]` : "";
+  await StockHistory.create(
+    [
+      {
+        product: fromProductId,
+        seller: order.seller || null,
+        type: "Release",
+        quantity,
+        note: `Order #${order.orderId} rerouted to another fulfiller${suffix}`,
+        order: order._id,
+      },
+      {
+        product: toProductId,
+        seller: toSellerId || null,
+        type: stockType,
+        quantity: -quantity,
+        note: `Order #${order.orderId} rerouted ${stockType.toLowerCase()}${suffix}`,
+        order: order._id,
+      },
+    ],
+    { session, ordered: true },
+  );
+}
 
 /**
- * Seller rejects: SELLER_PENDING -> CANCELLED + compensation.
+ * Hand a pending seller order to the next fulfiller after the current
+ * seller rejects it or lets it time out: the nearest other local seller
+ * who can supply the whole order, otherwise the admin warehouse. Stock
+ * moves from the old seller's product to the new fulfiller's in the same
+ * transaction.
+ *
+ * Returns the updated order, or null when nobody (not even the warehouse)
+ * has the stock — the caller then cancels as before.
+ */
+export async function rerouteOrderToNextFulfiller(orderDoc, reason) {
+  if (!orderDoc || isAdminFulfilledOrder(orderDoc)) return null;
+
+  const session = await mongoose.startSession();
+  let rerouted = null;
+  let previousSellerId = null;
+  try {
+    session.startTransaction();
+
+    const order = await Order.findOne({
+      _id: orderDoc._id,
+      fulfilledBy: { $ne: ADMIN_FULFILLER },
+      workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
+    }).session(session);
+    if (!order) {
+      await session.abortTransaction();
+      return null;
+    }
+    previousSellerId = order.seller ? String(order.seller) : null;
+
+    const products = await Product.find({ _id: { $in: order.items.map((item) => item.product) } })
+      .select("_id adminProductId sellerId")
+      .session(session)
+      .lean();
+    const productById = new Map(products.map((p) => [String(p._id), p]));
+    const lines = order.items.map((item) => ({
+      item,
+      masterId: resolveMasterProductId(productById.get(String(item.product))),
+      variantSku: String(item.variantSlot || "").trim(),
+      quantity: Number(item.quantity || 0),
+    }));
+    // Seller-owned (non admin-catalog) products cannot move to anyone else.
+    if (lines.some((line) => !line.masterId)) {
+      await session.abortTransaction();
+      return null;
+    }
+
+    const triedSellerIds = [
+      ...new Set(
+        [...(order.routingHistory || []).map((entry) => entry.seller), order.seller]
+          .filter(Boolean)
+          .map(String),
+      ),
+    ];
+    const routes = await routeMasterLines({
+      lines: lines.map(({ masterId, variantSku, quantity }) => ({ masterId, variantSku, quantity })),
+      customerLocation: order.address?.location,
+      excludeSellerIds: triedSellerIds,
+      requireSingleSeller: true,
+      session,
+    });
+    const toAdmin = routes[0].fulfilledBy === ADMIN_FULFILLER;
+    const nextSellerId = toAdmin ? null : routes[0].sellerId;
+
+    for (let index = 0; index < lines.length; index += 1) {
+      await moveLineStock({
+        fromProductId: lines[index].item.product,
+        toProductId: routes[index].productId,
+        variantSku: lines[index].variantSku,
+        quantity: lines[index].quantity,
+        order,
+        toSellerId: nextSellerId,
+        session,
+      });
+    }
+
+    const now = new Date();
+    const windowMs = toAdmin
+      ? (await getFulfillmentWarehouse()).adminAcceptTimeoutMs
+      : DEFAULT_SELLER_TIMEOUT_MS();
+    const newItems = order.items.map((item, index) => ({
+      ...item.toObject(),
+      product: new mongoose.Types.ObjectId(routes[index].productId),
+    }));
+    const historyLength = (order.routingHistory || []).length;
+
+    rerouted = await Order.findOneAndUpdate(
+      {
+        _id: order._id,
+        workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
+        routingHistory: { $size: historyLength },
+      },
+      {
+        $set: {
+          seller: nextSellerId ? new mongoose.Types.ObjectId(nextSellerId) : null,
+          fulfilledBy: toAdmin ? ADMIN_FULFILLER : "SELLER",
+          routedReason: reason,
+          items: newItems,
+          sellerPendingExpiresAt: new Date(now.getTime() + windowMs),
+          "settlementStatus.sellerPayout": toAdmin ? "NOT_APPLICABLE" : "PENDING",
+        },
+        $push: {
+          routingHistory: {
+            $each: [
+              {
+                fulfilledBy: "SELLER",
+                seller: order.seller,
+                reason,
+                outcome: reason === ROUTED_REASON.SELLER_TIMEOUT ? "TIMEOUT" : "REJECTED",
+                at: now,
+              },
+              {
+                fulfilledBy: toAdmin ? ADMIN_FULFILLER : "SELLER",
+                seller: nextSellerId,
+                reason,
+                outcome: "ASSIGNED",
+                at: now,
+              },
+            ],
+          },
+        },
+      },
+      { new: true, session },
+    );
+    if (!rerouted) {
+      // Someone else (accept / another reroute) got there first.
+      await session.abortTransaction();
+      return null;
+    }
+
+    // Keep the legacy seller ledger row pointing at the right seller.
+    if (toAdmin) {
+      await Transaction.deleteMany(
+        { order: order._id, userModel: "Seller", type: "Order Payment" },
+        { session },
+      );
+    } else {
+      await Transaction.updateMany(
+        { order: order._id, userModel: "Seller", type: "Order Payment" },
+        { $set: { user: new mongoose.Types.ObjectId(nextSellerId) } },
+        { session },
+      );
+    }
+
+    await session.commitTransaction();
+  } catch (error) {
+    if (session.inTransaction()) await session.abortTransaction();
+    if (error?.code === "REROUTE_NO_STOCK") return null;
+    throw error;
+  } finally {
+    session.endSession();
+  }
+
+  if (previousSellerId) {
+    emitToSeller(previousSellerId, {
+      event: "order:reassigned",
+      payload: { orderId: rerouted.orderId },
+    });
+  }
+  emitOrderStatusUpdate(
+    rerouted.orderId,
+    { workflowStatus: WORKFLOW_STATUS.SELLER_PENDING, rerouted: true },
+    rerouted.customer,
+  );
+  if (!isAdminFulfilledOrder(rerouted) && rerouted.seller) {
+    emitNotificationEvent(NOTIFICATION_EVENTS.NEW_ORDER, {
+      orderId: rerouted.orderId,
+      checkoutGroupId: rerouted.checkoutGroupId,
+      sellerId: rerouted.seller,
+      customerId: rerouted.customer,
+    });
+  }
+  await afterPlaceOrderV2(rerouted);
+  logger.info("[rerouteOrderToNextFulfiller] Order rerouted", {
+    orderId: rerouted.orderId,
+    reason,
+    fulfilledBy: rerouted.fulfilledBy,
+    seller: rerouted.seller ? String(rerouted.seller) : null,
+  });
+  return rerouted;
+}
+
+/**
+ * Seller rejects (item not available): hand the order to the next local
+ * seller or the admin warehouse. Cancels + compensates only when nobody
+ * can fulfil it.
  */
 export async function sellerRejectAtomic(sellerId, orderId) {
   orderId = await requireCanonicalOrderId(orderId);
   const now = new Date();
+  const pending = await Order.findOne({
+    orderId,
+    seller: sellerId,
+    workflowVersion: { $gte: 2 },
+    workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
+    sellerPendingExpiresAt: { $gt: now },
+  });
+
+  if (!pending) {
+    const err = new Error("Order not available to reject");
+    err.statusCode = 409;
+    throw err;
+  }
+
+  await removeSellerTimeoutJob(orderId, sellerTimeoutKeyFor(pending));
+  const rerouted = await rerouteOrderToNextFulfiller(pending, ROUTED_REASON.SELLER_REJECTED);
+  if (rerouted) return rerouted;
+
   const order = await Order.findOneAndUpdate(
     {
       orderId,
       seller: sellerId,
       workflowVersion: { $gte: 2 },
       workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
-      sellerPendingExpiresAt: { $gt: now },
     },
     {
       $set: {
@@ -314,7 +921,6 @@ export async function sellerRejectAtomic(sellerId, orderId) {
     throw err;
   }
 
-  await removeSellerTimeoutJob(orderId);
   await compensateOrderCancellation(order, orderId);
 
   emitOrderStatusUpdate(order.orderId, {
@@ -325,7 +931,7 @@ export async function sellerRejectAtomic(sellerId, orderId) {
     customerId: order.customer,
     userId: order.customer,
     sellerId: order.seller,
-    customerMessage: "Your order was cancelled by the seller.",
+    customerMessage: "Sorry, your items are currently unavailable. Your order was cancelled and refunded.",
     sellerMessage: `Order #${order.orderId} was cancelled.`,
   });
   return order;
@@ -521,12 +1127,34 @@ export async function deliveryAcceptAtomic(deliveryId, orderId, idempotencyKey) 
       },
       updated.customer,
     );
+    void refreshOrderDeliveryEta(updated._id);
   } else {
     // For requests, emit to seller if needed.
     // Assuming emitOrderStatusUpdate isn't required for B2B yet
   }
 
   return { order: updated, duplicate: false };
+}
+
+async function remindAdminsOfPendingOrder(order) {
+  const warehouse = await getFulfillmentWarehouse();
+  const updated = await Order.findOneAndUpdate(
+    {
+      _id: order._id,
+      fulfilledBy: ADMIN_FULFILLER,
+      workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
+      sellerPendingExpiresAt: order.sellerPendingExpiresAt,
+    },
+    {
+      $set: { sellerPendingExpiresAt: new Date(Date.now() + warehouse.adminAcceptTimeoutMs) },
+      $inc: { adminReminderCount: 1 },
+    },
+    { new: true },
+  );
+  if (!updated) return;
+  // Next reminder is picked up by the orderAutoCancelJob sweep once the
+  // new window expires; warehouse orders are never auto-cancelled.
+  await notifyAdminsOfFulfillmentOrder(updated, { isReminder: true });
 }
 
 export async function processSellerTimeoutJob({ orderId }) {
@@ -537,6 +1165,14 @@ export async function processSellerTimeoutJob({ orderId }) {
   if (order.sellerPendingExpiresAt && order.sellerPendingExpiresAt > now) {
     return;
   }
+
+  if (isAdminFulfilledOrder(order)) {
+    await remindAdminsOfPendingOrder(order);
+    return;
+  }
+
+  const rerouted = await rerouteOrderToNextFulfiller(order, ROUTED_REASON.SELLER_TIMEOUT);
+  if (rerouted) return;
 
   const updated = await Order.findOneAndUpdate(
     {
@@ -565,7 +1201,7 @@ export async function processSellerTimeoutJob({ orderId }) {
     customerId: updated.customer,
     userId: updated.customer,
     sellerId: updated.seller,
-    customerMessage: "Your order was cancelled because seller did not accept in time.",
+    customerMessage: "Sorry, your items are currently unavailable. Your order was cancelled and refunded.",
     sellerMessage: `Order #${updated.orderId} was cancelled due to timeout.`,
   });
 }
@@ -615,12 +1251,53 @@ export async function processDeliveryTimeoutJob({ orderId, attempt }) {
       .populate("seller", "shopName address name location serviceRadius")
       .lean();
     if (orderRich) {
-      await emitDeliveryBroadcastForSeller(
-        orderRich.seller,
-        deliveryBroadcastPayloadFromOrder(orderRich, {
-          retryAttempt: currentAttempt + 1,
-        }),
-      );
+      await emitOrderDeliveryBroadcast(orderRich, {
+        retryAttempt: currentAttempt + 1,
+      });
+    }
+    return;
+  }
+
+  // Warehouse orders are never cancelled for lack of riders: hand them
+  // back to admin to assign a driver manually or ship via Shiprocket.
+  if (isAdminFulfilledOrder(order)) {
+    const reverted = await Order.findOneAndUpdate(
+      {
+        orderId,
+        fulfilledBy: ADMIN_FULFILLER,
+        workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
+        deliveryBoy: null,
+      },
+      {
+        $set: {
+          workflowStatus: WORKFLOW_STATUS.SELLER_ACCEPTED,
+          status: legacyStatusFromWorkflow(WORKFLOW_STATUS.SELLER_ACCEPTED),
+        },
+        $unset: { deliverySearchExpiresAt: 1 },
+      },
+      { new: true },
+    );
+    if (reverted) {
+      await DeliveryAssignment.updateMany(
+        { orderId, status: "broadcasting" },
+        { $set: { status: "timeout" } },
+      ).catch(() => {});
+      emitOrderStatusUpdate(orderId, { workflowStatus: WORKFLOW_STATUS.SELLER_ACCEPTED }, reverted.customer);
+      void refreshOrderDeliveryEta(reverted._id);
+      emitToAllAdmins({
+        event: "order:admin:no-rider",
+        payload: adminOrderAlertPayload(reverted, { noRiderFound: true }),
+      });
+      const admins = await Admin.find({}).select("_id").lean();
+      if (admins.length) {
+        emitNotificationEvent(NOTIFICATION_EVENTS.ADMIN_FULFILLMENT_ORDER, {
+          orderId,
+          adminIds: admins.map((admin) => admin._id),
+          isReminder: true,
+          messageId: `${orderId}:no-rider:${currentAttempt}`,
+          data: { noRiderFound: true },
+        });
+      }
     }
     return;
   }
@@ -877,9 +1554,15 @@ export async function customerCancelV2(customerId, orderId, reason) {
     throw err;
   }
 
-  await removeSellerTimeoutJob(orderId);
+  await removeSellerTimeoutJob(orderId, sellerTimeoutKeyFor(updated));
   await compensateOrderCancellation(updated, orderId);
   emitOrderStatusUpdate(orderId, { workflowStatus: WORKFLOW_STATUS.CANCELLED }, updated.customer);
+  if (isAdminFulfilledOrder(updated)) {
+    emitToAllAdmins({
+      event: "order:admin:updated",
+      payload: { orderId, workflowStatus: WORKFLOW_STATUS.CANCELLED },
+    });
+  }
   emitNotificationEvent(NOTIFICATION_EVENTS.ORDER_CANCELLED, {
     orderId: updated.orderId,
     customerId: updated.customer,
@@ -894,6 +1577,31 @@ export async function customerCancelV2(customerId, orderId, reason) {
 /**
  * Rider at seller location — step 1 → 2 (DELIVERY_ASSIGNED → PICKUP_READY).
  */
+/**
+ * [lng, lat] of the pickup point: the admin warehouse for warehouse
+ * orders, otherwise the seller's shop.
+ */
+async function resolvePickupCoordinates(order, isRequest) {
+  if (!isRequest && isAdminFulfilledOrder(order)) {
+    const warehouse = await getFulfillmentWarehouse();
+    if (!warehouse.hasLocation) {
+      const err = new Error("Warehouse location not configured");
+      err.statusCode = 400;
+      throw err;
+    }
+    return [warehouse.lng, warehouse.lat];
+  }
+  const sellerId = isRequest ? order.sellerId : order.seller;
+  const seller = await Seller.findById(sellerId).select("location").lean();
+  const coords = seller?.location?.coordinates;
+  if (!Array.isArray(coords) || coords.length < 2) {
+    const err = new Error("Seller location not configured");
+    err.statusCode = 400;
+    throw err;
+  }
+  return coords;
+}
+
 export async function markArrivedAtStoreAtomic(deliveryId, orderId, lat, lng) {
   orderId = await requireCanonicalOrderId(orderId);
   if (
@@ -940,15 +1648,7 @@ export async function markArrivedAtStoreAtomic(deliveryId, orderId, lat, lng) {
     }
   }
 
-  const sellerId = isRequest ? order.sellerId : order.seller;
-  const seller = await Seller.findById(sellerId).select("location").lean();
-  const coords = seller?.location?.coordinates;
-  if (!Array.isArray(coords) || coords.length < 2) {
-    const err = new Error("Seller location not configured");
-    err.statusCode = 400;
-    throw err;
-  }
-  const [slng, slat] = coords;
+  const [slng, slat] = await resolvePickupCoordinates(order, isRequest);
   const d = distanceMeters(lat, lng, slat, slng);
   /*
   if (d > PICKUP_RADIUS_M()) {
@@ -1027,6 +1727,7 @@ export async function markArrivedAtStoreAtomic(deliveryId, orderId, lat, lng) {
     deliveryId: updated.deliveryBoy,
     sellerId: updated.seller,
   });
+  void refreshOrderDeliveryEta(updated._id);
   return updated;
 }
 
@@ -1081,14 +1782,7 @@ export async function confirmPickupAtomic(deliveryId, orderId, lat, lng) {
     }
   }
 
-  const seller = await Seller.findById(order.seller || order.sellerId).select("location").lean();
-  const coords = seller?.location?.coordinates;
-  if (!Array.isArray(coords) || coords.length < 2) {
-    const err = new Error("Seller location not configured");
-    err.statusCode = 400;
-    throw err;
-  }
-  const [slng, slat] = coords;
+  const [slng, slat] = await resolvePickupCoordinates(order, isRequest);
   const d = distanceMeters(lat, lng, slat, slng);
 
   const now = new Date();
@@ -1157,6 +1851,7 @@ export async function confirmPickupAtomic(deliveryId, orderId, lat, lng) {
     deliveryId: updated.deliveryBoy,
     sellerId: updated.seller,
   });
+  void refreshOrderDeliveryEta(updated._id);
   return updated;
 }
 
@@ -1874,8 +2569,10 @@ export async function startRequestDeliverySearch(requestId) {
   await request.save();
 
   // For Admin to Seller delivery, pickup is Admin warehouse, drop is Seller shop
-  const admin = await Admin.findOne({ role: 'Admin' }); // Or pick the admin who approved
-  const radius = admin?.serviceRadius ? admin.serviceRadius * 1000 : INITIAL_DELIVERY_RADIUS_M();
+  const warehouse = await getFulfillmentWarehouse();
+  const radius = warehouse.serviceRadiusKm
+    ? warehouse.serviceRadiusKm * 1000
+    : INITIAL_DELIVERY_RADIUS_M();
 
   await DeliveryAssignment.create({
     orderMongoId: request._id,
@@ -1901,18 +2598,17 @@ export async function startRequestDeliverySearch(requestId) {
     deliverySearchExpiresAt: request.deliverySearchExpiresAt,
   };
 
-  // Note: For actual admin-to-seller delivery broadcasts, we might want to emit to drivers near Admin warehouse.
-  // We can reuse emitDeliveryBroadcastForSeller but use admin's location if available.
-  // For now, let's assume emitDeliveryBroadcastForSeller finds nearby riders.
-  if (admin && admin.location && admin.location.coordinates) {
+  if (warehouse.hasLocation) {
+    payload.preview.pickup = warehouse.name;
     await emitDeliveryBroadcastForLocation(
-      { lng: admin.location.coordinates[0], lat: admin.location.coordinates[1] },
-      admin.serviceRadius || 5,
-      payload
+      { lat: warehouse.lat, lng: warehouse.lng },
+      warehouse.serviceRadiusKm || 5,
+      payload,
     );
   } else {
-    console.warn("[startRequestDeliverySearch] Admin location not found. Broadcast might fail or use dev fallback.");
-    await emitDeliveryBroadcastForSeller(admin ? admin._id : null, payload); // Fallback
+    logger.warn("[startRequestDeliverySearch] Warehouse location is not configured; broadcast skipped", {
+      requestNumber: request.requestNumber,
+    });
   }
 
   return request;

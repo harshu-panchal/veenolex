@@ -11,6 +11,7 @@ import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
 
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock } from "lucide-react";
+import { formatDeliveryText } from "@shared/utils/deliveryTime";
 import { customerApi } from "../../services/customerApi";
 
 const ProductCard = React.memo(
@@ -25,6 +26,7 @@ const ProductCard = React.memo(
     const [reviews, setReviews] = React.useState([]);
     const [isHovered, setIsHovered] = React.useState(false);
     const [activeImageIdx, setActiveImageIdx] = React.useState(0);
+    const deliveryText = formatDeliveryText(product?.deliveryEstimate);
 
     const images = React.useMemo(() => {
       return [
@@ -434,41 +436,22 @@ const ProductCard = React.memo(
             )}
           </div>
           
-          {/* Delivery Badge */}
-          {product.deliveryMethod && (
+          {/* Delivery time only — never how it is delivered */}
+          {deliveryText && (
             <div className="delivery-badge mt-1.5 mb-1 self-start">
-              {product.deliveryMethod === "SELLER_DIRECT" ? (
-                <span style={{
-                  backgroundColor: "#E8F5E9",
-                  color: "#27AE60",
-                  padding: "4px 8px",
-                  borderRadius: "20px",
-                  fontSize: "10px",
-                  fontWeight: "700"
-                }}>
-                  ⚡ {product.deliveryBadge || "Fast Local Delivery"}
-                </span>
-              ) : (
-                <span style={{
-                  backgroundColor: "#FFF3E0",
-                  color: "#FF7A00",
-                  padding: "4px 8px",
-                  borderRadius: "20px",
-                  fontSize: "10px",
-                  fontWeight: "700"
-                }}>
-                  🚚 {
-                    (product.deliveryBadge === "Delivery via ShipRocket" || product.deliveryBadge === "Delivery via Shiprocket")
-                      ? "Standard Delivery"
-                      : (product.deliveryBadge || "Standard Shipping")
-                  }
-                </span>
-              )}
-              
-              {/* Show extra shipping cost if Zone-Out */}
+              <span style={{
+                backgroundColor: "#F1F5F9",
+                color: "#334155",
+                padding: "4px 8px",
+                borderRadius: "20px",
+                fontSize: "10px",
+                fontWeight: "700"
+              }}>
+                🕒 {deliveryText}
+              </span>
               {product.shippingCost > 0 && (
                 <p style={{ fontSize: "9px", color: "#999", margin: "4px 0 0", fontWeight: "600" }}>
-                  +₹{product.shippingCost} shipping
+                  +₹{product.shippingCost} delivery
                 </p>
               )}
             </div>
@@ -590,41 +573,22 @@ const ProductCard = React.memo(
             )}
           </div>
 
-          {/* Delivery Badge */}
-          {product.deliveryMethod && (
+          {/* Delivery time only — never how it is delivered */}
+          {deliveryText && (
             <div className="delivery-badge mt-1.5 mb-1 self-center flex flex-col items-center">
-              {product.deliveryMethod === "SELLER_DIRECT" ? (
-                <span style={{
-                  backgroundColor: "#E8F5E9",
-                  color: "#27AE60",
-                  padding: "5px 10px",
-                  borderRadius: "20px",
-                  fontSize: "11px",
-                  fontWeight: "700"
-                }}>
-                  ⚡ {product.deliveryBadge || "Fast Local Delivery"}
-                </span>
-              ) : (
-                <span style={{
-                  backgroundColor: "#FFF3E0",
-                  color: "#FF7A00",
-                  padding: "5px 10px",
-                  borderRadius: "20px",
-                  fontSize: "11px",
-                  fontWeight: "700"
-                }}>
-                  🚚 {
-                    (product.deliveryBadge === "Delivery via ShipRocket" || product.deliveryBadge === "Delivery via Shiprocket")
-                      ? "Standard Delivery"
-                      : (product.deliveryBadge || "Standard Shipping")
-                  }
-                </span>
-              )}
-              
-              {/* Show extra shipping cost if Zone-Out */}
+              <span style={{
+                backgroundColor: "#F1F5F9",
+                color: "#334155",
+                padding: "4px 8px",
+                borderRadius: "20px",
+                fontSize: "11px",
+                fontWeight: "700"
+              }}>
+                🕒 {deliveryText}
+              </span>
               {product.shippingCost > 0 && (
                 <p style={{ fontSize: "10px", color: "#999", margin: "4px 0 0", fontWeight: "600" }}>
-                  +₹{product.shippingCost} shipping
+                  +₹{product.shippingCost} delivery
                 </p>
               )}
             </div>

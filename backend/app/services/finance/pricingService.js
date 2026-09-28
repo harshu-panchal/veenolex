@@ -1,5 +1,4 @@
 import Product from "../../models/product.js";
-import Seller from "../../models/seller.js";
 import Category from "../../models/category.js";
 import {
   PRODUCT_APPROVAL_STATUS,
@@ -21,6 +20,12 @@ import {
   roundCurrency,
 } from "../../utils/money.js";
 import { getOrCreateFinanceSettings } from "./financeSettingsService.js";
+import {
+  ADMIN_FULFILLER,
+  ROUTED_REASON,
+  resolveMasterProductId,
+  routeMasterLines,
+} from "../fulfillmentRoutingService.js";
 
 function toObjectIdString(value) {
   if (!value) return "";
@@ -309,102 +314,183 @@ export function calculateRiderPayout(distanceKm, deliverySettings) {
   };
 }
 
-let _cachedDefaultSellerId = null;
-async function getDefaultSellerId(session = null) {
-  if (_cachedDefaultSellerId) return _cachedDefaultSellerId;
-  const sellerQuery = Seller.findOne({}).select("_id").sort({ createdAt: 1 }).lean();
-  if (session) sellerQuery.session(session);
-  const seller = await sellerQuery;
-  if (seller?._id) {
-    _cachedDefaultSellerId = String(seller._id);
-    return _cachedDefaultSellerId;
-  }
-  return "";
+function resolveLineVariant(product, rawVariantSku) {
+  if (!rawVariantSku) return null;
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  return (
+    variants.find((v) => String(v?.sku || "").trim() === rawVariantSku) ||
+    variants.find((v) => String(v?.name || "").trim() === rawVariantSku) ||
+    null
+  );
 }
 
+function assertPurchasable(product) {
+  if (product.status !== "active") {
+    const err = new Error(`Product is not available for purchase: ${product.name}`);
+    err.statusCode = 400;
+    throw err;
+  }
+  if (resolveProductApprovalStatus(product) !== PRODUCT_APPROVAL_STATUS.APPROVED) {
+    const err = new Error(`Product is not approved for purchase: ${product.name}`);
+    err.statusCode = 400;
+    throw err;
+  }
+}
+
+/**
+ * Hydrate checkout lines from the database.
+ *
+ * Admin-catalog lines (a master product, or a seller clone of one) are
+ * priced from the admin master's sale price and, when `routeFulfillment` is
+ * set, routed to the nearest local seller holding stock or else to the
+ * admin warehouse (`sellerId: "ADMIN"`). Seller-owned products keep their
+ * own seller and price.
+ */
 export async function hydrateOrderItems(
   orderItems = [],
-  { session = null, enforceServerPricing = true } = {},
+  {
+    session = null,
+    enforceServerPricing = true,
+    routeFulfillment = false,
+    customerLocation = null,
+  } = {},
 ) {
   if (!Array.isArray(orderItems) || orderItems.length === 0) {
     return [];
   }
 
+  const PRODUCT_FIELDS =
+    "_id name salePrice price mainImage headerId sellerId seller adminProductId status approvalStatus variants zoneOutDeliveryEnabled zoneOutPrice";
+
   const productIds = orderItems
     .map((item) => item.product || item.productId || item._id || item.id)
     .filter(Boolean);
 
-  const productQuery = Product.find({ _id: { $in: productIds } })
-    .select("_id name salePrice price mainImage headerId sellerId seller status approvalStatus variants zoneOutDeliveryEnabled zoneOutPrice")
-    .lean();
+  const productQuery = Product.find({ _id: { $in: productIds } }).select(PRODUCT_FIELDS).lean();
   if (session) productQuery.session(session);
   const products = await productQuery;
-
   const productMap = new Map(products.map((product) => [String(product._id), product]));
-  const defaultSellerId = await getDefaultSellerId(session);
 
-  return orderItems.map((item) => {
+  // Load masters for any clones in the cart so pricing comes from admin.
+  const missingMasterIds = products
+    .filter((p) => p.adminProductId && !productMap.has(String(p.adminProductId)))
+    .map((p) => p.adminProductId);
+  if (missingMasterIds.length) {
+    const masterQuery = Product.find({ _id: { $in: missingMasterIds } }).select(PRODUCT_FIELDS).lean();
+    if (session) masterQuery.session(session);
+    (await masterQuery).forEach((master) => productMap.set(String(master._id), master));
+  }
+
+  const lines = orderItems.map((item) => {
     const productId = String(item.product || item.productId || item._id || item.id);
-    const product = productMap.get(productId);
-    if (!product) {
+    const requested = productMap.get(productId);
+    if (!requested) {
       const err = new Error(`Product not found for line item: ${item.name || productId}`);
       err.statusCode = 400;
       throw err;
     }
-    if (product.status !== "active") {
-      const err = new Error(`Product is not available for purchase: ${product.name}`);
-      err.statusCode = 400;
-      throw err;
-    }
-    if (resolveProductApprovalStatus(product) !== PRODUCT_APPROVAL_STATUS.APPROVED) {
-      const err = new Error(`Product is not approved for purchase: ${product.name}`);
-      err.statusCode = 400;
-      throw err;
-    }
+
+    const masterId = resolveMasterProductId(requested);
+    const pricingProduct = masterId ? productMap.get(masterId) || requested : requested;
+    assertPurchasable(pricingProduct);
 
     const rawVariantSku = String(item.variantSku || item.variantSlot || "").trim();
-    let resolvedVariant = null;
-    if (rawVariantSku) {
-      const variants = Array.isArray(product.variants) ? product.variants : [];
-      resolvedVariant =
-        variants.find((v) => String(v?.sku || "").trim() === rawVariantSku) ||
-        variants.find((v) => String(v?.name || "").trim() === rawVariantSku) ||
-        null;
-      if (!resolvedVariant) {
-        const err = new Error(`Invalid variant for product: ${product.name}`);
-        err.statusCode = 400;
-        throw err;
-      }
+    const resolvedVariant = resolveLineVariant(pricingProduct, rawVariantSku);
+    if (rawVariantSku && !resolvedVariant) {
+      const err = new Error(`Invalid variant for product: ${pricingProduct.name}`);
+      err.statusCode = 400;
+      throw err;
     }
 
     const quantity = normalizeLineQuantity(item.quantity);
     const serverUnitPrice = normalizeLinePrice(
       resolvedVariant
-        ? resolvedVariant.salePrice || resolvedVariant.price || product.salePrice || product.price
-        : product.salePrice || product.price,
+        ? resolvedVariant.salePrice || resolvedVariant.price || pricingProduct.salePrice || pricingProduct.price
+        : pricingProduct.salePrice || pricingProduct.price,
     );
     const inferredUnitPrice = enforceServerPricing
       ? serverUnitPrice
       : normalizeLinePrice(item.price) || serverUnitPrice;
 
-    const resolvedSellerId = product.sellerId
-      ? String(product.sellerId)
-      : product.seller
-        ? String(product.seller)
-        : defaultSellerId;
-
     return {
-      productId,
-      productName: item.name || product.name,
+      item,
+      requested,
+      masterId,
+      pricingProduct,
+      variantSku: resolvedVariant ? String(resolvedVariant.sku || rawVariantSku).trim() : "",
+      variantName: resolvedVariant ? String(resolvedVariant?.name || "").trim() : "",
       quantity,
       price: inferredUnitPrice,
-      image: item.image || product.mainImage,
-      headerCategoryId: product.headerId ? String(product.headerId) : "",
-      sellerId: resolvedSellerId,
-      variantSku: rawVariantSku || "",
-      variantName: resolvedVariant ? String(resolvedVariant?.name || "").trim() : "",
-      zoneOutDeliveryEnabled: !!product.zoneOutDeliveryEnabled,
-      zoneOutPrice: product.zoneOutPrice || 0,
+    };
+  });
+
+  // Route admin-catalog lines. Without routing (e.g. coupon checks) they
+  // default to the admin warehouse; only grouping depends on it.
+  const catalogLines = lines.filter((line) => line.masterId);
+  let routes = [];
+  if (routeFulfillment && catalogLines.length) {
+    routes = await routeMasterLines({
+      lines: catalogLines.map((line) => ({
+        masterId: line.masterId,
+        variantSku: line.variantSku,
+        quantity: line.quantity,
+      })),
+      customerLocation,
+      preferredSellerIds: catalogLines
+        .filter((line) => line.requested.adminProductId && line.requested.sellerId)
+        .map((line) => String(line.requested.sellerId)),
+      session,
+    });
+  } else {
+    routes = catalogLines.map((line) => ({
+      fulfilledBy: ADMIN_FULFILLER,
+      sellerId: null,
+      productId: line.masterId,
+      reason: ROUTED_REASON.NO_LOCAL_SELLER,
+    }));
+  }
+  const routeByLine = new Map(catalogLines.map((line, index) => [line, routes[index]]));
+
+  return lines.map((line) => {
+    const { item, requested, pricingProduct } = line;
+    const route = routeByLine.get(line);
+
+    let resolvedProductId;
+    let sellerId;
+    let fulfilledBy;
+    let routedReason = null;
+    if (route) {
+      resolvedProductId = route.productId;
+      fulfilledBy = route.fulfilledBy;
+      sellerId = route.fulfilledBy === ADMIN_FULFILLER ? ADMIN_FULFILLER : route.sellerId;
+      routedReason = route.reason;
+    } else {
+      resolvedProductId = String(requested._id);
+      fulfilledBy = "SELLER";
+      sellerId = requested.sellerId
+        ? String(requested.sellerId)
+        : requested.seller
+          ? String(requested.seller)
+          : "";
+    }
+
+    const isAdmin = fulfilledBy === ADMIN_FULFILLER;
+    return {
+      productId: resolvedProductId,
+      masterProductId: line.masterId || null,
+      productName: item.name || pricingProduct.name,
+      quantity: line.quantity,
+      price: line.price,
+      image: item.image || pricingProduct.mainImage,
+      headerCategoryId: pricingProduct.headerId ? String(pricingProduct.headerId) : "",
+      sellerId,
+      fulfilledBy,
+      routedReason,
+      variantSku: line.variantSku,
+      variantName: line.variantName,
+      // The admin warehouse ships anywhere (rider or Shiprocket).
+      zoneOutDeliveryEnabled: isAdmin ? true : !!pricingProduct.zoneOutDeliveryEnabled,
+      zoneOutPrice: pricingProduct.zoneOutPrice || 0,
     };
   });
 }

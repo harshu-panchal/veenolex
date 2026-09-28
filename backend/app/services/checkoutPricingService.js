@@ -13,6 +13,10 @@ import {
 } from "./finance/pricingService.js";
 import { computeOrderDiscount } from "./finance/couponService.js";
 import { getOrCreateFinanceSettings } from "./finance/financeSettingsService.js";
+import {
+  ADMIN_FULFILLER,
+  getFulfillmentWarehouse,
+} from "./fulfillmentRoutingService.js";
 
 function normalizeLocation(location = null) {
   const lat = Number(location?.lat);
@@ -40,9 +44,23 @@ export function groupHydratedItemsBySeller(hydratedItems = []) {
   return grouped;
 }
 
+async function computeDistanceKmForAdminWarehouse(normalizedLocation) {
+  const warehouse = await getFulfillmentWarehouse();
+  if (!warehouse.hasLocation) return { distanceKm: 0, isOutOfZone: false };
+  const distanceKm = Number(
+    (distanceMeters(normalizedLocation.lat, normalizedLocation.lng, warehouse.lat, warehouse.lng) / 1000).toFixed(3),
+  );
+  // The warehouse never refuses an order: beyond its rider radius the
+  // order is still accepted and admin can ship it via Shiprocket.
+  return { distanceKm, isOutOfZone: distanceKm > Number(warehouse.serviceRadiusKm || 10) };
+}
+
 async function computeDistanceKmForSeller({ sellerId, addressLocation, items = [], session = null }) {
   const normalizedLocation = normalizeLocation(addressLocation);
   if (!normalizedLocation) return { distanceKm: 0, isOutOfZone: false };
+  if (sellerId === ADMIN_FULFILLER) {
+    return computeDistanceKmForAdminWarehouse(normalizedLocation);
+  }
 
   const query = Seller.findById(sellerId).select("location serviceRadius shopName").lean();
   if (session) query.session(session);
@@ -401,6 +419,8 @@ export async function buildCheckoutPricingSnapshot({
   const hydratedItems = await hydrateOrderItems(orderItems, {
     session,
     enforceServerPricing: true,
+    routeFulfillment: true,
+    customerLocation: normalizeLocation(address?.location),
   });
   if (!hydratedItems.length) {
     const err = new Error("Cannot checkout with empty cart");
@@ -501,6 +521,8 @@ export async function buildCheckoutPricingSnapshot({
 
     sellerBreakdownEntries.push({
       sellerId,
+      fulfilledBy: sellerId === ADMIN_FULFILLER ? ADMIN_FULFILLER : "SELLER",
+      routedReason: sellerItems[0]?.routedReason || null,
       distanceKm,
       isOutOfZone,
       items: sellerItems,

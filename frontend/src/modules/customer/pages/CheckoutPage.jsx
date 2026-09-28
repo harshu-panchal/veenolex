@@ -74,6 +74,7 @@ import CheckoutCouponSection from "./checkout/components/CheckoutCouponSection";
 import CheckoutRecommendedProducts from "./checkout/components/CheckoutRecommendedProducts";
 import CheckoutWishlistSection from "./checkout/components/CheckoutWishlistSection";
 import CheckoutOrderSuccess from "./checkout/components/CheckoutOrderSuccess";
+import { formatDeliveryText } from "@shared/utils/deliveryTime";
 
 const CheckoutPage = () => {
   const {
@@ -155,6 +156,7 @@ const CheckoutPage = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [orderId, setOrderId] = useState(null);
   const [pricingPreview, setPricingPreview] = useState(null);
+  const [deliveryEstimate, setDeliveryEstimate] = useState(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [showOutOfZoneConfirm, setShowOutOfZoneConfirm] = useState(false);
   const [outOfZoneShippingCost, setOutOfZoneShippingCost] = useState(0);
@@ -320,7 +322,9 @@ const CheckoutPage = () => {
         name: savedRecipient.name,
         address: savedRecipient.completeAddress,
         landmark: savedRecipient.landmark || "",
-        city: savedRecipient.pincode ? `${savedRecipient.pincode}` : "",
+        city: savedRecipient.city || (savedRecipient.pincode ? `${savedRecipient.pincode}` : ""),
+        state: savedRecipient.state || "",
+        pincode: savedRecipient.pincode ? `${savedRecipient.pincode}` : "",
         phone: savedRecipient.phone,
         location:
           currentLocation?.latitude && currentLocation?.longitude
@@ -840,6 +844,7 @@ const CheckoutPage = () => {
         const res = await customerApi.checkoutPreview(payload);
         if (res.data?.success) {
           setPricingPreview(res.data.result?.breakdown ?? null);
+          setDeliveryEstimate(res.data.result?.deliveryEstimate ?? null);
         }
       } catch (error) {
         console.error("Checkout preview failed", error);
@@ -910,59 +915,9 @@ const CheckoutPage = () => {
     }
   };
 
-  const executeProcessOrder = async () => {
+  const confirmOutOfZoneOrder = () => {
     setShowOutOfZoneConfirm(false);
-    setIsPlacingOrder(true);
-    try {
-      const item = cart[0];
-      if (!item) throw new Error("Cart is empty");
-      
-      const resolvedLoc = currentLocation?.latitude
-        ? { lat: currentLocation.latitude, lng: currentLocation.longitude }
-        : currentAddress?.location?.lat
-        ? { lat: currentAddress.location.lat, lng: currentAddress.location.lng }
-        : null;
-
-      const payload = {
-        userId: user?._id || user?.id,
-        productId: item.id || item._id,
-        quantity: item.quantity,
-        userLocation: resolvedLoc,
-        deliveryAddress: buildAddressForOrder()
-      };
-      
-      const response = await customerApi.processOrder(payload);
-
-      if (response.data.success) {
-        clearCart();
-        const { deliveryType, trackingNumber, orderId } = response.data;
-        
-        if (deliveryType === "SHIPROCKET") {
-           showToast(`Track your order here: ${trackingNumber}`, "success");
-        } else {
-           showToast("Seller will contact you shortly", "success");
-        }
-        
-        setOrderId(orderId);
-        setShowSuccess(true);
-        
-        if (postOrderNavigateRef.current) clearTimeout(postOrderNavigateRef.current);
-        postOrderNavigateRef.current = setTimeout(() => {
-          postOrderNavigateRef.current = null;
-          setIsPlacingOrder(false);
-          navigate(`/orders/${orderId}`);
-        }, 3000);
-      } else {
-        setIsPlacingOrder(false);
-        showToast(response.data.message || "Could not place order.", "error");
-      }
-    } catch (error) {
-      setIsPlacingOrder(false);
-      showToast(
-        error.response?.data?.message || "Failed to place order. Please try again.",
-        "error"
-      );
-    }
+    handlePlaceOrder();
   };
 
   const handlePlaceOrder = async () => {
@@ -1424,7 +1379,7 @@ const CheckoutPage = () => {
               cartTotal={cartTotal}
               selectedCoupon={selectedCoupon}
               discountAmount={discountAmount}
-              isShipRocket={!!pricingPreview?.isOutOfZone || cart.some(item => item.isInZone === false)}
+              deliveryText={formatDeliveryText(deliveryEstimate)}
             />
 
             {/* Payment Selector */}
@@ -1535,15 +1490,17 @@ const CheckoutPage = () => {
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-orange-600">
-              <span className="text-xl">⚠️</span> Delivery Alert
+              <span className="text-xl">🕒</span> Delivery time
             </DialogTitle>
           </DialogHeader>
           <div className="py-4">
             <p className="text-sm text-slate-600 font-medium leading-relaxed">
-              Your location is outside seller's zone. This will be delivered via ShipRocket (2-3 business days).
+              {formatDeliveryText(deliveryEstimate)
+                ? `${formatDeliveryText(deliveryEstimate)} for this address.`
+                : "Delivery to this address takes a little longer."}
             </p>
             <div className="mt-4 p-3 bg-orange-50 rounded-lg border border-orange-100 flex justify-between items-center">
-              <span className="font-bold text-slate-700 text-sm">Shipping cost:</span>
+              <span className="font-bold text-slate-700 text-sm">Delivery charge:</span>
               <span className="font-black text-orange-600">₹{outOfZoneShippingCost}</span>
             </div>
           </div>
@@ -1555,7 +1512,7 @@ const CheckoutPage = () => {
               Cancel
             </Button>
             <Button
-              onClick={executeProcessOrder}
+              onClick={confirmOutOfZoneOrder}
               className="w-full bg-primary hover:bg-[#0b721b] text-white font-bold">
               Confirm & Place Order
             </Button>

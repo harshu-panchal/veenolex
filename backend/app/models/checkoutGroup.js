@@ -140,10 +140,16 @@ const checkoutGroupSchema = new mongoose.Schema(
     },
     sellerBreakdown: [
       {
+        // null when the admin warehouse fulfils this part of the checkout
         seller: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Seller",
-          required: true,
+          default: null,
+        },
+        fulfilledBy: {
+          type: String,
+          enum: ["SELLER", "ADMIN"],
+          default: "SELLER",
         },
         order: {
           type: mongoose.Schema.Types.ObjectId,

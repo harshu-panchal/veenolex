@@ -39,10 +39,13 @@ export async function reserveStockForItems({
     let updated;
     if (variantSku) {
       // Decrement variant stock + master stock atomically
-      // Use $elemMatch to ensure stock check and sku match on the SAME array element
+      // Use $elemMatch to ensure stock check and sku match on the SAME array element.
+      // The product-level stock must cover it too: sellers manage that number,
+      // so a variant can carry stale stock the seller no longer has.
       updated = await Product.findOneAndUpdate(
         {
           _id: item.productId,
+          stock: { $gte: item.quantity },
           variants: {
             $elemMatch: {
               sku: variantSku,

@@ -12,7 +12,8 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import SellerOrdersContext from '@/modules/seller/context/SellerOrdersContext';
 import SellerEarningsContext, { defaultEarnings } from '@/modules/seller/context/SellerEarningsContext';
-import { getOrderSocket, onSellerOrderNew, onReturnDropOtp } from '@/core/services/orderSocket';
+import { getOrderSocket, onSellerOrderNew, onSellerOrderReassigned, onReturnDropOtp } from '@/core/services/orderSocket';
+import WarehouseOrderAlert from '@/modules/admin/components/WarehouseOrderAlert';
 import { createSocketTokenReader } from '@core/utils/authStorage';
 import { STORAGE_KEYS } from '@core/utils/storage';
 import orderAlertSound from '@/assets/sounds/order_alert.mp3';
@@ -256,6 +257,13 @@ const DashboardLayout = ({ children, navItems, title }) => {
         const unsubscribeSellerNew = onSellerOrderNew(getToken, () => {
             if (fetchOrdersRef.current) fetchOrdersRef.current();
         });
+        // Order passed to another local seller / the warehouse (timed out).
+        const unsubscribeReassigned = onSellerOrderReassigned(getToken, (payload) => {
+            if (newOrderAlertRef.current?.orderId === payload?.orderId) {
+                setNewOrderAlert(null);
+            }
+            if (fetchOrdersRef.current) fetchOrdersRef.current();
+        });
 
         const unsubscribeDrop = onReturnDropOtp(getToken, (payload) => {
             console.log("[DashboardLayout] Received return drop OTP:", payload);
@@ -266,6 +274,7 @@ const DashboardLayout = ({ children, navItems, title }) => {
 
         return () => {
             unsubscribeSellerNew();
+            unsubscribeReassigned();
             unsubscribeDrop();
         };
     }, [role]);
@@ -427,7 +436,7 @@ const DashboardLayout = ({ children, navItems, title }) => {
     const handleDeclineOrder = async (orderId) => {
         try {
             await sellerApi.updateOrderStatus(orderId, { status: 'cancelled' });
-            toast.error(`Order #${orderId} Declined`);
+            toast.error(`Order #${orderId} declined — passed to another store`);
             stopOrderRingtone();
             setNewOrderAlert(null);
         } catch (error) {
@@ -519,7 +528,7 @@ const DashboardLayout = ({ children, navItems, title }) => {
                                         className="flex items-center justify-center gap-2 py-4 rounded-2xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition-colors"
                                     >
                                         <X className="h-5 w-5" />
-                                        Decline
+                                        Not available
                                     </button>
                                     <button
                                         onClick={() => handleAcceptOrder(newOrderAlert.orderId)}
@@ -660,6 +669,8 @@ const DashboardLayout = ({ children, navItems, title }) => {
                     </div>
                 )}
             </AnimatePresence>
+
+            {role === "admin" && <WarehouseOrderAlert />}
 
             {(role === "admin" || role === "seller") && <BottomNav navItems={navItems} />}
         </div>

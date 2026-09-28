@@ -102,6 +102,7 @@ const PopupManagement = React.lazy(() => import("../pages/PopupManagement"));
 const TodayBestPricesManagement = React.lazy(() => import("../pages/TodayBestPricesManagement"));
 const ReportsPage = React.lazy(() => import("../pages/ReportsPage"));
 const SellerProductRequests = React.lazy(() => import("../pages/SellerProductRequests"));
+const FulfillmentOrders = React.lazy(() => import("../pages/FulfillmentOrders"));
 
 // ── POS Lazy Pages ───────────────────────────────────────────────────
 const AdminPOSOrders = React.lazy(() => import("../pages/pos/AdminPOSOrders"));
@@ -213,6 +214,7 @@ const navItems = [
     color: "fuchsia",
     children: [
       { label: "All Orders", path: "/admin/orders/all" },
+      { label: "Warehouse Orders", path: "/admin/warehouse-orders" },
       { label: "New Orders", path: "/admin/orders/pending" },
       { label: "Being Prepared", path: "/admin/orders/processed" },
       { label: "On the Way", path: "/admin/orders/out-for-delivery" },
@@ -292,6 +294,7 @@ const AdminRoutes = () => {
         <Route path="/products/add" element={<AddProduct />} />
         <Route path="/sellers/active" element={<ActiveSellers />} />
         <Route path="/seller-requests" element={<SellerProductRequests />} />
+        <Route path="/warehouse-orders" element={<FulfillmentOrders />} />
         <Route path="/sellers/active/:id" element={<SellerDetail />} />
         <Route path="/support-tickets" element={<SupportTickets />} />
         <Route path="/moderation" element={<ReviewModeration />} />

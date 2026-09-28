@@ -282,11 +282,10 @@ const LiveTrackingMap = memo(({
           <Clock size={30} className="text-white" />
         </motion.div>
         <h3 className="text-lg font-black text-gray-800 text-center">
-          Waiting for seller to accept
+          Confirming your order
         </h3>
         <p className="text-sm text-gray-500 text-center max-w-sm font-medium">
-          The store has up to 60 seconds to confirm. If they don&apos;t, your
-          order will be cancelled automatically.
+          We&apos;re getting your order ready. You&apos;ll see live updates here.
         </p>
       </div>
     );
@@ -323,10 +322,10 @@ const LiveTrackingMap = memo(({
         {/* Text */}
         <div className="relative z-10 text-center px-6">
           <h3 className="text-lg font-black text-gray-800">
-            Searching for delivery partner{dots}
+            Preparing your delivery{dots}
           </h3>
           <p className="text-sm text-gray-500 mt-1 font-medium">
-            Hang tight! We're finding the best rider near you.
+            Hang tight! Your order will be on its way soon.
           </p>
         </div>
 

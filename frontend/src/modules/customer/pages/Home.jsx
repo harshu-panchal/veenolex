@@ -712,7 +712,7 @@ const Home = () => {
                 transition: { duration: 0.5, ease: "easeIn" } 
               }}
               transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
-              className="bg-white rounded-[2.5rem] overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.5)] w-full max-w-sm sm:max-w-md relative z-10 border border-white/20"
+              className="bg-white rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_20px_50px_-15px_rgba(0,0,0,0.5)] w-full max-w-[290px] xs:max-w-[320px] sm:max-w-sm relative z-10 border border-white/20 flex flex-col max-h-[85vh]"
             >
               {/* Premium Floating Close button */}
               <button
@@ -722,15 +722,15 @@ const Home = () => {
                     localStorage.setItem("dismissed_popup_" + activePopup._id, "true");
                   }
                 }}
-                className="absolute top-4 right-4 z-20 p-2.5 bg-black/60 hover:bg-black/85 rounded-full text-white transition-all hover:scale-105 active:scale-95 shadow-md"
+                className="absolute top-2.5 right-2.5 sm:top-3 sm:right-3 z-20 p-1.5 sm:p-2 bg-black/60 hover:bg-black/85 rounded-full text-white transition-all hover:scale-105 active:scale-95 shadow-md backdrop-blur-xs"
               >
-                <X size={18} />
+                <X size={16} />
               </button>
 
               {/* Banner Image Container */}
               <div 
                 onClick={() => handlePopupClick(activePopup)}
-                className="w-full overflow-hidden relative cursor-pointer group flex items-center justify-center"
+                className="w-full overflow-hidden relative cursor-pointer group"
               >
                 <img
                   src={popupImageSrc(activePopup.imageUrl)}
@@ -739,24 +739,24 @@ const Home = () => {
                     ? { width: popupImageSize.width, height: popupImageSize.height }
                     : {})}
                   decoding="async"
-                  className="w-full h-auto max-h-[72vh] object-cover block transition-transform duration-700 group-hover:scale-[1.02]"
+                  className="w-full h-auto max-h-[44vh] sm:max-h-[48vh] object-cover block transition-transform duration-700 group-hover:scale-[1.02]"
                 />
                 
                 {/* Elegant overlay gradient on hover */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
-                  <span className="text-white text-xs font-black uppercase tracking-wider bg-white/20 backdrop-blur-md py-2.5 px-5 rounded-full">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-3 sm:p-4">
+                  <span className="text-white text-[10px] sm:text-xs font-black uppercase tracking-wider bg-white/20 backdrop-blur-md py-1.5 px-3 sm:py-2 sm:px-4 rounded-full">
                     View Details
                   </span>
                 </div>
               </div>
 
               {/* Text Description and Actions */}
-              <div className="p-6 sm:p-8 text-center bg-white">
-                <h3 className="text-xl font-black text-slate-800 leading-tight">
+              <div className="p-4 sm:p-5 text-center bg-white">
+                <h3 className="text-sm sm:text-base font-black text-slate-800 leading-snug line-clamp-2">
                   {activePopup.title}
                 </h3>
                 {activePopup.description && (
-                  <p className="text-xs text-slate-400 font-bold mt-2 leading-relaxed">
+                  <p className="text-[11px] sm:text-xs text-slate-500 font-semibold mt-1 sm:mt-1.5 leading-relaxed line-clamp-2">
                     {activePopup.description}
                   </p>
                 )}
@@ -764,7 +764,7 @@ const Home = () => {
                 {activePopup.linkType !== "none" ? (
                   <button
                     onClick={() => handlePopupClick(activePopup)}
-                    className="w-full mt-5 py-4 bg-black hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all active:scale-[0.98] shadow-lg shadow-black/10"
+                    className="w-full mt-3 sm:mt-4 py-2.5 sm:py-3 bg-black hover:bg-slate-800 text-white rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-black uppercase tracking-wider transition-all active:scale-[0.98] shadow-md shadow-black/10"
                   >
                     Check it out
                   </button>
@@ -776,7 +776,7 @@ const Home = () => {
                         localStorage.setItem("dismissed_popup_" + activePopup._id, "true");
                       }
                     }}
-                    className="w-full mt-5 py-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-black uppercase tracking-widest transition-all"
+                    className="w-full mt-3 sm:mt-4 py-2.5 sm:py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-black uppercase tracking-wider transition-all"
                   >
                     Close
                   </button>
