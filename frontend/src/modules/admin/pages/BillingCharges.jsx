@@ -9,7 +9,10 @@ import {
     Settings,
     Zap,
     MapPin,
-    History
+    History,
+    Wallet,
+    Banknote,
+    CreditCard
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@shared/components/ui/Toast';
@@ -78,6 +81,10 @@ const BillingCharges = () => {
     }, []);
 
     const handleSave = async () => {
+        if (!config.codEnabled && !config.onlineEnabled) {
+            showToast('Keep at least one payment method on', 'error');
+            return;
+        }
         try {
             setIsSaving(true);
 
@@ -108,7 +115,7 @@ const BillingCharges = () => {
             showToast('Fees & charges updated', 'success');
         } catch (error) {
             console.error('Failed to update platform settings', error);
-            showToast('Failed to update fees settings', 'error');
+            showToast(error?.response?.data?.message || 'Failed to update fees settings', 'error');
         } finally {
             setIsSaving(false);
         }
@@ -117,6 +124,37 @@ const BillingCharges = () => {
     const handleInputChange = (field, value) => {
         setConfig(prev => ({ ...prev, [field]: parseFloat(value) || 0 }));
     };
+
+    // Customers must always have a way to pay, so the last enabled
+    // method cannot be switched off.
+    const togglePaymentMethod = (field) => {
+        const other = field === 'codEnabled' ? 'onlineEnabled' : 'codEnabled';
+        if (config[field] && !config[other]) {
+            showToast('Keep at least one payment method on', 'error');
+            return;
+        }
+        setConfig(prev => ({ ...prev, [field]: !prev[field] }));
+    };
+
+    const paymentMethodOptions = [
+        {
+            field: 'codEnabled',
+            icon: Banknote,
+            title: 'Cash on Delivery',
+            description: 'Customers pay in cash when the order is delivered.',
+        },
+        {
+            field: 'onlineEnabled',
+            icon: CreditCard,
+            title: 'Pay Online',
+            description: 'UPI, cards and net banking at checkout.',
+        },
+    ];
+
+    const customerPaymentSummary = [
+        config.onlineEnabled && 'Pay Online',
+        config.codEnabled && 'Cash on Delivery',
+    ].filter(Boolean).join(' + ');
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
@@ -199,6 +237,53 @@ const BillingCharges = () => {
                                 </div>
                                 <p className="text-[10px] font-bold text-slate-400 italic">Orders above this amount will have free delivery.</p>
                             </div>
+                        </div>
+                    </Card>
+
+                    {/* Payment Methods */}
+                    <Card className="border-none shadow-xl ring-1 ring-slate-100 bg-white rounded-[32px] overflow-hidden">
+                        <div className="p-6 border-b border-slate-50 bg-slate-50/30">
+                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
+                                <Wallet className="h-4 w-4 text-emerald-500" />
+                                Payment Methods
+                            </h3>
+                        </div>
+                        <div className="p-8 space-y-4">
+                            {paymentMethodOptions.map(({ field, icon: Icon, title, description }) => (
+                                <div
+                                    key={field}
+                                    className="rounded-2xl bg-slate-50 border border-slate-200 px-5 py-4 flex items-center justify-between gap-4"
+                                >
+                                    <div className="flex items-start gap-3">
+                                        <Icon className="h-5 w-5 text-slate-400 mt-0.5 shrink-0" />
+                                        <div>
+                                            <p className="text-sm font-black text-slate-900">{title}</p>
+                                            <p className="text-xs font-bold text-slate-500 mt-1">{description}</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={config[field]}
+                                        aria-label={title}
+                                        onClick={() => togglePaymentMethod(field)}
+                                        className={cn(
+                                            "relative inline-flex h-7 w-14 shrink-0 items-center rounded-full transition-colors duration-200",
+                                            config[field] ? "bg-emerald-500" : "bg-slate-300"
+                                        )}
+                                    >
+                                        <span
+                                            className={cn(
+                                                "inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform duration-200",
+                                                config[field] ? "translate-x-7" : "translate-x-1"
+                                            )}
+                                        />
+                                    </button>
+                                </div>
+                            ))}
+                            <p className="text-[10px] font-bold text-slate-400 italic">
+                                Customers can pay with: {customerPaymentSummary}. Changes apply to new orders after you save.
+                            </p>
                         </div>
                     </Card>
 

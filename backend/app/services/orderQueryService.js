@@ -208,6 +208,19 @@ export function buildSellerOrdersQuery({
   return { finalQuery, baseQuery };
 }
 
+const SELLER_ORDER_LIST_EXCLUDED_FIELDS = [
+  "paymentBreakdown",
+  "pricingSnapshot",
+  "couponSnapshot",
+  "financeFlags",
+  "stockReservation",
+  "distanceSnapshot",
+  "deliverySearchMeta",
+  "returnSearchMeta",
+  "routingHistory",
+  "placement",
+].map((field) => `-${field}`).join(" ");
+
 export async function fetchSellerOrdersPage({
   role,
   userId,
@@ -229,6 +242,9 @@ export async function fetchSellerOrdersPage({
 
   const [orders, total, summaryRows] = await Promise.all([
     Order.find(query)
+      // List screens never read these; they are ~65% of each document and
+      // this list is polled while the seller dashboard is open.
+      .select(SELLER_ORDER_LIST_EXCLUDED_FIELDS)
       .sort({ createdAt: -1, _id: -1 })
       .skip(skip)
       .limit(limit)
@@ -538,8 +554,9 @@ export async function fetchAvailableOrdersForDelivery({
 
   const { sellerIds } = await resolveNearbySellerIds(deliveryPartner, userId);
 
-  let v2Orders = [];
-  if (showDeliveries) {
+  // The searches below are independent; run them together (riders poll this).
+  const loadV2Orders = async () => {
+    if (!showDeliveries) return [];
     const v2OrdersRaw = await Order.find({
       workflowVersion: { $gte: 2 },
       workflowStatus: WORKFLOW_STATUS.DELIVERY_SEARCH,
@@ -553,7 +570,7 @@ export async function fetchAvailableOrdersForDelivery({
       .populate("seller", "shopName address name location serviceRadius")
       .lean();
 
-    v2Orders = filterV2OrdersByRadius(
+    let v2Orders = filterV2OrdersByRadius(
       v2OrdersRaw,
       deliveryPartner.location.coordinates,
     );
@@ -587,11 +604,12 @@ export async function fetchAvailableOrdersForDelivery({
           .map((o) => ({ ...o, seller: pickup })),
       );
     }
-  }
+    return v2Orders;
+  };
 
-  let legacyOrders = [];
-  if (showDeliveries) {
-    legacyOrders = await Order.find({
+  const loadLegacyOrders = async () => {
+    if (!showDeliveries) return [];
+    return Order.find({
       $or: [
         { workflowVersion: { $exists: false } },
         { workflowVersion: { $lt: 2 } },
@@ -606,10 +624,10 @@ export async function fetchAvailableOrdersForDelivery({
       .populate("customer", "name phone")
       .populate("seller", "shopName address name location")
       .lean();
-  }
+  };
 
-  let returnPickups = [];
-  if (showReturns) {
+  const loadReturnPickups = async () => {
+    if (!showReturns) return [];
     const now = new Date();
     const returnPickupsRaw = await Order.find({
       skippedBy: { $nin: [userId] },
@@ -647,14 +665,14 @@ export async function fetchAvailableOrdersForDelivery({
       .populate("seller", "shopName address name location")
       .lean();
 
-    returnPickups = returnPickupsRaw.map((rp) => ({
+    return returnPickupsRaw.map((rp) => ({
       ...rp,
       isReturnPickup: true,
     }));
-  }
+  };
 
-  let requestedOrders = [];
-  if (showDeliveries) {
+  const loadRequestedOrders = async () => {
+    if (!showDeliveries) return [];
     const requestedOrdersRaw = await SellerProductRequest.find(
       buildAvailableSellerRequestQuery({ userId, sellerIds }),
     )
@@ -663,7 +681,7 @@ export async function fetchAvailableOrdersForDelivery({
       .populate("sellerId", "shopName address name location")
       .lean();
 
-    requestedOrders = requestedOrdersRaw.map((req) => ({
+    return requestedOrdersRaw.map((req) => ({
       ...req,
       orderId: req.requestNumber || `REQ-${req._id}`,
       seller: req.sellerId,
@@ -672,7 +690,14 @@ export async function fetchAvailableOrdersForDelivery({
       workflowStatus: req.deliveryWorkflowStatus || WORKFLOW_STATUS.DELIVERY_SEARCH,
       pricing: { total: req.totalAmount || 0 },
     }));
-  }
+  };
+
+  const [v2Orders, legacyOrders, returnPickups, requestedOrders] = await Promise.all([
+    loadV2Orders(),
+    loadLegacyOrders(),
+    loadReturnPickups(),
+    loadRequestedOrders(),
+  ]);
 
   const orders = mergeAvailableOrders(
     [...v2Orders, ...requestedOrders],

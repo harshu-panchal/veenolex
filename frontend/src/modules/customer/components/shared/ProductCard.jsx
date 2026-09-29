@@ -435,27 +435,6 @@ const ProductCard = React.memo(
               </span>
             )}
           </div>
-          
-          {/* Delivery time only — never how it is delivered */}
-          {deliveryText && (
-            <div className="delivery-badge mt-1.5 mb-1 self-start">
-              <span style={{
-                backgroundColor: "#F1F5F9",
-                color: "#334155",
-                padding: "4px 8px",
-                borderRadius: "20px",
-                fontSize: "10px",
-                fontWeight: "700"
-              }}>
-                🕒 {deliveryText}
-              </span>
-              {product.shippingCost > 0 && (
-                <p style={{ fontSize: "9px", color: "#999", margin: "4px 0 0", fontWeight: "600" }}>
-                  +₹{product.shippingCost} delivery
-                </p>
-              )}
-            </div>
-          )}
 
           {/* ADD Button / Quantity Selector */}
           <div className="mt-2 w-full flex">
@@ -573,26 +552,6 @@ const ProductCard = React.memo(
             )}
           </div>
 
-          {/* Delivery time only — never how it is delivered */}
-          {deliveryText && (
-            <div className="delivery-badge mt-1.5 mb-1 self-center flex flex-col items-center">
-              <span style={{
-                backgroundColor: "#F1F5F9",
-                color: "#334155",
-                padding: "4px 8px",
-                borderRadius: "20px",
-                fontSize: "11px",
-                fontWeight: "700"
-              }}>
-                🕒 {deliveryText}
-              </span>
-              {product.shippingCost > 0 && (
-                <p style={{ fontSize: "10px", color: "#999", margin: "4px 0 0", fontWeight: "600" }}>
-                  +₹{product.shippingCost} delivery
-                </p>
-              )}
-            </div>
-          )}
 
           {/* ADD TO CART Button / Quantity Selector */}
           <div className="mt-3 w-full flex">

@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import {
   verifyToken,
   allowRoles
@@ -23,8 +24,6 @@ router.get(
       const sellerId = req.user.id;
       const { status } = req.query;
 
-      console.log("📦 Fetching inventory:", sellerId);
-
       // Build query
       const query = { sellerId };
       if (status && status !== "ALL") {
@@ -38,49 +37,42 @@ router.get(
         .lean();
 
       // Merge with LATEST admin product data
-      // (Name, image, category always from admin)
-      const enrichedInventory = await Promise.all(
-        inventory.map(async (item) => {
-          try {
-            const adminProduct = await Product
-              .findById(item.productId)
-              .lean();
+      // (Name, image, category always from admin) — one query for all rows.
+      const productIds = [...new Set(inventory.map((item) => String(item.productId)).filter((id) => mongoose.isValidObjectId(id)))];
+      const adminProducts = productIds.length
+        ? await Product.find({ _id: { $in: productIds } })
+          .select("name images category subCategory description price")
+          .lean()
+        : [];
+      const adminProductById = new Map(adminProducts.map((p) => [String(p._id), p]));
 
-            if (adminProduct) {
-              return {
-                ...item,
-                // Override with latest admin data
-                productName: adminProduct.name ||
-                  item.productName,
-                productImage:
-                  adminProduct.images?.[0] ||
-                  item.productImage,
-                category: adminProduct.category ||
-                  item.category,
-                subCategory: adminProduct.subCategory ||
-                  item.subCategory,
-                description: adminProduct.description ||
-                  item.description,
-                originalPrice: adminProduct.price ||
-                  item.originalPrice,
-                // Keep seller's own price
-                sellerPrice: item.sellerPrice,
-                // Keep seller's own stock
-                availableStock: item.availableStock,
-                totalStock: item.totalStock,
-                soldStock: item.soldStock
-              };
-            }
-            return item;
-          } catch (err) {
-            console.error(
-              "❌ Error enriching product:",
-              item.productName
-            );
-            return item;
-          }
-        })
-      );
+      const enrichedInventory = inventory.map((item) => {
+        const adminProduct = adminProductById.get(String(item.productId));
+        if (!adminProduct) return item;
+        return {
+          ...item,
+          // Override with latest admin data
+          productName: adminProduct.name ||
+            item.productName,
+          productImage:
+            adminProduct.images?.[0] ||
+            item.productImage,
+          category: adminProduct.category ||
+            item.category,
+          subCategory: adminProduct.subCategory ||
+            item.subCategory,
+          description: adminProduct.description ||
+            item.description,
+          originalPrice: adminProduct.price ||
+            item.originalPrice,
+          // Keep seller's own price
+          sellerPrice: item.sellerPrice,
+          // Keep seller's own stock
+          availableStock: item.availableStock,
+          totalStock: item.totalStock,
+          soldStock: item.soldStock
+        };
+      });
 
       // Calculate stats
       const stats = {
@@ -100,11 +92,6 @@ router.get(
           0
         )
       };
-
-      console.log(
-        "✅ Inventory fetched:",
-        enrichedInventory.length
-      );
 
       return res.status(200).json({
         success: true,

@@ -180,10 +180,6 @@ const orderSchema = new mongoose.Schema(
         type: String,
         default: undefined,
       },
-      idempotencyKeyExpiry: {
-        type: Date,
-        default: null,
-      },
       createdFrom: {
         type: String,
         enum: ["DIRECT_ITEMS", "CART"],
@@ -677,13 +673,6 @@ orderSchema.index(
 orderSchema.index({ "stockReservation.status": 1, "stockReservation.expiresAt": 1 });
 orderSchema.index({ checkoutGroupId: 1, createdAt: -1 });
 orderSchema.index({ checkoutGroupId: 1, checkoutGroupIndex: 1 });
-orderSchema.index(
-  { "placement.idempotencyKeyExpiry": 1 },
-  { 
-    expireAfterSeconds: 0,
-    partialFilterExpression: { "placement.idempotencyKeyExpiry": { $type: "date" } }
-  }
-);
 
 orderSchema.pre('save', function(next) {
   if (!this.orderStatus) {

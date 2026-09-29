@@ -14,12 +14,6 @@ import { ProductDetailProvider } from '../../modules/customer/context/ProductDet
 import { LocationProvider } from '../../modules/customer/context/LocationContext';
 import ScrollToTop from '../../modules/customer/components/shared/ScrollToTop';
 
-// Public Pages
-import Auth from '../../modules/seller/pages/Auth';
-import ApplicationPending from '../../modules/seller/pages/ApplicationPending';
-import AdminAuth from '../../modules/admin/pages/AdminAuth';
-import DeliveryAuth from '../../modules/delivery/pages/DeliveryAuth';
-import CustomerAuth from '../../modules/customer/pages/CustomerAuth';
 
 function lazyWithRetry(componentImport) {
   return lazy(async () => {
@@ -34,6 +28,14 @@ function lazyWithRetry(componentImport) {
     }
   });
 }
+
+// Public Pages (lazy-loaded: each login screen carries its own heavy
+// dependencies — maps, OCR, animations — that other visitors never need)
+const Auth = lazyWithRetry(() => import('../../modules/seller/pages/Auth'));
+const ApplicationPending = lazyWithRetry(() => import('../../modules/seller/pages/ApplicationPending'));
+const AdminAuth = lazyWithRetry(() => import('../../modules/admin/pages/AdminAuth'));
+const DeliveryAuth = lazyWithRetry(() => import('../../modules/delivery/pages/DeliveryAuth'));
+const CustomerAuth = lazyWithRetry(() => import('../../modules/customer/pages/CustomerAuth'));
 
 // Customer Pages (lazy-loaded)
 const Home = lazyWithRetry(() => import('../../modules/customer/pages/Home'));

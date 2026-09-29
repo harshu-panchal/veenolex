@@ -239,11 +239,11 @@ describe("Property 38: Search Fallback", () => {
     expect(health).toHaveProperty("details");
   });
 
-  test("buildQuery always includes status=active", () => {
+  test("buildQuery only returns sellable (active or coming-soon) products", () => {
     fc.assert(
       fc.property(searchQueryArb, (query) => {
         const mongoQuery = backend.buildQuery(query);
-        expect(mongoQuery.status).toBe("active");
+        expect(mongoQuery.status).toEqual({ $in: ["active", "coming_soon"] });
       }),
       { numRuns: 100 }
     );

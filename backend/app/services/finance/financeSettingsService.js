@@ -136,12 +136,38 @@ export async function updateDeliveryFinanceSettings(payload, { session } = {}) {
   }
 
   const normalized = normalizeFinanceSettings({ ...base, ...merged });
+  if (!normalized.codEnabled && !normalized.onlineEnabled) {
+    const err = new Error("Keep at least one payment method (Cash on Delivery or Pay Online) enabled");
+    err.statusCode = 400;
+    throw err;
+  }
 
   const options = { upsert: true, new: true };
   if (session) options.session = session;
 
   const updated = await Setting.findOneAndUpdate(query, { $set: normalized }, options);
   return normalizeFinanceSettings(updated.toObject?.() || updated);
+}
+
+const PAYMENT_MODE_DISABLED_MESSAGES = {
+  COD: "Cash on Delivery is currently unavailable. Please pay online.",
+  ONLINE: "Online payment is currently unavailable. Please choose Cash on Delivery.",
+};
+
+/**
+ * Rejects checkout with a payment mode the admin has switched off
+ * (Fees & Charges → Payment Methods).
+ */
+export async function assertPaymentModeEnabled(paymentMode) {
+  const mode = String(paymentMode || "").toUpperCase();
+  if (!PAYMENT_MODE_DISABLED_MESSAGES[mode]) return;
+  const settings = await getOrCreateFinanceSettings();
+  const enabled = mode === "COD" ? settings.codEnabled : settings.onlineEnabled;
+  if (enabled !== false) return;
+  const err = new Error(PAYMENT_MODE_DISABLED_MESSAGES[mode]);
+  err.statusCode = 400;
+  err.code = "PAYMENT_MODE_DISABLED";
+  throw err;
 }
 
 export { DEFAULT_FINANCE_SETTINGS };

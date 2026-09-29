@@ -12,32 +12,8 @@ import {
 } from "../../utils/istDateRange.js";
 
 const DASHBOARD_CATEGORY_COLORS = ["#4f46e5", "#10b981", "#f59e0b", "#ef4444"];
-export async function getAdminDashboardStats({ from, to } = {}) {
-  const dayRange = getIstDateRange(from, to);
-  const dateMatch = dayRange
-    ? { createdAt: { $gte: dayRange.start, $lt: dayRange.end } }
-    : {};
-
-  const [totalCustomers, totalSellers, totalRiders, totalOrders] =
-    await Promise.all([
-      User.countDocuments({ role: "user", ...dateMatch }),
-      Seller.countDocuments(dateMatch),
-      Delivery.countDocuments(dateMatch),
-      Order.countDocuments(dateMatch),
-    ]);
-
-  const totalUsers = totalCustomers + totalSellers + totalRiders;
-  const activeSellers = dayRange
-    ? (await Order.distinct("seller", { ...dateMatch, status: { $ne: "cancelled" } })).filter(Boolean).length
-    : await Seller.countDocuments({ isVerified: true });
-
-  const revenueData = await Order.aggregate([
-    { $match: { status: "delivered", ...dateMatch } },
-    { $group: { _id: null, total: { $sum: "$pricing.total" } } },
-  ]);
-  const totalRevenue = revenueData[0]?.total || 0;
-
-  let revenueHistory = [];
+async function buildRevenueHistory(dayRange, dateMatch) {
+  const revenueHistory = [];
   if (dayRange?.days === 1) {
     // Hour-by-hour breakdown of the selected day (IST)
     const hourlyAggregation = await Order.aggregate([
@@ -114,24 +90,116 @@ export async function getAdminDashboardStats({ from, to } = {}) {
       });
     }
   }
+  return revenueHistory;
+}
+
+export async function getAdminDashboardStats({ from, to } = {}) {
+  const dayRange = getIstDateRange(from, to);
+  const dateMatch = dayRange
+    ? { createdAt: { $gte: dayRange.start, $lt: dayRange.end } }
+    : {};
+
+  // Every section below is independent, so they all run at once: the
+  // dashboard costs one database round trip instead of ~10 in sequence.
+  const [
+    [totalCustomers, totalSellers, totalRiders, totalOrders],
+    activeSellers,
+    totalRevenue,
+    revenueHistory,
+    ordersByStatus,
+    recentOrders,
+    categoryData,
+    topProducts,
+  ] = await Promise.all([
+    Promise.all([
+      User.countDocuments({ role: "user", ...dateMatch }),
+      Seller.countDocuments(dateMatch),
+      Delivery.countDocuments(dateMatch),
+      Order.countDocuments(dateMatch),
+    ]),
+    dayRange
+      ? Order.distinct("seller", { ...dateMatch, status: { $ne: "cancelled" } })
+        .then((ids) => ids.filter(Boolean).length)
+      : Seller.countDocuments({ isVerified: true }),
+    Order.aggregate([
+      { $match: { status: "delivered", ...dateMatch } },
+      { $group: { _id: null, total: { $sum: "$pricing.total" } } },
+    ]).then((rows) => rows[0]?.total || 0),
+    buildRevenueHistory(dayRange, dateMatch),
+    dayRange
+      ? Order.aggregate([
+        { $match: dateMatch },
+        {
+          $group: {
+            _id: "$status",
+            count: { $sum: 1 },
+            amount: { $sum: { $ifNull: ["$pricing.total", 0] } },
+          },
+        },
+      ]).then((rows) => rows.map((s) => ({
+        status: s._id || "unknown",
+        count: s.count,
+        amount: s.amount,
+      })))
+      : null,
+    Order.find(dateMatch)
+      .select("orderId customer status pricing.total createdAt")
+      .sort({ createdAt: -1 })
+      .limit(dayRange ? 50 : 5)
+      .populate("customer", "name")
+      .lean(),
+    Product.aggregate([
+      { $group: { _id: "$headerId", count: { $sum: 1 } } },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "_id",
+          foreignField: "_id",
+          as: "category",
+        },
+      },
+      { $unwind: "$category" },
+      { $project: { name: "$category.name", value: "$count" } },
+      { $limit: 4 },
+    ]),
+    Order.aggregate([
+      ...(dayRange ? [{ $match: { ...dateMatch, status: { $ne: "cancelled" } } }] : []),
+      { $unwind: "$items" },
+      {
+        $group: {
+          _id: "$items.product",
+          sales: { $sum: "$items.quantity" },
+          revenue: {
+            $sum: { $multiply: ["$items.quantity", "$items.price"] },
+          },
+        },
+      },
+      { $sort: { sales: -1 } },
+      { $limit: 5 },
+      {
+        $lookup: {
+          from: "products",
+          localField: "_id",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      { $unwind: "$product" },
+      {
+        $project: {
+          name: "$product.name",
+          sales: 1,
+          rev: "$revenue",
+          image: "$product.mainImage",
+        },
+      },
+    ]),
+  ]);
+
+  const totalUsers = totalCustomers + totalSellers + totalRiders;
 
   let daySummary = null;
   if (dayRange) {
-    const statusAggregation = await Order.aggregate([
-      { $match: dateMatch },
-      {
-        $group: {
-          _id: "$status",
-          count: { $sum: 1 },
-          amount: { $sum: { $ifNull: ["$pricing.total", 0] } },
-        },
-      },
-    ]);
-    const ordersByStatus = statusAggregation.map((s) => ({
-      status: s._id || "unknown",
-      count: s.count,
-      amount: s.amount,
-    }));
     const nonCancelled = ordersByStatus.filter((s) => s.status !== "cancelled");
     const grossSales = nonCancelled.reduce((sum, s) => sum + s.amount, 0);
     const grossOrders = nonCancelled.reduce((sum, s) => sum + s.count, 0);
@@ -148,59 +216,6 @@ export async function getAdminDashboardStats({ from, to } = {}) {
       ordersByStatus,
     };
   }
-
-  const recentOrders = await Order.find(dateMatch)
-    .sort({ createdAt: -1 })
-    .limit(dayRange ? 50 : 5)
-    .populate("customer", "name");
-
-  const categoryData = await Product.aggregate([
-    { $group: { _id: "$headerId", count: { $sum: 1 } } },
-    {
-      $lookup: {
-        from: "categories",
-        localField: "_id",
-        foreignField: "_id",
-        as: "category",
-      },
-    },
-    { $unwind: "$category" },
-    { $project: { name: "$category.name", value: "$count" } },
-    { $limit: 4 },
-  ]);
-
-  const topProducts = await Order.aggregate([
-    ...(dayRange ? [{ $match: { ...dateMatch, status: { $ne: "cancelled" } } }] : []),
-    { $unwind: "$items" },
-    {
-      $group: {
-        _id: "$items.product",
-        sales: { $sum: "$items.quantity" },
-        revenue: {
-          $sum: { $multiply: ["$items.quantity", "$items.price"] },
-        },
-      },
-    },
-    { $sort: { sales: -1 } },
-    { $limit: 5 },
-    {
-      $lookup: {
-        from: "products",
-        localField: "_id",
-        foreignField: "_id",
-        as: "product",
-      },
-    },
-    { $unwind: "$product" },
-    {
-      $project: {
-        name: "$product.name",
-        sales: 1,
-        rev: "$revenue",
-        image: "$product.mainImage",
-      },
-    },
-  ]);
 
   return {
     overview: {

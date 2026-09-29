@@ -208,10 +208,6 @@ const checkoutGroupSchema = new mongoose.Schema(
         type: String,
         default: undefined,
       },
-      idempotencyKeyExpiry: {
-        type: Date,
-        default: null,
-      },
     },
     expiresAt: {
       type: Date,
@@ -236,15 +232,6 @@ checkoutGroupSchema.index(
     unique: true,
     partialFilterExpression: {
       "placement.idempotencyKey": { $type: "string" },
-    },
-  },
-);
-checkoutGroupSchema.index(
-  { "placement.idempotencyKeyExpiry": 1 },
-  {
-    expireAfterSeconds: 0,
-    partialFilterExpression: {
-      "placement.idempotencyKeyExpiry": { $type: "date" },
     },
   },
 );

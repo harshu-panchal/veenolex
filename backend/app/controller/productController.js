@@ -461,24 +461,30 @@ export const getProducts = async (req, res) => {
         if (p.sellerId) sellerIdSet.add(String(p.sellerId));
       }
 
-      // Resolve names in parallel via cache-backed service
-      const [categoryEntries, sellerEntries] = await Promise.all([
+      // Resolve names (cache-backed), local stock for admin catalog items and
+      // the warehouse in parallel — none depends on another.
+      const [categoryEntries, sellerEntries, annotatedProducts, warehouse] = await Promise.all([
         Promise.all(
           [...categoryIdSet].map(async (id) => [id, await resolveCategoryName(id)]),
         ),
         Promise.all(
           [...sellerIdSet].map(async (id) => [id, await resolveSellerName(id)]),
         ),
+        shouldApplyLocationFilter
+          ? annotateMasterAvailability(rawProducts, [...nearbySet])
+          : rawProducts,
+        enforceRadius ? getFulfillmentWarehouse() : null,
       ]);
 
       const nameMap = Object.fromEntries([...categoryEntries, ...sellerEntries]);
 
-      // Enrich products to match the shape previously returned by .populate()
-      const products = rawProducts.map((p) => {
-        let isInZone = true;
-        let deliveryMethod = "SELLER_DIRECT";
-        let estimatedDeliveryTime = "2-3 hours";
-        let deliveryBadge = "Fast Local Delivery";
+      // Enrich products to match the shape previously returned by .populate().
+      // Admin catalog items keep the availability fields set above.
+      const products = annotatedProducts.map((p) => {
+        let isInZone = p.isInZone ?? true;
+        let deliveryMethod = p.deliveryMethod || "SELLER_DIRECT";
+        let estimatedDeliveryTime = p.estimatedDeliveryTime || "2-3 hours";
+        let deliveryBadge = p.deliveryBadge || "Fast Local Delivery";
         
         if (shouldApplyLocationFilter && p.sellerId) {
           isInZone = nearbySet.has(String(p.sellerId));
@@ -510,13 +516,9 @@ export const getProducts = async (req, res) => {
         };
       });
 
-      let withAvailability = shouldApplyLocationFilter
-        ? await annotateMasterAvailability(products, [...nearbySet])
+      const withAvailability = enforceRadius
+        ? products.map((p) => withCustomerDeliveryEstimate(p, warehouse))
         : products;
-      if (enforceRadius) {
-        const warehouse = await getFulfillmentWarehouse();
-        withAvailability = withAvailability.map((p) => withCustomerDeliveryEstimate(p, warehouse));
-      }
 
       return {
         items: normalizeProductListModeration(withAvailability),

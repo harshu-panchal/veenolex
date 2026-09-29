@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import { mockExportsOf } from "./setup/mockExports.js";
 
 const mockHandleResponse = jest.fn();
 
@@ -28,6 +29,8 @@ const OrderMock = jest.fn().mockImplementation((doc) => ({
 
 jest.unstable_mockModule("../app/utils/helper.js", () => ({
   default: mockHandleResponse,
+  handleResponse: mockHandleResponse,
+  calculateDistance: jest.fn(() => 0),
 }));
 
 jest.unstable_mockModule("../app/constants/orderWorkflow.js", () => ({
@@ -36,16 +39,17 @@ jest.unstable_mockModule("../app/constants/orderWorkflow.js", () => ({
   DEFAULT_DELIVERY_TIMEOUT_MS: () => 0,
 }));
 
-jest.unstable_mockModule("../app/services/orderWorkflowService.js", () => ({
-  afterPlaceOrderV2: mockAfterPlaceOrderV2,
-  sellerAcceptAtomic: jest.fn(),
-  sellerRejectAtomic: jest.fn(),
-  deliveryAcceptAtomic: jest.fn(),
-  customerCancelV2: jest.fn(),
-  resolveWorkflowStatus: jest.fn(),
-  startReturnPickupBroadcast: jest.fn(),
-  removeReturnPickupTimeoutJob: jest.fn(),
-}));
+jest.unstable_mockModule("../app/services/orderWorkflowService.js", () =>
+  mockExportsOf("app/services/orderWorkflowService.js", {
+    afterPlaceOrderV2: mockAfterPlaceOrderV2,
+    sellerAcceptAtomic: jest.fn(),
+    sellerRejectAtomic: jest.fn(),
+    deliveryAcceptAtomic: jest.fn(),
+    customerCancelV2: jest.fn(),
+    resolveWorkflowStatus: jest.fn(),
+    startReturnPickupBroadcast: jest.fn(),
+    removeReturnPickupTimeoutJob: jest.fn(),
+  }));
 
 jest.unstable_mockModule("../app/services/orderSettlement.js", () => ({
   applyDeliveredSettlement: jest.fn(),

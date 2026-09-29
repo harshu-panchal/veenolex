@@ -2,7 +2,7 @@ import React from 'react';
 import { ChevronLeft, Truck, Heart, ShoppingBag } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSettings } from '@core/context/SettingsContext';
-import sandeepRathore from '@/assets/sandeep-rathore.png';
+import sandeepRathore from '@/assets/sandeep-rathore.jpg';
 import rajeshPatel from '@/assets/rajesh-patel.jpg';
 
 const AboutPage = () => {

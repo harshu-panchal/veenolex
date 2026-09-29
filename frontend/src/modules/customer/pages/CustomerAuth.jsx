@@ -21,7 +21,7 @@ import {
 import { toast } from 'sonner';
 import { customerApi } from '../services/customerApi';
 import { getStoredReportedLocation, markLocationSynced } from '../utils/appLocation';
-import BgImage from '@/assets/image.png';
+import BgImage from '@/assets/image.jpg';
 
 const CATEGORIES = [
     {

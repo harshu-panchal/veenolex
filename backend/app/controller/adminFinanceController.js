@@ -3,6 +3,7 @@ import Wallet from "../models/wallet.js";
 import Seller from "../models/seller.js";
 import Delivery from "../models/delivery.js";
 import handleResponse from "../utils/helper.js";
+import { invalidate } from "../services/cacheService.js";
 import { getAdminFinanceSummary } from "../services/finance/walletService.js";
 import { getLedgerEntries } from "../services/finance/ledgerService.js";
 import { bulkProcessPayouts } from "../services/finance/payoutService.js";
@@ -170,6 +171,8 @@ export const updateDeliverySettingsController = async (req, res) => {
       return handleResponse(res, 400, validated.message);
     }
     const updated = await updateDeliveryFinanceSettings(validated.value);
+    // Customers read payment methods and fees from the cached public settings.
+    await invalidate("cache:platform:settings:*");
     await createFinanceAuditLog({
       action: FINANCE_AUDIT_ACTION.DELIVERY_SETTINGS_UPDATED,
       actorType: OWNER_TYPE.ADMIN,
@@ -180,7 +183,7 @@ export const updateDeliverySettingsController = async (req, res) => {
     });
     return handleResponse(res, 200, "Delivery finance settings updated", updated);
   } catch (error) {
-    return handleResponse(res, 500, error.message);
+    return handleResponse(res, error.statusCode || 500, error.message);
   }
 };
 

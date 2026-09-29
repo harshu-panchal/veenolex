@@ -221,6 +221,8 @@ productSchema.index({ subcategoryId: 1, status: 1 });
 productSchema.index({ sellerId: 1, status: 1 });
 productSchema.index({ sellerId: 1, approvalStatus: 1, createdAt: -1 });
 productSchema.index({ sellerId: 1, createdAt: -1, _id: -1 });
+// Seller copies of an admin catalog product (order routing, catalog stock).
+productSchema.index({ adminProductId: 1, sellerId: 1 });
 productSchema.index({ name: "text", tags: "text" }); // For better search if regex is too slow
 
 // Prevent duplicate clones: one seller can only have one clone of each admin master product

@@ -179,7 +179,8 @@ export const markCodCollectedAfterDelivery = async (req, res) => {
       return handleResponse(res, 404, "Order not found");
     }
     const order = await Order.findOne(orderKey)
-      .select("_id deliveryBoy seller status orderStatus paymentMode financeFlags")
+      // paymentStatus / paymentBreakdown: returned as-is on a repeat call.
+      .select("_id orderId deliveryBoy seller status orderStatus paymentMode paymentStatus paymentBreakdown financeFlags")
       .lean();
     if (!order) {
       return handleResponse(res, 404, "Order not found");

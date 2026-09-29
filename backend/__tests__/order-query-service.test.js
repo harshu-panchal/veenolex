@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import { mockExportsOf } from "./setup/mockExports.js";
 
 const mockOrderFind = jest.fn();
 const mockOrderCountDocuments = jest.fn();
@@ -29,6 +30,25 @@ jest.unstable_mockModule("../app/utils/geoUtils.js", () => ({
   distanceMeters: mockDistanceMeters,
 }));
 
+jest.unstable_mockModule("../app/models/sellerProductRequest.js", () => ({
+  default: {
+    find: jest.fn(() => ({
+      sort: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      populate: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue([]),
+    })),
+  },
+}));
+
+// No warehouse configured: only seller orders are in play.
+jest.unstable_mockModule("../app/services/fulfillmentRoutingService.js", () =>
+  mockExportsOf("app/services/fulfillmentRoutingService.js", {
+    ADMIN_FULFILLER: "ADMIN",
+    ROUTED_REASON: {},
+    getFulfillmentWarehouse: jest.fn().mockResolvedValue({ hasLocation: false }),
+  }));
+
 const {
   buildSellerOrdersQuery,
   fetchAvailableOrdersForDelivery,
@@ -56,16 +76,22 @@ describe("orderQueryService", () => {
   });
 
   test("buildSellerOrdersQuery maps sidebar status values and date range", () => {
-    const query = buildSellerOrdersQuery({
-      role: "seller",
-      userId: "seller-1",
+    // Admin viewing one seller: the requested range is used as-is (sellers
+    // themselves are limited to the last 40 days, covered below).
+    const { finalQuery: query } = buildSellerOrdersQuery({
+      role: "admin",
+      sellerId: "seller-1",
       statusParam: "processed",
       startDate: "2026-03-01",
       endDate: "2026-03-29",
     });
 
     expect(query.seller).toBe("seller-1");
-    expect(query.status).toEqual({ $in: ["confirmed", "packed"] });
+    // "Processed" covers legacy statuses and the v2 workflow states.
+    expect(query.$or).toEqual([
+      { status: { $in: ["confirmed", "packed"] } },
+      { workflowStatus: { $in: ["SELLER_ACCEPTED", "DELIVERY_SEARCH", "DELIVERY_ASSIGNED", "PICKUP_READY"] } },
+    ]);
     expect(query.createdAt.$gte).toEqual(new Date("2026-03-01"));
     expect(query.createdAt.$lte.getFullYear()).toBe(2026);
     expect(query.createdAt.$lte.getMonth()).toBe(2);
@@ -74,6 +100,20 @@ describe("orderQueryService", () => {
     expect(query.createdAt.$lte.getMinutes()).toBe(59);
     expect(query.createdAt.$lte.getSeconds()).toBe(59);
     expect(query.createdAt.$lte.getMilliseconds()).toBe(999);
+  });
+
+  test("buildSellerOrdersQuery limits sellers to their own last 40 days", () => {
+    const { finalQuery } = buildSellerOrdersQuery({
+      role: "seller",
+      userId: "seller-1",
+      startDate: "2020-01-01",
+    });
+    const fortyDaysAgo = new Date();
+    fortyDaysAgo.setDate(fortyDaysAgo.getDate() - 40);
+    fortyDaysAgo.setHours(0, 0, 0, 0);
+
+    expect(finalQuery.seller).toBe("seller-1");
+    expect(finalQuery.createdAt.$gte).toEqual(fortyDaysAgo);
   });
 
   test("fetchAvailableOrdersForDelivery returns requiresLocation when rider has no coordinates", async () => {

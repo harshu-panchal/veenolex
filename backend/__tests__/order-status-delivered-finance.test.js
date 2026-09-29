@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import { mockExportsOf } from "./setup/mockExports.js";
 
 const mockOrderFindOne = jest.fn();
 const mockOrderFindById = jest.fn();
@@ -35,6 +36,8 @@ jest.unstable_mockModule("../app/utils/orderLookup.js", () => ({
 
 jest.unstable_mockModule("../app/utils/helper.js", () => ({
   default: mockHandleResponse,
+  handleResponse: mockHandleResponse,
+  calculateDistance: jest.fn(() => 0),
 }));
 
 jest.unstable_mockModule("../app/utils/pagination.js", () => ({
@@ -47,16 +50,17 @@ jest.unstable_mockModule("../app/constants/orderWorkflow.js", () => ({
   DEFAULT_DELIVERY_TIMEOUT_MS: () => 0,
 }));
 
-jest.unstable_mockModule("../app/services/orderWorkflowService.js", () => ({
-  afterPlaceOrderV2: jest.fn(),
-  sellerAcceptAtomic: jest.fn(),
-  sellerRejectAtomic: jest.fn(),
-  deliveryAcceptAtomic: jest.fn(),
-  customerCancelV2: jest.fn(),
-  resolveWorkflowStatus: jest.fn(),
-  startReturnPickupBroadcast: jest.fn(),
-  removeReturnPickupTimeoutJob: jest.fn(),
-}));
+jest.unstable_mockModule("../app/services/orderWorkflowService.js", () =>
+  mockExportsOf("app/services/orderWorkflowService.js", {
+    afterPlaceOrderV2: jest.fn(),
+    sellerAcceptAtomic: jest.fn(),
+    sellerRejectAtomic: jest.fn(),
+    deliveryAcceptAtomic: jest.fn(),
+    customerCancelV2: jest.fn(),
+    resolveWorkflowStatus: jest.fn(),
+    startReturnPickupBroadcast: jest.fn(),
+    removeReturnPickupTimeoutJob: jest.fn(),
+  }));
 
 jest.unstable_mockModule("../app/services/finance/orderFinanceService.js", () => ({
   freezeFinancialSnapshot: jest.fn((order) => order),

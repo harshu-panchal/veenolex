@@ -178,7 +178,7 @@ export async function createPendingSellerPayout(order, { session, actorId } = {}
   return payout;
 }
 
-export async function releaseHeldSellerPayout(orderOrId, { actorId = null } = {}) {
+async function releaseHeldSellerPayoutOnce(orderOrId, { actorId = null } = {}) {
   const session = await mongoose.startSession();
   try {
     session.startTransaction();
@@ -337,7 +337,7 @@ export async function creditAdminEarning(order, { session, actorId } = {}) {
   return adminEarning;
 }
 
-export async function handleOnlineOrderFinance(
+async function handleOnlineOrderFinanceOnce(
   orderOrId,
   { actorId = null, transactionId = "", metadata = {} } = {},
 ) {
@@ -423,7 +423,7 @@ export async function handleOnlineOrderFinance(
   }
 }
 
-export async function handleCodOrderFinance(
+async function handleCodOrderFinanceOnce(
   orderOrId,
   { amount = null, deliveryPartnerId = null, actorId = null } = {},
 ) {
@@ -483,18 +483,15 @@ export async function handleCodOrderFinance(
       session,
     });
 
-    order.paymentBreakdown = {
-      ...(order.paymentBreakdown || {}),
-      codCollectedAmount: roundCurrency(
-        (order.paymentBreakdown?.codCollectedAmount || 0) + codAmountNet,
-      ),
-      codRemittedAmount: roundCurrency(order.paymentBreakdown?.codRemittedAmount || 0),
-      codPendingAmount: roundCurrency(
-        (order.paymentBreakdown?.codCollectedAmount || 0) +
-          codAmountNet -
-          (order.paymentBreakdown?.codRemittedAmount || 0),
-      ),
-    };
+    // Set the COD fields individually: spreading the mongoose sub-document
+    // drops its stored fields (snapshots) and the save then fails validation.
+    const collectedBefore = order.paymentBreakdown?.codCollectedAmount || 0;
+    const remittedBefore = order.paymentBreakdown?.codRemittedAmount || 0;
+    order.set({
+      "paymentBreakdown.codCollectedAmount": roundCurrency(collectedBefore + codAmountNet),
+      "paymentBreakdown.codRemittedAmount": roundCurrency(remittedBefore),
+      "paymentBreakdown.codPendingAmount": roundCurrency(collectedBefore + codAmountNet - remittedBefore),
+    });
 
     order.paymentStatus = ORDER_PAYMENT_STATUS.CASH_COLLECTED;
     order.payment = {
@@ -555,7 +552,7 @@ export async function handleCodOrderFinance(
   }
 }
 
-export async function settleDeliveredOrder(orderOrId, { actorId = null } = {}) {
+async function settleDeliveredOrderOnce(orderOrId, { actorId = null } = {}) {
   const session = await mongoose.startSession();
   try {
     session.startTransaction();
@@ -623,7 +620,7 @@ export async function settleDeliveredOrder(orderOrId, { actorId = null } = {}) {
   }
 }
 
-export async function reconcileCodCash(
+async function reconcileCodCashOnce(
   orderOrId,
   amount,
   deliveryPartnerId,
@@ -716,12 +713,11 @@ export async function reconcileCodCash(
     const nextRemitted = addMoney(codRemitted, requested);
     const nextPending = roundCurrency(codCollected - nextRemitted);
 
-    order.paymentBreakdown = {
-      ...(order.paymentBreakdown || {}),
-      codCollectedAmount: codCollected,
-      codRemittedAmount: nextRemitted,
-      codPendingAmount: nextPending,
-    };
+    order.set({
+      "paymentBreakdown.codCollectedAmount": codCollected,
+      "paymentBreakdown.codRemittedAmount": nextRemitted,
+      "paymentBreakdown.codPendingAmount": nextPending,
+    });
 
     order.paymentStatus =
       nextPending <= 0
@@ -762,7 +758,7 @@ export async function reconcileCodCash(
   }
 }
 
-export async function reverseOrderFinanceOnCancellation(
+async function reverseOrderFinanceOnCancellationOnce(
   orderOrId,
   { actorId = null, reason = "Order cancelled before settlement" } = {},
 ) {
@@ -881,4 +877,57 @@ export async function reverseOrderFinanceOnCancellation(
   } finally {
     session.endSession();
   }
+}
+
+// ─── Transaction retry ────────────────────────────────────────────────────
+// A finance transaction can collide with another write to the same order
+// (status updates, ETA refreshes) and MongoDB then aborts it as a transient
+// "write conflict". The transaction left nothing behind, so run it again.
+const TRANSACTION_ATTEMPTS = 3;
+
+function isTransientTransactionError(error) {
+  if (!error) return false;
+  if (typeof error.hasErrorLabel === "function" && error.hasErrorLabel("TransientTransactionError")) {
+    return true;
+  }
+  if (Array.isArray(error.errorLabels) && error.errorLabels.includes("TransientTransactionError")) {
+    return true;
+  }
+  return /write conflict|catalog changes|please retry your operation or multi-document transaction/i
+    .test(String(error.message || ""));
+}
+
+async function withTransactionRetry(run) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await run();
+    } catch (error) {
+      if (attempt >= TRANSACTION_ATTEMPTS || !isTransientTransactionError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
+    }
+  }
+}
+
+export async function releaseHeldSellerPayout(...args) {
+  return withTransactionRetry(() => releaseHeldSellerPayoutOnce(...args));
+}
+
+export async function handleOnlineOrderFinance(...args) {
+  return withTransactionRetry(() => handleOnlineOrderFinanceOnce(...args));
+}
+
+export async function handleCodOrderFinance(...args) {
+  return withTransactionRetry(() => handleCodOrderFinanceOnce(...args));
+}
+
+export async function settleDeliveredOrder(...args) {
+  return withTransactionRetry(() => settleDeliveredOrderOnce(...args));
+}
+
+export async function reconcileCodCash(...args) {
+  return withTransactionRetry(() => reconcileCodCashOnce(...args));
+}
+
+export async function reverseOrderFinanceOnCancellation(...args) {
+  return withTransactionRetry(() => reverseOrderFinanceOnCancellationOnce(...args));
 }

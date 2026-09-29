@@ -91,7 +91,13 @@ const CheckoutPage = () => {
     useWishlist();
   const { showToast } = useToast();
   const { user, isAuthenticated } = useAuth();
-  const { settings } = useSettings();
+  const { settings, refetch: refetchSettings } = useSettings();
+
+  // Payment methods can be switched off by the admin at any time, so read
+  // them fresh when checkout opens rather than from the app-start copy.
+  useEffect(() => {
+    refetchSettings?.({ forceRefresh: true });
+  }, [refetchSettings]);
 
   const wishlistSectionRef = useRef(null);
   const wishlistFetchedRef = useRef(false);
@@ -1113,11 +1119,13 @@ const CheckoutPage = () => {
       }
     } catch (error) {
       setIsPlacingOrder(false);
-      showToast(
-        error.response?.data?.message ||
-        "Failed to place order. Please try again.",
-        "error"
-      );
+      const message = error.response?.data?.message || "";
+      // The chosen payment method was switched off since checkout opened:
+      // reload the options so the page falls back to the one still available.
+      if (/(cash on delivery|online payment) is currently unavailable/i.test(message)) {
+        refetchSettings?.({ forceRefresh: true });
+      }
+      showToast(message || "Failed to place order. Please try again.", "error");
     }
   };
 

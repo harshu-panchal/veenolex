@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+import { createRequire } from "module";
 
 const mockSession = {
   startTransaction: jest.fn(),
@@ -53,11 +54,15 @@ const OrderMock = jest.fn().mockImplementation((doc) => {
 OrderMock.find = mockOrderFind;
 OrderMock.findOne = mockOrderFindOne;
 
-jest.unstable_mockModule("mongoose", () => ({
-  default: {
-    startSession: mockStartSession,
-  },
-}));
+// Real mongoose (models still need Schema), with sessions controlled here.
+jest.unstable_mockModule("mongoose", () => {
+  const actual = createRequire(import.meta.url)("mongoose");
+  return {
+    default: new Proxy(actual, {
+      get: (target, prop) => (prop === "startSession" ? mockStartSession : target[prop]),
+    }),
+  };
+});
 
 jest.unstable_mockModule("../app/models/customer.js", () => ({
   default: {
@@ -137,6 +142,19 @@ jest.unstable_mockModule("../app/services/logger.js", () => ({
   warn: jest.fn(),
   error: jest.fn(),
   debug: jest.fn(),
+}));
+
+// Placement also consults payment-method settings, the fulfilment
+// warehouse and the delivery ETA service; none of that is under test here.
+jest.unstable_mockModule("../app/services/finance/financeSettingsService.js", () => ({
+  assertPaymentModeEnabled: jest.fn().mockResolvedValue(undefined),
+}));
+jest.unstable_mockModule("../app/services/fulfillmentRoutingService.js", () => ({
+  ADMIN_FULFILLER: "ADMIN",
+  getFulfillmentWarehouse: jest.fn().mockResolvedValue({ adminAcceptTimeoutMs: 600000 }),
+}));
+jest.unstable_mockModule("../app/services/deliveryEtaService.js", () => ({
+  refreshOrderDeliveryEta: jest.fn().mockResolvedValue(null),
 }));
 
 const { placeOrderAtomic } = await import("../app/services/orderPlacementService.js");

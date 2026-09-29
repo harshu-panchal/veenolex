@@ -15,6 +15,7 @@ import {
 } from "../constants/finance.js";
 import { incrementCouponUsage } from "./finance/couponService.js";
 import { freezeFinancialSnapshot } from "./finance/orderFinanceService.js";
+import { assertPaymentModeEnabled } from "./finance/financeSettingsService.js";
 import {
   creditWallet,
   debitWallet,
@@ -51,8 +52,6 @@ import {
 import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../modules/notifications/notification.constants.js";
 import * as logger from "./logger.js";
-
-const IDEMPOTENCY_RECORD_TTL_MS = 24 * 60 * 60 * 1000;
 
 function normalizePaymentMode(raw) {
   const mode = String(raw || "COD").trim().toUpperCase();
@@ -355,6 +354,15 @@ export async function placeOrderAtomic({
     return { ...existingResult, duplicate: true };
   }
 
+  // After the idempotency replay above, so a retry of an order that was
+  // already placed still returns it even if the method was switched off since.
+  try {
+    await assertPaymentModeEnabled(normalizedPayload.paymentMode);
+  } catch (error) {
+    if (idempotencyKey) await releaseIdempotencyLock(idempotencyKey).catch(() => {});
+    throw error;
+  }
+
   const session = await mongoose.startSession();
   try {
     session.startTransaction({
@@ -365,9 +373,6 @@ export async function placeOrderAtomic({
 
     const paymentMode = normalizePaymentMode(normalizedPayload.paymentMode);
     const normalizedAddress = normalizeAddress(normalizedPayload.address);
-    const idempotencyKeyExpiry = idempotencyKey
-      ? new Date(Date.now() + IDEMPOTENCY_RECORD_TTL_MS)
-      : null;
     const source = placementSource(normalizedPayload);
     const walletAmount = Math.max(0, Number(normalizedPayload.walletAmount || 0));
     const tipAmount = Math.max(0, Number(normalizedPayload.tipAmount || 0));
@@ -439,7 +444,6 @@ export async function placeOrderAtomic({
       addressSnapshot: normalizedAddress,
       placement: {
         idempotencyKey: idempotencyKey || undefined,
-        idempotencyKeyExpiry,
         createdFrom: resolvedSource || source,
       },
       expiresAt: checkoutReservation.expiresAt || null,
@@ -555,7 +559,6 @@ export async function placeOrderAtomic({
         checkoutGroupIndex: index,
         placement: {
           idempotencyKey: idempotencyKey || undefined,
-          idempotencyKeyExpiry,
           createdFrom: resolvedSource || source,
         },
         settlementStatus: {

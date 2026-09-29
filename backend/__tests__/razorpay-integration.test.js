@@ -1,5 +1,6 @@
 import { jest } from "@jest/globals";
 import crypto from "crypto";
+import { mockExportsOf } from "./setup/mockExports.js";
 
 const mockPaymentFindOne = jest.fn();
 const mockPaymentCreate = jest.fn();
@@ -37,17 +38,23 @@ jest.unstable_mockModule("../app/models/checkoutGroup.js", () => ({
   },
 }));
 
-jest.unstable_mockModule("../modules/notifications/notification.emitter.js", () => ({
+jest.unstable_mockModule("../app/modules/notifications/notification.emitter.js", () => ({
   emitNotificationEvent: mockEmitNotificationEvent,
 }));
 
-jest.unstable_mockModule("../app/services/finance/orderFinanceService.js", () => ({
-  handleOnlineOrderFinance: mockHandleOnlineOrderFinance,
-}));
+jest.unstable_mockModule("../app/services/finance/orderFinanceService.js", () =>
+  mockExportsOf("app/services/finance/orderFinanceService.js", {
+    handleOnlineOrderFinance: mockHandleOnlineOrderFinance,
+  }));
 
 // Load dependencies
 const { verifyRazorpaySignatureAndStatus } = await import("../app/services/paymentService.js");
 const { RazorpayAdapter } = await import("../app/services/payment/providers/razorpay.adapter.js");
+const { __setActivePaymentProviderForTests, __resetPaymentProviderForTests } = await import(
+  "../app/services/payment/providerRegistry.js"
+);
+
+afterEach(() => __resetPaymentProviderForTests());
 
 describe("Razorpay Integration & Verification Flow", () => {
   beforeEach(() => {
@@ -122,13 +129,8 @@ describe("Razorpay Integration & Verification Flow", () => {
         gatewayResponse: { status: "paid" },
       });
 
-      // Swap active provider registry resolution
-      jest.unstable_mockModule("../app/services/payment/providerRegistry.js", () => ({
-        getActivePaymentProvider: () => adapter,
-      }));
-
-      // Dynamically load updated registry
-      const { getActivePaymentProvider } = await import("../app/services/payment/providerRegistry.js");
+      // Use the stubbed adapter as the active provider (never hits Razorpay).
+      __setActivePaymentProviderForTests(adapter, "razorpay");
 
       // Verify
       const result = await verifyRazorpaySignatureAndStatus({

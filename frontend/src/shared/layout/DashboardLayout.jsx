@@ -19,6 +19,7 @@ import { STORAGE_KEYS } from '@core/utils/storage';
 import orderAlertSound from '@/assets/sounds/order_alert.mp3';
 
 const POLL_INTERVAL_MS = 15000;
+const CONNECTED_POLL_INTERVAL_MS = 60000;
 
 /** Match server `sellerPendingExpiresAt` — never reset to a full 60s when the modal opens late. */
 function secondsLeftUntilSellerExpiry(order) {
@@ -207,11 +208,20 @@ const DashboardLayout = ({ children, navItems, title }) => {
     useEffect(() => {
         if (role !== 'seller') return undefined;
 
+        let lastSyncAt = Date.now();
         const syncOrders = () => {
+            lastSyncAt = Date.now();
             if (fetchOrdersRef.current) fetchOrdersRef.current();
         };
+        // New orders arrive over the socket; while it is connected the poll
+        // is only a safety net, so it runs far less often.
+        const pollIfNeeded = () => {
+            const socket = getOrderSocket(createSocketTokenReader(STORAGE_KEYS.AUTH_SELLER));
+            const interval = socket?.connected ? CONNECTED_POLL_INTERVAL_MS : POLL_INTERVAL_MS;
+            if (Date.now() - lastSyncAt >= interval) syncOrders();
+        };
 
-        const timer = setInterval(syncOrders, POLL_INTERVAL_MS);
+        const timer = setInterval(pollIfNeeded, POLL_INTERVAL_MS);
         const onFocus = () => syncOrders();
         const onVisible = () => {
             if (document.visibilityState === 'visible') syncOrders();

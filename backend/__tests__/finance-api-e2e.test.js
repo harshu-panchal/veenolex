@@ -234,13 +234,20 @@ async function seedCoreData() {
       throw new Error("Set MONGO_URI_E2E (or MONGO_URI) to run API E2E tests");
     }
 
-    dbName = `quick_commerce_finance_e2e_${Date.now()}`;
+    // Atlas caps database names at 38 bytes.
+    dbName = `fin_e2e_${Date.now()}`;
     await mongoose.connect(mongoUri, {
       dbName,
       serverSelectionTimeoutMS: 15000,
       socketTimeoutMS: 45000,
     });
     app = buildApp();
+    // A fresh database has no collections and builds indexes in the
+    // background; Atlas refuses transaction writes to a collection while
+    // either is in progress ("catalog changes"). Finish both first.
+    await Promise.all(
+      mongoose.modelNames().map((name) => mongoose.model(name).init().catch(() => {})),
+    );
   });
 
   beforeEach(async () => {
@@ -309,7 +316,8 @@ async function seedCoreData() {
       .send(orderPayload);
 
     expect(createRes.status).toBe(201);
-    const created = createRes.body.result;
+    // Placement returns { checkoutGroup, orders, order }.
+    const created = createRes.body.result.order;
     expect(created.paymentMode).toBe("ONLINE");
     expect(created.paymentBreakdown.grandTotal).toBe(270);
     expect(created.paymentBreakdown.sellerPayoutTotal).toBe(180);
@@ -440,7 +448,7 @@ async function seedCoreData() {
       });
 
     expect(createRes.status).toBe(201);
-    const orderId = createRes.body.result.orderId;
+    const orderId = createRes.body.result.order.orderId;
     const orderDoc = await Order.findOne({ orderId });
     orderDoc.deliveryBoy = rider._id;
     orderDoc.deliveryPartner = rider._id;
@@ -460,9 +468,14 @@ async function seedCoreData() {
     expect(deliveredRes.status).toBe(200);
     expect(deliveredRes.body.result.paymentMode).toBe("COD");
     expect(deliveredRes.body.result.paymentStatus).toBe("CASH_COLLECTED");
-    // Net of rider commission (grandTotal 160 - riderPayoutTotal 35)
-    expect(deliveredRes.body.result.paymentBreakdown.codCollectedAmount).toBe(125);
-    expect(deliveredRes.body.result.paymentBreakdown.codPendingAmount).toBe(125);
+    // The server prices delivery from the real seller -> customer distance
+    // (the client's distanceKm is ignored), so amounts come from the order.
+    // The rider keeps their payout from the cash; the rest is owed to admin.
+    const codBreakdown = deliveredRes.body.result.paymentBreakdown;
+    const codNet = codBreakdown.grandTotal - codBreakdown.riderPayoutTotal;
+    expect(codNet).toBeGreaterThan(60);
+    expect(codBreakdown.codCollectedAmount).toBe(codNet);
+    expect(codBreakdown.codPendingAmount).toBe(codNet);
 
     const collectRes = await request(app)
       .post(`/api/orders/${orderId}/cod/mark-collected`)
@@ -471,7 +484,7 @@ async function seedCoreData() {
     expect(collectRes.status).toBe(200);
     expect(collectRes.body.message).toContain("already marked");
     expect(collectRes.body.result.paymentStatus).toBe("CASH_COLLECTED");
-    expect(collectRes.body.result.paymentBreakdown.codPendingAmount).toBe(125);
+    expect(collectRes.body.result.paymentBreakdown.codPendingAmount).toBe(codNet);
 
     const collectAgainRes = await request(app)
       .post(`/api/orders/${orderId}/cod/mark-collected`)
@@ -493,15 +506,15 @@ async function seedCoreData() {
       .send({ amount: 60, deliveryPartnerId: String(rider._id) });
     expect(reconcilePartial.status).toBe(200);
     expect(reconcilePartial.body.result.paymentBreakdown.codRemittedAmount).toBe(60);
-    expect(reconcilePartial.body.result.paymentBreakdown.codPendingAmount).toBe(65);
+    expect(reconcilePartial.body.result.paymentBreakdown.codPendingAmount).toBe(codNet - 60);
     expect(reconcilePartial.body.result.paymentStatus).toBe("PARTIALLY_REMITTED");
 
     const reconcileFinal = await request(app)
       .post(`/api/orders/${orderId}/cod/reconcile`)
       .set("Authorization", `Bearer ${adminToken}`)
-      .send({ amount: 65, deliveryPartnerId: String(rider._id) });
+      .send({ amount: codNet - 60, deliveryPartnerId: String(rider._id) });
     expect(reconcileFinal.status).toBe(200);
-    expect(reconcileFinal.body.result.paymentBreakdown.codRemittedAmount).toBe(125);
+    expect(reconcileFinal.body.result.paymentBreakdown.codRemittedAmount).toBe(codNet);
     expect(reconcileFinal.body.result.paymentBreakdown.codPendingAmount).toBe(0);
     expect(reconcileFinal.body.result.paymentStatus).toBe("COD_RECONCILED");
 
@@ -516,7 +529,7 @@ async function seedCoreData() {
     const codOrder = await Order.findOne({ orderId }).lean();
 
     expect(riderWallet.cashInHand).toBe(0);
-    expect(adminWallet.availableBalance).toBe(125);
+    expect(adminWallet.availableBalance).toBe(codNet);
     expect(codOrder.paymentBreakdown.codPendingAmount).toBe(0);
 
     const summaryRes = await request(app)
@@ -524,9 +537,9 @@ async function seedCoreData() {
       .set("Authorization", `Bearer ${adminToken}`);
     expect(summaryRes.status).toBe(200);
     expect(summaryRes.body.result.systemFloatCOD).toBe(0);
-    expect(summaryRes.body.result.reconciledCODInflows).toBe(125);
-    expect(summaryRes.body.result.sellerPendingPayouts).toBe(90);
-    expect(summaryRes.body.result.deliveryPendingPayouts).toBe(35);
+    expect(summaryRes.body.result.reconciledCODInflows).toBe(codNet);
+    expect(summaryRes.body.result.sellerPendingPayouts).toBe(codBreakdown.sellerPayoutTotal);
+    expect(summaryRes.body.result.deliveryPendingPayouts).toBe(codBreakdown.riderPayoutTotal);
 
     const codLedger = await LedgerEntry.find({ orderId: codOrder._id }).lean();
     const codTypes = codLedger.map((entry) => entry.type);
