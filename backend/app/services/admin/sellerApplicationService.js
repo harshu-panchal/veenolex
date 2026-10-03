@@ -1,4 +1,17 @@
 import Seller from "../../models/seller.js";
+import Product from "../../models/product.js";
+import SellerOwnedCategory from "../../models/sellerOwnedCategory.js";
+import SellerOwnedSubCategory from "../../models/sellerOwnedSubCategory.js";
+import SellerInventory from "../../models/sellerInventory.js";
+import PosStockLedger from "../../models/posStockLedger.js";
+import SellerPurchaseEntry from "../../models/sellerPurchaseEntry.js";
+import OfflineSale from "../../models/offlineSale.js";
+import SellerPOSState from "../../models/sellerPOSState.js";
+import SellerMetrics from "../../models/sellerMetrics.js";
+import SellerProductRequest from "../../models/sellerProductRequest.js";
+import SupplierLedger from "../../models/supplierLedger.js";
+import Wallet from "../../models/wallet.js";
+import CreditTransaction from "../../models/creditTransaction.js";
 import {
   escapeRegExp,
   formatSellerApplication,
@@ -287,4 +300,30 @@ export async function rejectSellerPasswordResetById({
     .lean();
 
   return { request: formatPasswordResetRequest(updated) };
+}
+
+export async function deleteSellerPermanently({ sellerId }) {
+  const seller = await Seller.findById(sellerId);
+  if (!seller) {
+    return null;
+  }
+
+  await Promise.allSettled([
+    Seller.findByIdAndDelete(sellerId),
+    Product.deleteMany({ seller: sellerId }),
+    SellerOwnedCategory.deleteMany({ seller: sellerId }),
+    SellerOwnedSubCategory.deleteMany({ seller: sellerId }),
+    SellerInventory.deleteMany({ seller: sellerId }),
+    PosStockLedger.deleteMany({ seller: sellerId }),
+    SellerPurchaseEntry.deleteMany({ seller: sellerId }),
+    OfflineSale.deleteMany({ seller: sellerId }),
+    SellerPOSState.deleteMany({ seller: sellerId }),
+    SellerMetrics.deleteMany({ seller: sellerId }),
+    SellerProductRequest.deleteMany({ seller: sellerId }),
+    SupplierLedger.deleteMany({ seller: sellerId }),
+    Wallet.deleteMany({ ownerId: sellerId, ownerType: "SELLER" }),
+    CreditTransaction.deleteMany({ seller: sellerId }),
+  ]);
+
+  return seller;
 }

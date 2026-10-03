@@ -22,6 +22,7 @@ import {
     approveSellerApplication,
     updateSellerStatus,
     rejectSellerApplication,
+    deleteSeller,
     getPendingPasswordResetRequests,
     approveSellerPasswordReset,
     rejectSellerPasswordReset,
@@ -161,6 +162,7 @@ router.patch("/sellers/password-resets/:id/approve", verifyToken, allowRoles("ad
 router.patch("/sellers/password-resets/:id/reject", verifyToken, allowRoles("admin"), rejectSellerPasswordReset);
 router.patch("/sellers/approve/:id", verifyToken, allowRoles("admin"), approveSellerApplication);
 router.patch("/sellers/:id/status", verifyToken, allowRoles("admin"), updateSellerStatus);
+router.delete("/sellers/:id", verifyToken, allowRoles("admin"), deleteSeller);
 router.delete("/sellers/reject/:id", verifyToken, allowRoles("admin"), rejectSellerApplication);
 
 router.get(

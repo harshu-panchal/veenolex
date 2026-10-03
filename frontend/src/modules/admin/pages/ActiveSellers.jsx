@@ -16,6 +16,8 @@ import {
   HiOutlineClock,
   HiOutlineArrowPath,
   HiOutlineDocumentText,
+  HiOutlineTrash,
+  HiOutlineExclamationTriangle,
 } from "react-icons/hi2";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -120,6 +122,8 @@ const ActiveSellers = () => {
   const [refreshTick, setRefreshTick] = useState(0);
   const [selectedSeller, setSelectedSeller] = useState(null);
   const [updatingStatusId, setUpdatingStatusId] = useState(null);
+  const [sellerToDelete, setSellerToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleToggleStatus = async (sellerId, newStatus) => {
     try {
@@ -139,6 +143,39 @@ const ActiveSellers = () => {
       toast.error(msg);
     } finally {
       setUpdatingStatusId(null);
+    }
+  };
+
+  const handleDeleteSeller = async () => {
+    if (!sellerToDelete) return;
+    const targetId = sellerToDelete.id || sellerToDelete._id;
+    try {
+      setIsDeleting(true);
+      const res = await adminApi.deleteSeller(targetId);
+      toast.success(
+        res?.data?.message ||
+          `Seller "${sellerToDelete.shopName || sellerToDelete.name || "Store"}" deleted successfully`
+      );
+
+      setSellers((prev) => prev.filter((s) => (s.id || s._id) !== targetId));
+      setTotal((prev) => Math.max(0, prev - 1));
+      setStats((prev) => ({
+        ...prev,
+        totalActiveSellers: Math.max(0, (prev.totalActiveSellers || 1) - 1),
+      }));
+
+      if (
+        selectedSeller &&
+        (selectedSeller.id === targetId || selectedSeller._id === targetId)
+      ) {
+        setSelectedSeller(null);
+      }
+      setSellerToDelete(null);
+    } catch (err) {
+      const msg = err?.response?.data?.message || "Failed to delete seller";
+      toast.error(msg);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -505,10 +542,18 @@ const ActiveSellers = () => {
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => setSelectedSeller(seller)}
-                          className="px-4 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-bold hover:bg-slate-800 transition-all shadow-lg flex items-center gap-2"
+                          className="px-3.5 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-bold hover:bg-slate-800 transition-all shadow-sm flex items-center gap-1.5"
                         >
                           <HiOutlineEye className="h-3.5 w-3.5" />
                           VIEW PROFILE
+                        </button>
+                        <button
+                          onClick={() => setSellerToDelete(seller)}
+                          className="px-3 py-2 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl text-[10px] font-bold transition-all border border-rose-200 hover:border-rose-600 flex items-center gap-1.5 shadow-sm"
+                          title="Delete Seller"
+                        >
+                          <HiOutlineTrash className="h-3.5 w-3.5" />
+                          DELETE
                         </button>
                       </div>
                     </td>
@@ -727,15 +772,90 @@ const ActiveSellers = () => {
                     </div>
                   </div>
 
-                  <div className="mt-6 flex items-center justify-end gap-3">
+                  <div className="mt-6 flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
+                    <button
+                      onClick={() => setSellerToDelete(selectedSeller)}
+                      className="px-4 py-2 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl text-xs font-bold transition-all border border-rose-200 hover:border-rose-600 flex items-center gap-1.5 shadow-sm"
+                    >
+                      <HiOutlineTrash className="h-4 w-4" />
+                      Delete Seller
+                    </button>
                     <button
                       onClick={() => setSelectedSeller(null)}
-                      className="px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all"
+                      className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all"
                     >
                       Close
                     </button>
                   </div>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {sellerToDelete && (
+          <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
+              onClick={() => !isDeleting && setSellerToDelete(null)}
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              className="relative z-10 w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 border border-slate-100"
+            >
+              <div className="flex items-start gap-4">
+                <div className="h-12 w-12 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0 text-rose-600">
+                  <HiOutlineExclamationTriangle className="h-6 w-6" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-slate-900">Delete Seller</h3>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    Are you sure you want to permanently delete{" "}
+                    <span className="font-bold text-slate-900">
+                      "{sellerToDelete.shopName || sellerToDelete.name || "this store"}"
+                    </span>
+                    ?
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 p-3 bg-amber-50/70 border border-amber-200 rounded-xl text-[11px] text-amber-800 leading-relaxed">
+                ⚠️ This will permanently remove the seller account, associated products, and inventory records. This action cannot be undone.
+              </div>
+
+              <div className="mt-6 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setSellerToDelete(null)}
+                  className="px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={handleDeleteSeller}
+                  className="px-4 py-2.5 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 transition-all shadow-md shadow-rose-200 flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isDeleting ? (
+                    <>
+                      <HiOutlineArrowPath className="h-4 w-4 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <HiOutlineTrash className="h-4 w-4" />
+                      Yes, Delete Seller
+                    </>
+                  )}
+                </button>
               </div>
             </motion.div>
           </div>

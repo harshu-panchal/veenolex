@@ -21,6 +21,7 @@ export const adminUsersApi = {
     approveSeller: (id) => axiosInstance.patch(`/admin/sellers/approve/${id}`),
     updateSellerStatus: (id, isActive) =>
         axiosInstance.patch(`/admin/sellers/${id}/status`, { isActive }),
+    deleteSeller: (id) => axiosInstance.delete(`/admin/sellers/${id}`),
     rejectSeller: (id, data) =>
         axiosInstance.delete(`/admin/sellers/reject/${id}`, { data }),
 

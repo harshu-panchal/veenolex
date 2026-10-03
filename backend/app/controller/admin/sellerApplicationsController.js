@@ -8,6 +8,7 @@ import {
   getPendingPasswordResetRequestList,
   approveSellerPasswordResetById,
   rejectSellerPasswordResetById,
+  deleteSellerPermanently,
 } from "../../services/admin/sellerApplicationService.js";
 
 export const getPendingSellers = async (req, res) => {
@@ -90,6 +91,25 @@ export const updateSellerStatus = async (req, res) => {
       200,
       `Seller status updated to ${seller.isActive ? "Active" : "Inactive"}`,
       seller
+    );
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+export const deleteSeller = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const seller = await deleteSellerPermanently({ sellerId: id });
+    if (!seller) {
+      return handleResponse(res, 404, "Seller not found");
+    }
+
+    return handleResponse(
+      res,
+      200,
+      `Seller "${seller.shopName || seller.name || 'Store'}" deleted successfully`,
+      { id: seller._id, shopName: seller.shopName }
     );
   } catch (error) {
     return handleResponse(res, 500, error.message);
