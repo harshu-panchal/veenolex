@@ -26,7 +26,10 @@ import {
     Bell,
     Package,
     IndianRupee,
-    CheckCircle2
+    CheckCircle2,
+    Trash2,
+    AlertTriangle,
+    Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Modal from '@shared/components/ui/Modal';
@@ -44,6 +47,8 @@ const CustomerDetail = () => {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isNotifModalOpen, setIsNotifModalOpen] = useState(false);
     const [isRestrictModalOpen, setIsRestrictModalOpen] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [isDeletingCustomer, setIsDeletingCustomer] = useState(false);
 
     // Form states
     const [notifMessage, setNotifMessage] = useState('');
@@ -107,6 +112,25 @@ const CustomerDetail = () => {
         setCustomer({ ...customer, status: newStatus });
         setIsRestrictModalOpen(false);
         showToast(`Account successfully ${newStatus === 'restricted' ? 'restricted' : 'activated'}`, newStatus === 'restricted' ? 'warning' : 'success');
+    };
+
+    const handleDeleteCustomer = async () => {
+        try {
+            setIsDeletingCustomer(true);
+            const { data } = await adminApi.deleteUser(id);
+            if (data.success) {
+                showToast("Customer deleted successfully", "success");
+                setIsDeleteModalOpen(false);
+                navigate("/admin/customers");
+            } else {
+                showToast(data.message || "Failed to delete customer", "error");
+            }
+        } catch (error) {
+            console.error("Error deleting customer:", error);
+            showToast(error.response?.data?.message || "Failed to delete customer", "error");
+        } finally {
+            setIsDeletingCustomer(false);
+        }
     };
 
     const handleSaveNotes = () => {
@@ -434,6 +458,13 @@ const CustomerDetail = () => {
                                 <Ban className="h-4 w-4" />
                                 {customer.status === 'active' ? 'BLOCK ACCOUNT' : 'UNBLOCK ACCOUNT'}
                             </button>
+                            <button
+                                onClick={() => setIsDeleteModalOpen(true)}
+                                className="w-full py-4 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white rounded-2xl font-black text-[11px] uppercase tracking-widest border border-rose-600/40 transition-all flex items-center justify-center gap-2"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                                DELETE CUSTOMER
+                            </button>
                         </div>
                     </Card>
                 </div>
@@ -517,6 +548,65 @@ const CustomerDetail = () => {
                         </button>
                         <button onClick={handleRestrictAccount} className="flex-1 py-4 bg-rose-500 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest hover:bg-rose-600 shadow-xl shadow-rose-200 transition-all">
                             CONFIRM
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Delete Customer Modal */}
+            <Modal isOpen={isDeleteModalOpen} onClose={() => !isDeletingCustomer && setIsDeleteModalOpen(false)} title="Delete Customer" size="sm">
+                <div className="space-y-4 pt-2">
+                    <div className="flex items-start gap-3 p-3.5 bg-rose-50 rounded-xl border border-rose-100 text-rose-800">
+                        <AlertTriangle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
+                        <div className="text-xs leading-relaxed">
+                            <p className="font-bold text-rose-900">Are you sure you want to delete this customer?</p>
+                            <p className="mt-1 text-rose-700">This action will permanently delete the customer account and clean up their associated cart, wishlist, and wallet data. This cannot be undone.</p>
+                        </div>
+                    </div>
+
+                    <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-1.5 text-xs">
+                        <div className="flex justify-between">
+                            <span className="text-gray-500">Name:</span>
+                            <span className="font-semibold text-gray-900">{customer.name}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-gray-500">Phone:</span>
+                            <span className="font-mono font-medium text-gray-700">{customer.phone}</span>
+                        </div>
+                        {customer.email && (
+                            <div className="flex justify-between">
+                                <span className="text-gray-500">Email:</span>
+                                <span className="text-gray-700">{customer.email}</span>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                        <button
+                            type="button"
+                            disabled={isDeletingCustomer}
+                            onClick={() => setIsDeleteModalOpen(false)}
+                            className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-all disabled:opacity-50"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            disabled={isDeletingCustomer}
+                            onClick={handleDeleteCustomer}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-md shadow-rose-200 transition-all disabled:opacity-50"
+                        >
+                            {isDeletingCustomer ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Deleting...
+                                </>
+                            ) : (
+                                <>
+                                    <Trash2 className="h-4 w-4" />
+                                    Delete Customer
+                                </>
+                            )}
                         </button>
                     </div>
                 </div>

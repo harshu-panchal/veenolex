@@ -3,6 +3,7 @@ import getPagination from "../../utils/pagination.js";
 import {
   getUserByIdData,
   getUsersData,
+  deleteUserData,
 } from "../../services/admin/userAdminService.js";
 
 export const getUsers = async (req, res) => {
@@ -33,6 +34,26 @@ export const getUserById = async (req, res) => {
       200,
       "Customer details fetched successfully",
       user,
+    );
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+export const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await deleteUserData(id);
+
+    if (!user) {
+      return handleResponse(res, 404, "Customer not found");
+    }
+
+    return handleResponse(
+      res,
+      200,
+      "Customer deleted successfully",
+      { id: user._id }
     );
   } catch (error) {
     return handleResponse(res, 500, error.message);

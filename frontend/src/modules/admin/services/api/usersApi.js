@@ -10,6 +10,7 @@ export const adminUsersApi = {
 
     getUsers: (params) => axiosInstance.get('/admin/users', { params }),
     getUserById: (id) => axiosInstance.get(`/admin/users/${id}`),
+    deleteUser: (id) => axiosInstance.delete(`/admin/users/${id}`),
 
     getSellers: (params) => axiosInstance.get('/admin/sellers', { params }),
     getActiveSellers: (params) =>

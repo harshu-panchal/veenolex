@@ -36,6 +36,7 @@ import {
     getCashSettlementHistory,
     getUsers,
     getUserById,
+    deleteUser,
     getSellers,
     getSellerLocations,
     getPlatformSettings,
@@ -153,6 +154,7 @@ router.put(
 );
 router.get("/users", verifyToken, allowRoles("admin"), getUsers);
 router.get("/users/:id", verifyToken, allowRoles("admin"), getUserById);
+router.delete("/users/:id", verifyToken, allowRoles("admin"), deleteUser);
 router.get("/sellers", verifyToken, allowRoles("admin"), getSellers);
 router.get("/sellers/locations", verifyToken, allowRoles("admin"), getSellerLocations);
 router.get("/sellers/active", verifyToken, allowRoles("admin"), getActiveSellers);

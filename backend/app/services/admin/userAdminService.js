@@ -1,6 +1,10 @@
 import mongoose from "mongoose";
 import User from "../../models/customer.js";
 import Order from "../../models/order.js";
+import Wallet from "../../models/wallet.js";
+import Cart from "../../models/cart.js";
+import Wishlist from "../../models/wishlist.js";
+import CreditTransaction from "../../models/creditTransaction.js";
 
 /**
  * Address of the customer's most recent order that has a usable address.
@@ -228,4 +232,25 @@ export async function getUserByIdData(id) {
       status: order.status,
     })),
   };
+}
+
+export async function deleteUserData(id) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return null;
+  }
+
+  const user = await User.findOne({ _id: id, role: "user" });
+  if (!user) {
+    return null;
+  }
+
+  await Promise.allSettled([
+    User.findByIdAndDelete(id),
+    Wallet.deleteMany({ ownerId: id, ownerType: "CUSTOMER" }),
+    Cart.deleteMany({ customerId: id }),
+    Wishlist.deleteMany({ customerId: id }),
+    CreditTransaction.deleteMany({ customer: id }),
+  ]);
+
+  return user;
 }

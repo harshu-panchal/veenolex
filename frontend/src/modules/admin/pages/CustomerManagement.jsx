@@ -15,11 +15,14 @@ import {
     RotateCw,
     Activity,
     Loader2,
-    MapPin
+    MapPin,
+    Trash2,
+    AlertTriangle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import Pagination from '@shared/components/ui/Pagination';
+import Modal from '@shared/components/ui/Modal';
 import { adminApi } from '../services/adminApi';
 import { toast } from 'sonner';
 
@@ -40,6 +43,8 @@ const CustomerManagement = () => {
     const [pageSize, setPageSize] = useState(25);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [customerToDelete, setCustomerToDelete] = useState(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -75,6 +80,26 @@ const CustomerManagement = () => {
             toast.error("Failed to load customers");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDeleteCustomer = async () => {
+        if (!customerToDelete) return;
+        try {
+            setIsDeleting(true);
+            const { data } = await adminApi.deleteUser(customerToDelete.id);
+            if (data.success) {
+                toast.success("Customer deleted successfully");
+                setCustomerToDelete(null);
+                fetchCustomers(page);
+            } else {
+                toast.error(data.message || "Failed to delete customer");
+            }
+        } catch (error) {
+            console.error("Error deleting customer:", error);
+            toast.error(error.response?.data?.message || "Failed to delete customer");
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -311,12 +336,17 @@ const CustomerManagement = () => {
                                             <div className="flex items-center justify-end gap-2">
                                                 <button
                                                     onClick={() => navigate(`/admin/customers/${cust.id}`)}
+                                                    title="View Details"
                                                     className="p-2 bg-primary/10 text-primary rounded-lg hover:bg-primary hover:text-white transition-all"
                                                 >
                                                     <Eye className="ds-icon-sm" />
                                                 </button>
-                                                <button className="p-2 bg-gray-50 text-gray-400 rounded-lg hover:bg-gray-900 hover:text-white transition-all">
-                                                    <MoreVertical className="ds-icon-sm" />
+                                                <button
+                                                    onClick={() => setCustomerToDelete(cust)}
+                                                    title="Delete Customer"
+                                                    className="p-2 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-600 hover:text-white transition-all"
+                                                >
+                                                    <Trash2 className="ds-icon-sm" />
                                                 </button>
                                             </div>
                                         </td>
@@ -341,6 +371,72 @@ const CustomerManagement = () => {
                     />
                 </div>
             </Card>
+
+            {/* Delete Confirmation Modal */}
+            <Modal
+                isOpen={Boolean(customerToDelete)}
+                onClose={() => !isDeleting && setCustomerToDelete(null)}
+                title="Delete Customer"
+                size="sm"
+            >
+                <div className="space-y-4 pt-2">
+                    <div className="flex items-start gap-3 p-3.5 bg-rose-50 rounded-xl border border-rose-100 text-rose-800">
+                        <AlertTriangle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
+                        <div className="text-xs leading-relaxed">
+                            <p className="font-bold text-rose-900">Are you sure you want to delete this customer?</p>
+                            <p className="mt-1 text-rose-700">This action will permanently delete the customer account and clean up their associated cart, wishlist, and wallet data. This cannot be undone.</p>
+                        </div>
+                    </div>
+
+                    {customerToDelete && (
+                        <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-1.5 text-xs">
+                            <div className="flex justify-between">
+                                <span className="text-gray-500">Name:</span>
+                                <span className="font-semibold text-gray-900">{customerToDelete.name}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-gray-500">Phone:</span>
+                                <span className="font-mono font-medium text-gray-700">{customerToDelete.phone}</span>
+                            </div>
+                            {customerToDelete.email && (
+                                <div className="flex justify-between">
+                                    <span className="text-gray-500">Email:</span>
+                                    <span className="text-gray-700">{customerToDelete.email}</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                        <button
+                            type="button"
+                            disabled={isDeleting}
+                            onClick={() => setCustomerToDelete(null)}
+                            className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-all disabled:opacity-50"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            disabled={isDeleting}
+                            onClick={handleDeleteCustomer}
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-md shadow-rose-200 transition-all disabled:opacity-50"
+                        >
+                            {isDeleting ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Deleting...
+                                </>
+                            ) : (
+                                <>
+                                    <Trash2 className="h-4 w-4" />
+                                    Delete Customer
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };
