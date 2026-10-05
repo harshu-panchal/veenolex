@@ -57,22 +57,71 @@ export default function SellerInvoices() {
 
   // All catalog products list
   const [allProducts, setAllProducts] = useState([]);
+  const [loadingAllProducts, setLoadingAllProducts] = useState(false);
 
-  // Load all catalog products on mount
-  useEffect(() => {
-    async function loadAllCatalogProducts() {
-      try {
-        const res = await adminApi.getProducts({ limit: 500 });
-        const list = res.data?.result?.items || res.data?.data?.results || res.data?.results || res.data?.products || res.data?.items || [];
-        if (Array.isArray(list)) {
-          setAllProducts(list);
-        }
-      } catch (err) {
-        console.error("Failed to load catalog products", err);
+  // Load all catalog products
+  const loadAllCatalogProducts = async () => {
+    setLoadingAllProducts(true);
+    try {
+      // Fetch master admin catalog products
+      const res = await adminApi.getProducts({ sellerId: "admin", limit: 1000, sort: "name-asc" });
+      let list = res.data?.result?.items || res.data?.data?.results || res.data?.results || res.data?.products || res.data?.items || [];
+      
+      // If no admin-specific products returned, fallback to general product list
+      if (!Array.isArray(list) || list.length === 0) {
+        const fallbackRes = await adminApi.getProducts({ limit: 1000, sort: "name-asc" });
+        list = fallbackRes.data?.result?.items || fallbackRes.data?.data?.results || fallbackRes.data?.results || fallbackRes.data?.products || fallbackRes.data?.items || [];
       }
+
+      if (Array.isArray(list)) {
+        setAllProducts(list);
+      }
+    } catch (err) {
+      console.error("Failed to load catalog products", err);
+    } finally {
+      setLoadingAllProducts(false);
     }
+  };
+
+  // Load all catalog products on mount and whenever active tab changes to manual
+  useEffect(() => {
     loadAllCatalogProducts();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === "manual") {
+      loadAllCatalogProducts();
+    }
+  }, [activeTab]);
+
+  // Combine and deduplicate products by unique normalized product name
+  const allCatalogProducts = React.useMemo(() => {
+    const map = new Map();
+    
+    // 1. Add all master/admin catalog products (keyed by normalized lowercase name)
+    (allProducts || []).forEach((p) => {
+      if (p && p.name && (p._id || p.id)) {
+        const key = p.name.trim().toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, p);
+        }
+      }
+    });
+
+    // 2. Add seller-specific products if not already in admin catalog
+    (products || []).forEach((p) => {
+      if (p && p.name && (p._id || p.id)) {
+        const key = p.name.trim().toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, p);
+        }
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) =>
+      (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })
+    );
+  }, [allProducts, products]);
 
   // Load all sellers on mount
   useEffect(() => {
@@ -326,8 +375,9 @@ export default function SellerInvoices() {
   };
 
   const handleSelectCatalogProduct = (itemId, productId) => {
-    const combinedList = products.length > 0 ? products : allProducts;
-    const selectedProd = combinedList.find((p) => p._id === productId) || allProducts.find((p) => p._id === productId);
+    const selectedProd = allCatalogProducts.find(
+      (p) => String(p._id || p.id) === String(productId)
+    );
     if (!selectedProd) return;
     const price = selectedProd.salePrice || selectedProd.price || 0;
     setManualForm((prev) => ({
@@ -336,7 +386,7 @@ export default function SellerInvoices() {
         if (item.id === itemId) {
           return {
             ...item,
-            productId: selectedProd._id,
+            productId: selectedProd._id || selectedProd.id,
             name: selectedProd.name,
             price: price,
           };
@@ -1810,22 +1860,39 @@ export default function SellerInvoices() {
                     {/* Form Section 4: Product Items */}
                     <Card className="p-5 bg-white border border-slate-100 shadow-md space-y-4">
                       <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                        <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
-                          4. Product Items & Prices
-                        </h4>
-                        <button
-                          onClick={handleAddManualItem}
-                          className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all"
-                        >
-                          <HiOutlinePlus className="h-3.5 w-3.5" />
-                          Add Product Item
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                            4. Product Items & Prices
+                          </h4>
+                          <span className="text-[10px] font-bold text-slate-400">
+                            ({allCatalogProducts.length} available)
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={loadAllCatalogProducts}
+                            disabled={loadingAllProducts}
+                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all disabled:opacity-50"
+                            title="Sync latest products from admin catalog"
+                          >
+                            <HiOutlineArrowPath className={`h-3.5 w-3.5 ${loadingAllProducts ? "animate-spin" : ""}`} />
+                            Sync Products
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleAddManualItem}
+                            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all"
+                          >
+                            <HiOutlinePlus className="h-3.5 w-3.5" />
+                            Add Product Item
+                          </button>
+                        </div>
                       </div>
 
                       <div className="space-y-3">
                         {manualForm.items.map((item, idx) => {
                           const itemTotal = Number(item.qty || 0) * Number(item.price || 0);
-                          const catalogList = products.length > 0 ? products : allProducts;
 
                           return (
                             <div
@@ -1849,8 +1916,8 @@ export default function SellerInvoices() {
                                     className="w-full h-9 px-3 bg-white border border-slate-300 rounded-lg font-bold text-xs outline-none focus:ring-2 focus:ring-slate-950 uppercase cursor-pointer"
                                   >
                                     <option value="">-- Choose Product Dropdown --</option>
-                                    {catalogList.map((p) => (
-                                      <option key={p._id} value={p._id}>
+                                    {allCatalogProducts.map((p) => (
+                                      <option key={p._id || p.id} value={p._id || p.id}>
                                         {p.name} (Rs. {p.salePrice || p.price || 0})
                                       </option>
                                     ))}

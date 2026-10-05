@@ -422,7 +422,7 @@ export const getProducts = async (req, res) => {
 
     const { page, limit, skip } = getPagination(req, {
       defaultLimit: 24,
-      maxLimit: 100,
+      maxLimit: 1000,
     });
 
     const sortMap = {
@@ -1277,7 +1277,7 @@ export const getModerationProducts = async (req, res) => {
     } = req.query;
     const { page, limit, skip } = getPagination(req, {
       defaultLimit: 25,
-      maxLimit: 100,
+      maxLimit: 1000,
     });
 
     const baseQuery = {};
