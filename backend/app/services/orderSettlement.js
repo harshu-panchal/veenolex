@@ -1,5 +1,6 @@
 import Transaction from "../models/transaction.js";
 import {
+  getCodCashDue,
   handleCodOrderFinance,
   settleDeliveredOrder,
 } from "./finance/orderFinanceService.js";
@@ -60,7 +61,7 @@ export async function applyDeliveredSettlement(order, orderIdString) {
             userModel: "Delivery",
             order: settled._id,
             type: "Cash Collection",
-            amount: settled.paymentBreakdown?.grandTotal || settled.pricing?.total || 0,
+            amount: getCodCashDue(settled),
             status: "Settled",
             reference: `CASH-COL-${orderIdString}`,
           },

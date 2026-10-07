@@ -46,6 +46,7 @@ jest.unstable_mockModule("../app/models/paymentWebhookEvent.js", () => ({
 
 jest.unstable_mockModule("../app/services/finance/orderFinanceService.js", () => ({
   handleOnlineOrderFinance: mockHandleOnlineOrderFinance,
+  handleCodAdvanceFinance: jest.fn(),
 }));
 
 jest.unstable_mockModule("../app/services/orderWorkflowService.js", () => ({

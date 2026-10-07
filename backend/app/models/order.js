@@ -4,6 +4,8 @@ import {
   ALL_ORDER_PAYMENT_STATUSES,
   ALL_ORDER_SETTLEMENT_STATUSES,
   ALL_PAYMENT_MODES,
+  ALL_COD_ADVANCE_STATUSES,
+  COD_ADVANCE_STATUS,
   CURRENCY,
 } from "../constants/finance.js";
 
@@ -260,6 +262,9 @@ const orderSchema = new mongoose.Schema(
       codCollectedAmount: { type: Number, default: 0 },
       codRemittedAmount: { type: Number, default: 0 },
       codPendingAmount: { type: Number, default: 0 },
+      // COD advance paid online at checkout, and the cash still due on delivery.
+      codAdvanceAmount: { type: Number, default: 0 },
+      codBalanceDue: { type: Number, default: 0 },
       walletAmount: { type: Number, default: 0 },
       distanceKmActual: { type: Number, default: 0 },
       distanceKmRounded: { type: Number, default: 0 },
@@ -301,6 +306,34 @@ const orderSchema = new mongoose.Schema(
       // dataset, gate the v2 call with `paymentBreakdown.grandTotal != null`
       // (already enforced) and an operational backfill.
       cancellationReversalApplied: { type: Boolean, default: false },
+      codAdvanceCaptured: { type: Boolean, default: false },
+    },
+    // COD advance: part of a COD order paid online before the seller sees it.
+    // On cancellation the fulfiller (seller, or admin for warehouse orders)
+    // decides whether to refund it to the payment source or retain it.
+    codAdvance: {
+      amount: { type: Number, default: 0 },
+      status: {
+        type: String,
+        enum: ALL_COD_ADVANCE_STATUSES,
+        default: COD_ADVANCE_STATUS.NONE,
+        index: true,
+      },
+      payment: { type: mongoose.Schema.Types.ObjectId, ref: "Payment", default: null },
+      gatewayPaymentId: { type: String, default: null },
+      paidAt: { type: Date, default: null },
+      decisionBy: { type: String, enum: ["SELLER", "ADMIN", null], default: null },
+      decisionRequestedAt: { type: Date, default: null },
+      decisionDeadline: { type: Date, default: null, index: true },
+      decision: { type: String, enum: ["REFUND", "KEEP", null], default: null },
+      decidedAt: { type: Date, default: null },
+      decidedByRole: { type: String, default: null },
+      decidedById: { type: mongoose.Schema.Types.ObjectId, default: null },
+      decisionNote: { type: String, default: "" },
+      refundId: { type: String, default: null },
+      refundStatus: { type: String, default: null },
+      refundedAt: { type: Date, default: null },
+      refundFailureReason: { type: String, default: null },
     },
     // Audit Phase 5 (C-2 + C-4 + H-2 + H-6 + H-7): canonical coupon
     // reference + frozen rule snapshot persisted at place-order so the

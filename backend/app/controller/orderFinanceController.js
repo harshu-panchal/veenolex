@@ -49,6 +49,7 @@ export const previewCheckoutFinance = async (req, res) => {
       couponCode: payload.couponCode || null,
       couponId: payload.couponId || null,
       customerId: req.user?.id || null,
+      paymentMode: payload.paymentMode,
     });
 
     // Customers get one arrival window for the whole cart; which seller or
@@ -83,6 +84,7 @@ export const previewCheckoutFinance = async (req, res) => {
       // SERVER_SIDE_COUPON_ENGINE is off.
       couponSnapshot: pricingSnapshot.couponSnapshot || null,
       freeDeliveryApplied: !!pricingSnapshot.freeDeliveryApplied,
+      codAdvance: pricingSnapshot.codAdvance,
       ...(distanceDebug ? { distanceDebug } : {}),
     });
   } catch (error) {

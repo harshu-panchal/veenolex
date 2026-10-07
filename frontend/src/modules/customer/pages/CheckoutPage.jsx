@@ -163,6 +163,8 @@ const CheckoutPage = () => {
   const [orderId, setOrderId] = useState(null);
   const [pricingPreview, setPricingPreview] = useState(null);
   const [deliveryEstimate, setDeliveryEstimate] = useState(null);
+  // COD advance for this cart (from the preview): { enabled, amount, scope, orderCount }
+  const [codAdvancePreview, setCodAdvancePreview] = useState(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [showOutOfZoneConfirm, setShowOutOfZoneConfirm] = useState(false);
   const [outOfZoneShippingCost, setOutOfZoneShippingCost] = useState(0);
@@ -226,6 +228,8 @@ const CheckoutPage = () => {
     }
   }, [cart.length === 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const codAdvanceAmount = codAdvancePreview?.enabled ? Number(codAdvancePreview.amount || 0) : 0;
+
   const paymentMethods = [
     ...(settings?.onlineEnabled === false
       ? []
@@ -244,7 +248,9 @@ const CheckoutPage = () => {
           id: "cash",
           label: "Cash on Delivery",
           icon: Banknote,
-          sublabel: "Pay after delivery",
+          sublabel: codAdvanceAmount > 0
+            ? `Pay ₹${codAdvanceAmount} advance now, rest on delivery`
+            : "Pay after delivery",
         },
       ]),
   ];
@@ -320,6 +326,18 @@ const CheckoutPage = () => {
 
   const estimatedGrandTotal = pricingPreview?.grandTotal ?? Math.max(0, cartTotal + selectedTip - discountAmount);
   const finalAmountToPay = Math.max(0, estimatedGrandTotal - walletAmountToUse);
+  // COD with an advance: pay the advance online now, the rest in cash.
+  const codAdvanceNow =
+    selectedPayment === "cash" && codAdvanceAmount > 0
+      ? Math.min(codAdvanceAmount, finalAmountToPay)
+      : 0;
+  const slideAmount = codAdvanceNow > 0 ? codAdvanceNow : finalAmountToPay;
+  const slideText =
+    codAdvanceNow > 0
+      ? "SLIDE TO PAY ADVANCE"
+      : finalAmountToPay === 0
+        ? "SLIDE TO PLACE FREE ORDER"
+        : "SLIDE TO PAY";
 
   const buildAddressForOrder = () => {
     if (savedRecipient) {
@@ -851,6 +869,7 @@ const CheckoutPage = () => {
         if (res.data?.success) {
           setPricingPreview(res.data.result?.breakdown ?? null);
           setDeliveryEstimate(res.data.result?.deliveryEstimate ?? null);
+          setCodAdvancePreview(res.data.result?.codAdvance ?? null);
         }
       } catch (error) {
         console.error("Checkout preview failed", error);
@@ -971,7 +990,14 @@ const CheckoutPage = () => {
           return;
         }
 
-        if (selectedPayment === "online") {
+        const placedOrders = Array.isArray(result.orders) && result.orders.length
+          ? result.orders
+          : [mainOrder].filter(Boolean);
+        const isAdvancePayment =
+          selectedPayment !== "online" &&
+          placedOrders.some((order) => order?.codAdvance?.status === "PENDING");
+
+        if (selectedPayment === "online" || isAdvancePayment) {
           try {
             const isScriptLoaded = await loadRazorpayScript();
             if (!isScriptLoaded) {
@@ -995,7 +1021,9 @@ const CheckoutPage = () => {
                 amount: gatewayDetails.amount,
                 currency: gatewayDetails.currency || "INR",
                 name: "Veenolex",
-                description: `Order Payment: ${mainOrderId}`,
+                description: isAdvancePayment
+                  ? `COD advance: ${mainOrderId}`
+                  : `Order Payment: ${mainOrderId}`,
                 order_id: gatewayDetails.id,
                 handler: async function (response) {
                   try {
@@ -1007,7 +1035,12 @@ const CheckoutPage = () => {
                     });
                     if (verifyRes.data.success) {
                       clearCart();
-                      showToast("Payment verified successfully!", "success");
+                      showToast(
+                        isAdvancePayment
+                          ? "Advance paid — pay the rest in cash on delivery."
+                          : "Payment verified successfully!",
+                        "success"
+                      );
                       setOrderId(mainOrderId);
                       setShowSuccess(true);
 
@@ -1033,7 +1066,12 @@ const CheckoutPage = () => {
                 modal: {
                   ondismiss: function () {
                     setIsPlacingOrder(false);
-                    showToast("Payment cancelled. You can retry from order details.", "warning");
+                    showToast(
+                      isAdvancePayment
+                        ? "Advance not paid. Pay it from order details soon, or the order is cancelled."
+                        : "Payment cancelled. You can retry from order details.",
+                      "warning"
+                    );
                     navigate(`/orders/${mainOrderId}`);
                   }
                 },
@@ -1384,6 +1422,7 @@ const CheckoutPage = () => {
               tipAmounts={tipAmounts}
               walletAmountToUse={walletAmountToUse}
               finalAmountToPay={finalAmountToPay}
+              codAdvanceNow={codAdvanceNow}
               cartTotal={cartTotal}
               selectedCoupon={selectedCoupon}
               discountAmount={discountAmount}
@@ -1404,10 +1443,10 @@ const CheckoutPage = () => {
             <div className="hidden lg:block mt-6">
               <SlideToPay 
                 onSuccess={handlePrePlaceOrderCheck}
-                amount={finalAmountToPay}
+                amount={slideAmount}
                 isLoading={isPlacingOrder}
                 disabled={isPlacingOrder || hasOutOfStockItems}
-                text={finalAmountToPay === 0 ? "SLIDE TO PLACE FREE ORDER" : "SLIDE TO PAY"}
+                text={slideText}
               />
               <p className="text-center text-[10px] text-slate-400 font-bold mt-4 uppercase tracking-[0.1em]">
                 🔒 SSL encrypted secure checkout
@@ -1422,10 +1461,10 @@ const CheckoutPage = () => {
         <div className="max-w-4xl mx-auto">
           <SlideToPay 
             onSuccess={handlePrePlaceOrderCheck}
-            amount={finalAmountToPay}
+            amount={slideAmount}
             isLoading={isPlacingOrder}
             disabled={isPlacingOrder || hasOutOfStockItems}
-            text={finalAmountToPay === 0 ? "SLIDE TO PLACE FREE ORDER" : "SLIDE TO PAY"}
+            text={slideText}
           />
         </div>
       </div>

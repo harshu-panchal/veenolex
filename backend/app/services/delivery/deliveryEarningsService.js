@@ -34,6 +34,7 @@ import Wallet from "../../models/wallet.js";
 import { roundCurrency } from "../../utils/money.js";
 import { APP_TIMEZONE, startOfZonedDay, zonedDateKey, zonedWeekday } from "../../utils/timezone.js";
 import { buildKey, getOrSet, getTTL } from "../cacheService.js";
+import { getCodCashDue } from "../finance/orderFinanceService.js";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -590,7 +591,7 @@ async function computeDeliveryCodCashSummary(deliveryBoyId) {
     orderStatus: { $ne: "cancelled" },
   })
     .select(
-      "orderId status orderStatus deliveredAt createdAt financeFlags paymentBreakdown pricing",
+      "orderId status orderStatus deliveredAt createdAt financeFlags paymentBreakdown pricing codAdvance",
     )
     .sort({ createdAt: -1 })
     .limit(200)
@@ -600,9 +601,8 @@ async function computeDeliveryCodCashSummary(deliveryBoyId) {
     const codMarkedCollected = Boolean(
       order.financeFlags?.codMarkedCollected,
     );
-    const gross = roundCurrency(
-      order.paymentBreakdown?.grandTotal ?? order.pricing?.total ?? 0,
-    );
+    // Cash actually collected: the total minus any COD advance paid online.
+    const gross = getCodCashDue(order);
     const riderCommission = roundCurrency(
       order.paymentBreakdown?.riderPayoutTotal ?? 0,
     );

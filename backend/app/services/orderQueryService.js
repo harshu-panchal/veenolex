@@ -49,6 +49,11 @@ export function sanitizeOrderForCustomer(order) {
     clean.seller = null;
   }
   clean.deliveryEta = toCustomerEta(order.deliveryEta);
+  // Who decided on the advance (and their note) stays internal.
+  if (order.codAdvance && typeof order.codAdvance === "object") {
+    const { amount, status, paidAt, decision, refundStatus, refundedAt } = order.codAdvance;
+    clean.codAdvance = { amount, status, paidAt, decision, refundStatus, refundedAt };
+  }
   return clean;
 }
 
@@ -731,7 +736,7 @@ export async function getCustomerOrders(customerId, pagination) {
       const [orders, total] = await Promise.all([
         Order.find({ customer: customerId })
           .select(
-            "orderId checkoutGroupId customer items address payment pricing status workflowStatus workflowVersion returnStatus timeSlot deliveryEta deliveredAt createdAt",
+            "orderId checkoutGroupId customer items address payment paymentMode paymentStatus codAdvance pricing status workflowStatus workflowVersion returnStatus timeSlot deliveryEta deliveredAt createdAt",
           )
           .sort({ createdAt: -1, _id: -1 })
           .skip(skip)

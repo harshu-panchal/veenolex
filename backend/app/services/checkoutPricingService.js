@@ -2,6 +2,7 @@ import Seller from "../models/seller.js";
 import Category from "../models/category.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import {
+  COD_ADVANCE_SCOPE,
   HANDLING_FEE_STRATEGY,
   isWalletRedemptionReducesPayableEnabled,
   isServerSideCouponEngineEnabled,
@@ -136,6 +137,8 @@ function buildAggregateBreakdown(sellerBreakdowns = []) {
     codCollectedAmount: sumField(sellerBreakdowns, "codCollectedAmount"),
     codRemittedAmount: sumField(sellerBreakdowns, "codRemittedAmount"),
     codPendingAmount: sumField(sellerBreakdowns, "codPendingAmount"),
+    codAdvanceAmount: sumField(sellerBreakdowns, "codAdvanceAmount"),
+    codBalanceDue: sumField(sellerBreakdowns, "codBalanceDue"),
     distanceKmActual: sumField(sellerBreakdowns, "distanceKmActual"),
     distanceKmRounded: sumField(sellerBreakdowns, "distanceKmRounded"),
     snapshots: {
@@ -390,6 +393,53 @@ function applyWalletAllocationToSellerBreakdowns(
   });
 }
 
+/**
+ * COD advance the customer pays online at checkout, as configured in admin
+ * Fees & Charges. PER_ORDER charges the amount on every seller/warehouse
+ * order; PER_CHECKOUT charges it once and splits it across the orders by
+ * their totals (last order takes the rounding remainder). Never more than
+ * an order's own total.
+ */
+export function computeCodAdvanceAllocation(grandTotals = [], financeSettings = {}) {
+  const amount = round2(financeSettings?.codAdvanceAmount || 0);
+  if (!financeSettings?.codAdvanceEnabled || amount <= 0 || grandTotals.length === 0) {
+    return grandTotals.map(() => 0);
+  }
+
+  const totals = grandTotals.map((value) => Math.max(round2(value), 0));
+  if (financeSettings.codAdvanceScope === COD_ADVANCE_SCOPE.PER_ORDER) {
+    return totals.map((total) => Math.min(amount, total));
+  }
+
+  const totalBase = round2(totals.reduce((sum, total) => sum + total, 0));
+  const capped = Math.min(amount, totalBase);
+  if (capped <= 0) return totals.map(() => 0);
+
+  let allocatedSoFar = 0;
+  return totals.map((total, index) => {
+    let allocation =
+      index === totals.length - 1
+        ? round2(capped - allocatedSoFar)
+        : round2((total / totalBase) * capped);
+    allocation = Math.max(0, Math.min(allocation, total));
+    allocatedSoFar = round2(allocatedSoFar + allocation);
+    return allocation;
+  });
+}
+
+function applyCodAdvanceToSellerBreakdowns(sellerBreakdownEntries = [], financeSettings = {}) {
+  const allocations = computeCodAdvanceAllocation(
+    sellerBreakdownEntries.map((entry) => Number(entry?.breakdown?.grandTotal || 0)),
+    financeSettings,
+  );
+  sellerBreakdownEntries.forEach((entry, index) => {
+    const breakdown = entry?.breakdown;
+    if (!breakdown) return;
+    breakdown.codAdvanceAmount = allocations[index];
+    breakdown.codBalanceDue = round2(Number(breakdown.grandTotal || 0) - allocations[index]);
+  });
+}
+
 export async function buildCheckoutPricingSnapshot({
   orderItems = [],
   address = {},
@@ -414,6 +464,9 @@ export async function buildCheckoutPricingSnapshot({
   couponCode = null,
   couponId = null,
   customerId = null,
+  // "COD" adds the COD advance split (codAdvanceAmount / codBalanceDue)
+  // to every breakdown.
+  paymentMode = null,
   session = null,
 }) {
   const hydratedItems = await hydrateOrderItems(orderItems, {
@@ -558,6 +611,18 @@ export async function buildCheckoutPricingSnapshot({
     breakdown.payableAmount = round2(Number(breakdown.grandTotal || 0));
   }
 
+  // What the COD advance would be for this cart, so checkout can show it on
+  // the Cash on Delivery option whichever method is currently selected.
+  const codAdvanceTotal = round2(
+    computeCodAdvanceAllocation(
+      sellerBreakdownEntries.map((entry) => Number(entry?.breakdown?.grandTotal || 0)),
+      financeSettings,
+    ).reduce((sum, value) => sum + value, 0),
+  );
+  if (String(paymentMode || "").toUpperCase() === "COD") {
+    applyCodAdvanceToSellerBreakdowns(sellerBreakdownEntries, financeSettings);
+  }
+
   const aggregateBreakdown = buildAggregateBreakdown(
     sellerBreakdownEntries.map((entry) => entry.breakdown),
   );
@@ -576,6 +641,13 @@ export async function buildCheckoutPricingSnapshot({
     couponSnapshot: resolvedCouponSnapshot,
     coupon: resolvedCoupon,
     freeDeliveryApplied: applyFreeDelivery,
+    codAdvance: {
+      enabled: codAdvanceTotal > 0,
+      amount: codAdvanceTotal,
+      scope: financeSettings?.codAdvanceScope || COD_ADVANCE_SCOPE.PER_CHECKOUT,
+      perOrderAmount: round2(financeSettings?.codAdvanceAmount || 0),
+      orderCount: sellerBreakdownEntries.length,
+    },
   };
 }
 
