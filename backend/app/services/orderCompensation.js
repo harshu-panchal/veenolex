@@ -4,6 +4,7 @@ import CheckoutGroup from "../models/checkoutGroup.js";
 import { releaseReservedStockForOrder } from "./stockService.js";
 import { clearOrderTracking } from "./firebaseService.js";
 import { reverseOrderFinanceOnCancellation } from "./finance/orderFinanceService.js";
+import { requestCodAdvanceDecision } from "./codAdvanceService.js";
 import logger from "./logger.js";
 
 /**
@@ -85,6 +86,20 @@ export async function compensateOrderCancellation(order, orderIdString, opts = {
         scope: "compensateOrderCancellation",
         orderId: existing.orderId || orderIdString,
         error: financeError?.message,
+      });
+    }
+  }
+
+  // A paid COD advance is not refunded automatically: the seller (or admin
+  // for warehouse orders) is asked to refund or keep it.
+  if (existing?.financeFlags?.codAdvanceCaptured) {
+    try {
+      await requestCodAdvanceDecision(existing._id);
+    } catch (advanceError) {
+      logger.warn?.("compensateOrderCancellation COD advance decision request failed", {
+        scope: "compensateOrderCancellation",
+        orderId: existing.orderId || orderIdString,
+        error: advanceError?.message,
       });
     }
   }

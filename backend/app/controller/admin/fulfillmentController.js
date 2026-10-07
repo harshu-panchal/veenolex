@@ -54,7 +54,7 @@ const TAB_FILTERS = {
 };
 
 const LIST_FIELDS =
-  "orderId customer items address pricing paymentBreakdown.grandTotal paymentMode paymentStatus workflowStatus status fulfilledBy routedReason routingHistory sellerPendingExpiresAt sellerAcceptedAt deliveryBoy deliveryType shipRocketDetails deliverySearchExpiresAt adminReminderCount deliveryEta createdAt";
+  "orderId customer items address pricing paymentBreakdown.grandTotal paymentBreakdown.codBalanceDue codAdvance paymentMode paymentStatus workflowStatus status fulfilledBy routedReason routingHistory sellerPendingExpiresAt sellerAcceptedAt deliveryBoy deliveryType shipRocketDetails deliverySearchExpiresAt adminReminderCount deliveryEta createdAt";
 
 export const listFulfillmentOrders = async (req, res) => {
   try {

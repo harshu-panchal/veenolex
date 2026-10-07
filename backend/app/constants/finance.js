@@ -7,6 +7,9 @@ export const PAYMENT_MODE = {
 
 export const ORDER_PAYMENT_STATUS = {
   CREATED: "CREATED",
+  // COD order waiting for its online advance; becomes PENDING_CASH_COLLECTION
+  // once the advance is captured.
+  ADVANCE_PENDING: "ADVANCE_PENDING",
   PENDING_CASH_COLLECTION: "PENDING_CASH_COLLECTION",
   PAID: "PAID",
   CASH_COLLECTED: "CASH_COLLECTED",
@@ -77,6 +80,34 @@ export const LEDGER_TRANSACTION_TYPE = {
   // the `LedgerEntry` collection were both bypassed, leaving every
   // wallet-using customer in permanent drift between the two ledgers.
   WALLET_PAYMENT: "WALLET_PAYMENT",
+  // COD advance: captured online at checkout, refunded to the payment
+  // source or retained (seller/admin decision) when the order is cancelled.
+  ORDER_COD_ADVANCE_CAPTURED: "ORDER_COD_ADVANCE_CAPTURED",
+  COD_ADVANCE_REFUND: "COD_ADVANCE_REFUND",
+  COD_ADVANCE_RETAINED: "COD_ADVANCE_RETAINED",
+};
+
+// Order.codAdvance.status lifecycle.
+export const COD_ADVANCE_STATUS = {
+  NONE: "NONE",
+  PENDING: "PENDING",
+  PAID: "PAID",
+  FAILED: "FAILED",
+  DECISION_PENDING: "DECISION_PENDING",
+  REFUND_PENDING: "REFUND_PENDING",
+  REFUNDED: "REFUNDED",
+  REFUND_FAILED: "REFUND_FAILED",
+  RETAINED: "RETAINED",
+};
+
+export const COD_ADVANCE_SCOPE = {
+  PER_CHECKOUT: "PER_CHECKOUT",
+  PER_ORDER: "PER_ORDER",
+};
+
+export const PAYMENT_PURPOSE = {
+  ORDER_FULL: "ORDER_FULL",
+  COD_ADVANCE: "COD_ADVANCE",
 };
 
 export const PAYOUT_TYPE = {
@@ -139,6 +170,8 @@ export const FINANCE_AUDIT_ACTION = {
   PAYOUT_PROCESSED: "PAYOUT_PROCESSED",
   DELIVERY_SETTINGS_UPDATED: "DELIVERY_SETTINGS_UPDATED",
   FINANCE_ADJUSTMENT_APPLIED: "FINANCE_ADJUSTMENT_APPLIED",
+  COD_ADVANCE_CAPTURED: "COD_ADVANCE_CAPTURED",
+  COD_ADVANCE_DECIDED: "COD_ADVANCE_DECIDED",
 };
 
 // Audit Phase 4 (C-1 + H-5): when this flag is on, `grandTotal` is
@@ -187,4 +220,7 @@ export const ALL_COMMISSION_FIXED_RULES = Object.values(COMMISSION_FIXED_RULE);
 export const ALL_HANDLING_FEE_TYPES = Object.values(HANDLING_FEE_TYPE);
 export const ALL_HANDLING_FEE_STRATEGIES = Object.values(HANDLING_FEE_STRATEGY);
 export const ALL_DELIVERY_PRICING_MODES = Object.values(DELIVERY_PRICING_MODE);
+export const ALL_COD_ADVANCE_STATUSES = Object.values(COD_ADVANCE_STATUS);
+export const ALL_COD_ADVANCE_SCOPES = Object.values(COD_ADVANCE_SCOPE);
+export const ALL_PAYMENT_PURPOSES = Object.values(PAYMENT_PURPOSE);
 export const ALL_FINANCE_AUDIT_ACTIONS = Object.values(FINANCE_AUDIT_ACTION);

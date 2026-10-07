@@ -72,7 +72,13 @@ const checkoutGroupSchema = new mongoose.Schema(
         default: null,
       },
     },
+    codAdvance: {
+      amount: { type: Number, default: 0 },
+      scope: { type: String, default: null },
+    },
     pricingSummary: {
+      codAdvanceAmount: { type: Number, default: 0 },
+      codBalanceDue: { type: Number, default: 0 },
       currency: {
         type: String,
         default: CURRENCY,

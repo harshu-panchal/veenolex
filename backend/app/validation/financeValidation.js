@@ -110,6 +110,10 @@ export const updateDeliverySettingsSchema = Joi.object({
     .optional(),
   codEnabled: Joi.boolean().optional(),
   onlineEnabled: Joi.boolean().optional(),
+  codAdvanceEnabled: Joi.boolean().optional(),
+  codAdvanceAmount: Joi.number().min(0).optional(),
+  codAdvanceScope: Joi.string().valid("PER_CHECKOUT", "PER_ORDER").optional(),
+  codAdvanceDecisionHours: Joi.number().min(1).optional(),
 }).or(
   "deliveryPricingMode",
   "pricingMode",
@@ -124,4 +128,8 @@ export const updateDeliverySettingsSchema = Joi.object({
   "handlingFeeStrategy",
   "codEnabled",
   "onlineEnabled",
+  "codAdvanceEnabled",
+  "codAdvanceAmount",
+  "codAdvanceScope",
+  "codAdvanceDecisionHours",
 );

@@ -28,6 +28,14 @@
  *  mapStatusToInternal(gatewayState)
  *    → one of the PAYMENT_STATUS constants (CAPTURED | FAILED | PENDING)
  *
+ *  refund({ gatewayPaymentId, gatewayOrderId, amountPaise, reason })
+ *    → { refundId, status: "pending" | "processed" | "failed", amount, gatewayResponse }
+ *    Returns money to the customer's original payment source. Optional —
+ *    providers that cannot refund throw REFUND_NOT_SUPPORTED.
+ *
+ *  getRefundStatus({ refundId, gatewayPaymentId })
+ *    → { refundId, status: "pending" | "processed" | "failed", gatewayResponse }
+ *
  *  providerName
  *    → string (e.g. "phonepe"). Used for logging and DB labelling.
  */
@@ -55,6 +63,20 @@ export class PaymentProviderPort {
 
   mapStatusToInternal(_gatewayState) {
     throw new Error("mapStatusToInternal must be implemented");
+  }
+
+  async refund(_args) {
+    const err = new Error(`${this.providerName} does not support refunds through the app yet`);
+    err.code = "REFUND_NOT_SUPPORTED";
+    err.statusCode = 501;
+    throw err;
+  }
+
+  async getRefundStatus(_args) {
+    const err = new Error(`${this.providerName} does not support refund status checks yet`);
+    err.code = "REFUND_NOT_SUPPORTED";
+    err.statusCode = 501;
+    throw err;
   }
 }
 

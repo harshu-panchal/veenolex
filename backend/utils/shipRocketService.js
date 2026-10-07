@@ -299,6 +299,10 @@ export const createShipRocketOrder = async (order, user, userAddress, seller, it
     const [firstName, ...rest] = String(address.name || customer.name || "Customer").trim().split(/\s+/);
     const isCod = String(order.paymentMode || "").toUpperCase() === "COD";
     const subTotal = Number(order.paymentBreakdown?.grandTotal || order.pricing?.total || 0);
+    // For COD, sub_total is what the courier collects: only the balance
+    // left after any COD advance paid online.
+    const codAdvancePaid =
+      isCod && order.financeFlags?.codAdvanceCaptured ? Number(order.codAdvance?.amount || 0) : 0;
 
     const payload = {
       order_id: String(order.orderId || order._id),
@@ -322,7 +326,7 @@ export const createShipRocketOrder = async (order, user, userAddress, seller, it
       giftwrap_charges: 0,
       transaction_charges: 0,
       total_discount: 0,
-      sub_total: subTotal,
+      sub_total: Math.max(subTotal - codAdvancePaid, 0),
       length: 10,
       breadth: 10,
       height: 10,

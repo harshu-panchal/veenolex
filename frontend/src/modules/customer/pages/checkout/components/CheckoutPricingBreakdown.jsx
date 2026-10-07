@@ -13,6 +13,7 @@ import { motion } from "framer-motion";
  *   tipAmounts        – array of { value, label }
  *   walletAmountToUse – number
  *   finalAmountToPay  – number
+ *   codAdvanceNow     – number; COD advance paid online now (0 = none)
  *   cartTotal         – number (fallback when preview is loading)
  *   selectedCoupon    – coupon object or null
  *   discountAmount    – number
@@ -25,6 +26,7 @@ const CheckoutPricingBreakdown = React.memo(function CheckoutPricingBreakdown({
   tipAmounts,
   walletAmountToUse,
   finalAmountToPay,
+  codAdvanceNow = 0,
   cartTotal,
   selectedCoupon,
   discountAmount,
@@ -171,6 +173,20 @@ const CheckoutPricingBreakdown = React.memo(function CheckoutPricingBreakdown({
                 {isPreviewLoading ? "Calculating..." : `₹${Math.ceil(finalAmountToPay)}`}
               </span>
             </div>
+            {codAdvanceNow > 0 && !isPreviewLoading && (
+              <div className="mt-4 space-y-2 rounded-xl bg-amber-50 border border-amber-100 p-3">
+                <div className="flex justify-between items-center text-[13px]">
+                  <span className="font-black text-slate-800">Pay now (advance)</span>
+                  <span className="font-black text-slate-900">₹{codAdvanceNow}</span>
+                </div>
+                <div className="flex justify-between items-center text-[13px]">
+                  <span className="font-bold text-slate-600">Pay in cash on delivery</span>
+                  <span className="font-black text-slate-700">
+                    ₹{Math.max(0, Math.ceil(finalAmountToPay - codAdvanceNow))}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </motion.div>

@@ -309,3 +309,19 @@ export function onDeliveryOtpValidated(getToken, handler) {
     s.off("delivery:otp:validated", wrappedHandler);
   };
 }
+
+/** Seller/admin: a cancelled order's COD advance needs a refund-or-keep decision. */
+export function onCodAdvanceDecision(getToken, handler) {
+  const s = getOrderSocket(getToken);
+  if (!s || typeof handler !== "function") return () => {};
+  s.on("order:cod-advance:decision", handler);
+  return () => s.off("order:cod-advance:decision", handler);
+}
+
+/** Seller/admin: a COD advance decision was made (by anyone). */
+export function onCodAdvanceDecided(getToken, handler) {
+  const s = getOrderSocket(getToken);
+  if (!s || typeof handler !== "function") return () => {};
+  s.on("order:cod-advance:decided", handler);
+  return () => s.off("order:cod-advance:decided", handler);
+}

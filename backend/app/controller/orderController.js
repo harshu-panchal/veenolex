@@ -62,6 +62,7 @@ import logger from "../services/logger.js";
 import { validateBody as validateWithJoi } from "../middleware/validate.js";
 import OrderReturnService from "../services/order/orderReturnService.js";
 import { refreshOrderDeliveryEta } from "../services/deliveryEtaService.js";
+import { requestCodAdvanceDecision } from "../services/codAdvanceService.js";
 
 function normalizePaymentMode(value) {
   const raw = String(value || "").trim().toUpperCase();
@@ -537,6 +538,16 @@ export const updateOrderStatus = async (req, res) => {
     }
 
     await order.save();
+
+    if (status === "cancelled" && oldStatus !== "cancelled" && order.financeFlags?.codAdvanceCaptured) {
+      await requestCodAdvanceDecision(order._id).catch((advanceError) => {
+        logger.warn("updateOrderStatus COD advance decision request failed", {
+          scope: "updateOrderStatus",
+          orderId: canonicalOrderId,
+          error: advanceError.message,
+        });
+      });
+    }
 
     try {
       await invalidate(buildKey("orders", "customer", `${order.customer.toString()}:*`));

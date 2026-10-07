@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Order from "../../models/order.js";
 import {
+  COD_ADVANCE_STATUS,
   LEDGER_DIRECTION,
   LEDGER_TRANSACTION_TYPE,
   ORDER_PAYMENT_STATUS,
@@ -423,6 +424,184 @@ async function handleOnlineOrderFinanceOnce(
   }
 }
 
+/**
+ * Cash the rider collects for a COD order: the order total minus any COD
+ * advance the customer already paid online.
+ */
+export function getCodCashDue(order) {
+  const grandTotal = roundCurrency(order?.paymentBreakdown?.grandTotal || order?.pricing?.total || 0);
+  const advancePaid = order?.financeFlags?.codAdvanceCaptured
+    ? roundCurrency(order?.codAdvance?.amount || 0)
+    : 0;
+  return roundCurrency(Math.max(grandTotal - advancePaid, 0));
+}
+
+/**
+ * COD advance captured online: credit the admin wallet with the advance and
+ * mark the rest of the order as cash due on delivery.
+ */
+async function handleCodAdvanceFinanceOnce(
+  orderOrId,
+  { actorId = null, transactionId = "", metadata = {}, paymentId = null } = {},
+) {
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    const order = await findOrderForUpdate(orderOrId, session);
+
+    if (order.financeFlags?.codAdvanceCaptured) {
+      await session.commitTransaction();
+      return order;
+    }
+
+    const advance = roundCurrency(order.codAdvance?.amount || 0);
+    if (advance > 0) {
+      const credit = await creditWallet({
+        ownerType: OWNER_TYPE.ADMIN,
+        ownerId: null,
+        amount: advance,
+        bucket: "available",
+        session,
+      });
+      await createLedgerEntry(
+        {
+          orderId: order._id,
+          walletId: credit.wallet._id,
+          actorType: OWNER_TYPE.ADMIN,
+          actorId: null,
+          type: LEDGER_TRANSACTION_TYPE.ORDER_COD_ADVANCE_CAPTURED,
+          direction: LEDGER_DIRECTION.CREDIT,
+          amount: advance,
+          paymentMode: "COD",
+          metadata: { ...metadata, gatewayTransactionId: transactionId || undefined },
+          description: "COD advance captured from customer",
+          reference: order.orderId,
+          balanceBefore: credit.before,
+          balanceAfter: credit.after,
+        },
+        { session },
+      );
+    }
+
+    const grandTotal = roundCurrency(order.paymentBreakdown?.grandTotal || order.pricing?.total || 0);
+    order.set({
+      "codAdvance.status": COD_ADVANCE_STATUS.PAID,
+      "codAdvance.paidAt": new Date(),
+      "codAdvance.payment": paymentId || order.codAdvance?.payment || null,
+      "codAdvance.gatewayPaymentId": transactionId || order.codAdvance?.gatewayPaymentId || null,
+      "paymentBreakdown.codAdvanceAmount": advance,
+      "paymentBreakdown.codBalanceDue": roundCurrency(Math.max(grandTotal - advance, 0)),
+    });
+    order.financeFlags = {
+      ...(order.financeFlags || {}),
+      codAdvanceCaptured: true,
+    };
+    order.paymentStatus = ORDER_PAYMENT_STATUS.PENDING_CASH_COLLECTION;
+
+    await createFinanceAuditLog(
+      {
+        action: "COD_ADVANCE_CAPTURED",
+        actorType: OWNER_TYPE.ADMIN,
+        actorId: actorId || null,
+        orderId: order._id,
+        metadata: { amount: advance, gatewayTransactionId: transactionId || null },
+      },
+      { session },
+    );
+
+    await order.save({ session });
+    await session.commitTransaction();
+    return order;
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
+  }
+}
+
+/**
+ * Books the refund of a cancelled order's COD advance (the gateway refund
+ * itself is issued by paymentService.refundCodAdvanceToSource).
+ */
+async function recordCodAdvanceRefundOnce(
+  orderOrId,
+  { refundId = null, refundStatus = "pending", actorId = null, actorType = OWNER_TYPE.ADMIN } = {},
+) {
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    const order = await findOrderForUpdate(orderOrId, session);
+    const advance = roundCurrency(order.codAdvance?.amount || 0);
+
+    const processed = refundStatus === "processed";
+    const refundState = {
+      "codAdvance.status": processed ? COD_ADVANCE_STATUS.REFUNDED : COD_ADVANCE_STATUS.REFUND_PENDING,
+      "codAdvance.refundId": refundId,
+      "codAdvance.refundStatus": refundStatus,
+      "codAdvance.refundedAt": processed ? new Date() : null,
+      "codAdvance.refundFailureReason": null,
+    };
+
+    // Already booked by an earlier attempt (a retry after the gateway failed
+    // the first refund): only track the new gateway refund.
+    if (order.codAdvance?.refundId) {
+      order.set(refundState);
+      await order.save({ session });
+      await session.commitTransaction();
+      return order;
+    }
+
+    const debit = await debitWallet({
+      ownerType: OWNER_TYPE.ADMIN,
+      ownerId: null,
+      amount: advance,
+      bucket: "available",
+      session,
+    });
+    await createLedgerEntry(
+      {
+        orderId: order._id,
+        walletId: debit.wallet._id,
+        actorType: OWNER_TYPE.ADMIN,
+        actorId: null,
+        type: LEDGER_TRANSACTION_TYPE.COD_ADVANCE_REFUND,
+        direction: LEDGER_DIRECTION.DEBIT,
+        amount: advance,
+        paymentMode: "COD",
+        metadata: { refundId },
+        description: "COD advance refunded to customer's payment source",
+        reference: order.orderId,
+        balanceBefore: debit.before,
+        balanceAfter: debit.after,
+      },
+      { session },
+    );
+
+    order.set(refundState);
+
+    await createFinanceAuditLog(
+      {
+        action: "COD_ADVANCE_DECIDED",
+        actorType,
+        actorId: actorId || null,
+        orderId: order._id,
+        metadata: { decision: "REFUND", amount: advance, refundId },
+      },
+      { session },
+    );
+
+    await order.save({ session });
+    await session.commitTransaction();
+    return order;
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
+  }
+}
+
 async function handleCodOrderFinanceOnce(
   orderOrId,
   { amount = null, deliveryPartnerId = null, actorId = null } = {},
@@ -461,7 +640,7 @@ async function handleCodOrderFinanceOnce(
     }
 
     const codAmountGross = roundCurrency(
-      amount == null ? order.paymentBreakdown?.grandTotal || order.pricing?.total || 0 : amount,
+      amount == null ? getCodCashDue(order) : amount,
     );
     if (codAmountGross <= 0) {
       throw new Error("COD collection amount must be greater than 0");
@@ -926,6 +1105,14 @@ export async function settleDeliveredOrder(...args) {
 
 export async function reconcileCodCash(...args) {
   return withTransactionRetry(() => reconcileCodCashOnce(...args));
+}
+
+export async function handleCodAdvanceFinance(...args) {
+  return withTransactionRetry(() => handleCodAdvanceFinanceOnce(...args));
+}
+
+export async function recordCodAdvanceRefund(...args) {
+  return withTransactionRetry(() => recordCodAdvanceRefundOnce(...args));
 }
 
 export async function reverseOrderFinanceOnCancellation(...args) {

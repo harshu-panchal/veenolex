@@ -55,6 +55,10 @@ jest.unstable_mockModule("../app/services/orderSettlement.js", () => ({
   applyDeliveredSettlement: jest.fn(),
 }));
 
+jest.unstable_mockModule("../app/services/codAdvanceService.js", () => ({
+  requestCodAdvanceDecision: jest.fn(),
+}));
+
 jest.unstable_mockModule("../app/services/finance/orderFinanceService.js", () => ({
   freezeFinancialSnapshot: mockFreezeFinancialSnapshot,
   reverseOrderFinanceOnCancellation: jest.fn(),

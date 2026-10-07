@@ -526,11 +526,36 @@ const OrderDetailPage = () => {
   };
 
   const status = order ? getLegacyStatusFromOrder(order) : null;
-  const isAwaitingOnlinePayment =
+  const isAwaitingCodAdvance =
     Boolean(order) &&
-    order.paymentMode === "ONLINE" &&
-    order.paymentStatus !== "PAID" &&
+    order.paymentMode === "COD" &&
+    order.codAdvance?.status === "PENDING" &&
     status !== "cancelled";
+  const isAwaitingOnlinePayment =
+    (Boolean(order) &&
+      order.paymentMode === "ONLINE" &&
+      order.paymentStatus !== "PAID" &&
+      status !== "cancelled") ||
+    isAwaitingCodAdvance;
+  const codAdvanceAmount = Number(order?.codAdvance?.amount || 0);
+  const codAdvanceStatusText = (() => {
+    switch (order?.codAdvance?.status) {
+      case "PAID":
+        return `₹${codAdvanceAmount} advance paid · ₹${Math.max(0, Number(order?.pricing?.total || 0) - codAdvanceAmount)} to pay in cash on delivery`;
+      case "DECISION_PENDING":
+        return `Your ₹${codAdvanceAmount} advance refund is under review.`;
+      case "REFUND_PENDING":
+        return `₹${codAdvanceAmount} advance refund initiated to your original payment method. It usually arrives in 5–7 working days.`;
+      case "REFUNDED":
+        return `₹${codAdvanceAmount} advance refunded to your original payment method.`;
+      case "REFUND_FAILED":
+        return `Your ₹${codAdvanceAmount} advance refund is being retried. Contact support if it does not arrive.`;
+      case "RETAINED":
+        return `The ₹${codAdvanceAmount} advance for this cancelled order was not refunded.`;
+      default:
+        return null;
+    }
+  })();
   const sellerLocation = coordsToLatLng(order?.seller?.location?.coordinates);
   const routePhase = getTrackingRoutePhase(order);
   const routeMatchesPhase =
@@ -983,10 +1008,22 @@ const OrderDetailPage = () => {
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
-                  <h3 className="text-sm font-black text-brand-900 uppercase tracking-tight">Payment Required</h3>
+                  <h3 className="text-sm font-black text-brand-900 uppercase tracking-tight">
+                    {isAwaitingCodAdvance ? "Advance Required" : "Payment Required"}
+                  </h3>
                 </div>
                 <p className="text-xs text-brand-700 font-medium leading-relaxed">
-                  Complete your payment of <span className="font-bold">₹{order.pricing.total}</span> to proceed with this order.
+                  {isAwaitingCodAdvance ? (
+                    <>
+                      Pay the{" "}
+                      {Number(order.checkoutGroupSize || 1) > 1 ? "COD advance" : <span className="font-bold">₹{codAdvanceAmount} advance</span>}{" "}
+                      to confirm this Cash on Delivery order. The rest is paid in cash on delivery.
+                    </>
+                  ) : (
+                    <>
+                      Complete your payment of <span className="font-bold">₹{order.pricing.total}</span> to proceed with this order.
+                    </>
+                  )}
                 </p>
               </div>
               <button
@@ -997,6 +1034,12 @@ const OrderDetailPage = () => {
               </button>
             </div>
           </motion.div>
+        )}
+
+        {codAdvanceStatusText && (
+          <div className="bg-amber-50 rounded-2xl px-4 py-3 border border-amber-100 text-xs font-bold text-amber-900">
+            {codAdvanceStatusText}
+          </div>
         )}
 
         {/* Reschedule Button */}

@@ -481,7 +481,13 @@ const OrderDetails = () => {
     order?.walletAmount ??
     0;
 
-  const collectCashAmount = Math.max(0, totalBill - walletAmountUsed);
+  // COD advance the customer already paid online at checkout.
+  const codAdvancePaid =
+    order?.financeFlags?.codAdvanceCaptured || order?.codAdvance?.status === "PAID"
+      ? Number(order?.codAdvance?.amount || 0)
+      : 0;
+
+  const collectCashAmount = Math.max(0, totalBill - walletAmountUsed - codAdvancePaid);
 
   const isSellerRequest = order?.isSellerRequest || !!order?.requestNumber || order?.orderId?.startsWith("REQ-");
 

@@ -40,6 +40,9 @@ export const DEFAULT_SETTINGS = {
   handlingFeeStrategy: "highest_category_fee",
   codEnabled: true,
   onlineEnabled: true,
+  codAdvanceEnabled: true,
+  codAdvanceAmount: 50,
+  codAdvanceScope: "PER_CHECKOUT",
   lowStockAlertsEnabled: true,
   productApproval: {
     sellerCreateRequiresApproval: false,

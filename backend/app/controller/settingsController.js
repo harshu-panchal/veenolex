@@ -50,6 +50,10 @@ const ALLOWED_KEYS = [
   "handlingFeeStrategy",
   "codEnabled",
   "onlineEnabled",
+  "codAdvanceEnabled",
+  "codAdvanceAmount",
+  "codAdvanceScope",
+  "codAdvanceDecisionHours",
   "lowStockAlertsEnabled",
   "productApproval",
   "promoMessages",
@@ -128,6 +132,10 @@ const updateSettingsSchema = Joi.object({
   ),
   codEnabled: Joi.boolean(),
   onlineEnabled: Joi.boolean(),
+  codAdvanceEnabled: Joi.boolean(),
+  codAdvanceAmount: Joi.number().min(0),
+  codAdvanceScope: Joi.string().valid("PER_CHECKOUT", "PER_ORDER"),
+  codAdvanceDecisionHours: Joi.number().min(1),
   lowStockAlertsEnabled: Joi.boolean(),
   productApproval: Joi.object({
     sellerCreateRequiresApproval: Joi.boolean(),
@@ -153,7 +161,7 @@ export const getPublicSettings = async (req, res) => {
       async () => {
         const existing = await Setting.findOne(filter)
           .select(
-            "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor returnDeliveryCommission deliveryPricingMode pricingMode customerBaseDeliveryFee riderBasePayout baseDeliveryCharge baseDistanceCapacityKm incrementalKmSurcharge deliveryPartnerRatePerKm fleetCommissionRatePerKm fixedDeliveryFee handlingFeeStrategy codEnabled onlineEnabled lowStockAlertsEnabled productApproval promoMessages createdAt",
+            "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor returnDeliveryCommission deliveryPricingMode pricingMode customerBaseDeliveryFee riderBasePayout baseDeliveryCharge baseDistanceCapacityKm incrementalKmSurcharge deliveryPartnerRatePerKm fleetCommissionRatePerKm fixedDeliveryFee handlingFeeStrategy codEnabled onlineEnabled codAdvanceEnabled codAdvanceAmount codAdvanceScope codAdvanceDecisionHours lowStockAlertsEnabled productApproval promoMessages createdAt",
           )
           .lean();
         return existing || null;
