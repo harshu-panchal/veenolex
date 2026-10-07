@@ -384,6 +384,37 @@ function eventDefinition(eventType) {
           return `Order #${payload.orderId} needs to be fulfilled from the warehouse${why}.`;
         },
       };
+    case NOTIFICATION_EVENTS.COD_ADVANCE_DECISION_REQUIRED:
+      return {
+        multi: true,
+        definitions: [
+          {
+            role: NOTIFICATION_ROLES.SELLER,
+            recipientIds: (payload) => normalizeIdList(payload.sellerId),
+            title: () => "Refund the COD advance?",
+            body: (payload) =>
+              `Order #${payload.orderId} was cancelled. The customer paid ₹${payload.amount} in advance — choose Refund or Keep.`,
+          },
+          {
+            role: NOTIFICATION_ROLES.ADMIN,
+            recipientIds: (payload) => normalizeIdList(payload.adminIds),
+            title: () => "Refund the COD advance?",
+            body: (payload) =>
+              `Order #${payload.orderId} was cancelled. The customer paid ₹${payload.amount} in advance — choose Refund or Keep.`,
+          },
+        ],
+      };
+    case NOTIFICATION_EVENTS.COD_ADVANCE_OUTCOME:
+      return {
+        role: NOTIFICATION_ROLES.CUSTOMER,
+        recipientIds: (payload) => normalizeIdList(payload.userId || payload.customerId),
+        title: (payload) =>
+          payload.outcome === "REFUND" ? "Advance refund initiated" : "Advance not refunded",
+        body: (payload) =>
+          payload.outcome === "REFUND"
+            ? `₹${payload.amount} advance for order #${payload.orderId} is being refunded to your original payment method. It usually arrives in 5–7 working days.`
+            : `The ₹${payload.amount} advance for cancelled order #${payload.orderId} will not be refunded.`,
+      };
     case NOTIFICATION_EVENTS.LOW_STOCK_ALERT:
       return {
         role: NOTIFICATION_ROLES.SELLER,

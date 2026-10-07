@@ -53,6 +53,10 @@ import {
   allowRoles,
   requireApprovedSeller,
 } from "../middleware/authMiddleware.js";
+import {
+  getPendingCodAdvanceDecisions,
+  submitCodAdvanceDecision,
+} from "../controller/codAdvanceController.js";
 
 const router = express.Router();
 
@@ -93,6 +97,22 @@ router.post(
   verifyToken,
   allowRoles("delivery", "admin"),
   reconcileCodCashSubmission,
+);
+
+// COD advance on cancelled orders: seller/admin refund-or-keep decision
+router.get(
+  "/cod-advance/pending",
+  verifyToken,
+  allowRoles("admin", "seller"),
+  requireApprovedSeller,
+  getPendingCodAdvanceDecisions,
+);
+router.post(
+  "/:orderId/cod-advance/decision",
+  verifyToken,
+  allowRoles("admin", "seller"),
+  requireApprovedSeller,
+  submitCodAdvanceDecision,
 );
 
 // Customer routes

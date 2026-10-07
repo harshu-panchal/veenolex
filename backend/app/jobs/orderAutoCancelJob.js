@@ -7,6 +7,10 @@ import {
   processReturnPickupTimeoutJob,
 } from "../services/orderWorkflowService.js";
 import { compensateOrderCancellation } from "../services/orderCompensation.js";
+import {
+  autoRefundExpiredCodAdvanceDecisions,
+  syncPendingCodAdvanceRefunds,
+} from "../services/codAdvanceService.js";
 import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
 import { NOTIFICATION_EVENTS } from "../modules/notifications/notification.constants.js";
 import logger from "../services/logger.js";
@@ -26,6 +30,13 @@ const SELLER_TIMEOUT_STALE_AFTER_MS = parseInt(
   process.env.SELLER_TIMEOUT_STALE_AFTER_MS || `${6 * 60 * 60 * 1000}`,
   10,
 );
+
+// Gateway refund status is polled far less often than the job runs.
+const COD_ADVANCE_REFUND_SYNC_INTERVAL_MS = parseInt(
+  process.env.COD_ADVANCE_REFUND_SYNC_INTERVAL_MS || `${5 * 60 * 1000}`,
+  10,
+);
+let lastCodAdvanceRefundSyncAt = 0;
 
 /**
  * Fallback when Bull/Redis is unavailable: reconciles expired seller-pending orders (v2)
@@ -106,10 +117,14 @@ const autoCancelExpiredOrders = async () => {
       }
     }
 
+    // Unpaid online orders, and COD orders whose advance was never paid.
     const paymentExpiredOrders = await Order.find({
       workflowVersion: { $gte: 2 },
       workflowStatus: WORKFLOW_STATUS.CREATED,
-      paymentMode: "ONLINE",
+      $or: [
+        { paymentMode: "ONLINE" },
+        { paymentMode: "COD", "codAdvance.status": "PENDING" },
+      ],
       paymentStatus: { $ne: "PAID" },
       "stockReservation.status": { $ne: "RELEASED" },
       "stockReservation.expiresAt": { $lte: now },
@@ -193,7 +208,30 @@ const autoCancelExpiredOrders = async () => {
       });
     }
 
+    let codAdvanceAutoRefunded = 0;
+    try {
+      codAdvanceAutoRefunded = await autoRefundExpiredCodAdvanceDecisions();
+    } catch (err) {
+      logger.error('COD advance auto-refund failed', {
+        jobName: 'orderAutoCancelJob',
+        error: err.message,
+      });
+    }
+
+    if (Date.now() - lastCodAdvanceRefundSyncAt >= COD_ADVANCE_REFUND_SYNC_INTERVAL_MS) {
+      lastCodAdvanceRefundSyncAt = Date.now();
+      try {
+        await syncPendingCodAdvanceRefunds();
+      } catch (err) {
+        logger.error('COD advance refund sync failed', {
+          jobName: 'orderAutoCancelJob',
+          error: err.message,
+        });
+      }
+    }
+
     const n =
+      codAdvanceAutoRefunded +
       v2Expired.length +
       v2DeliveryExpired.length +
       returnPickupExpired.length +

@@ -79,7 +79,12 @@ const DeliveryConfirmation = () => {
     return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   }
 
-  const orderAmount = order?.pricing?.total || 0;
+  // Cash due: total minus any COD advance the customer paid online.
+  const codAdvancePaid =
+    order?.financeFlags?.codAdvanceCaptured || order?.codAdvance?.status === "PAID"
+      ? Number(order?.codAdvance?.amount || 0)
+      : 0;
+  const orderAmount = Math.max(0, (order?.pricing?.total || 0) - codAdvancePaid);
   const isPrepaid = order?.payment?.method?.toLowerCase() !== 'cash' && order?.payment?.method?.toLowerCase() !== 'cod';
 
   if (isCompleted) {
@@ -145,6 +150,11 @@ const DeliveryConfirmation = () => {
                   className={`text-4xl font-extrabold ${isPrepaid ? "text-brand-600" : "text-orange-600"}`}>
                   {isPrepaid ? "PAID" : `₹${orderAmount}`}
                 </h2>
+                {!isPrepaid && codAdvancePaid > 0 && (
+                  <p className="text-xs font-bold text-gray-500 mt-1">
+                    ₹{codAdvancePaid} advance already paid online
+                  </p>
+                )}
               </div>
               <div
                 className={`p-3 rounded-full ${isPrepaid ? "bg-brand-100 text-brand-600" : "bg-orange-100 text-orange-600"}`}>

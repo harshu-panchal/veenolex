@@ -1,5 +1,6 @@
 import Setting from "../../models/setting.js";
 import {
+  COD_ADVANCE_SCOPE,
   DELIVERY_PRICING_MODE,
   HANDLING_FEE_STRATEGY,
 } from "../../constants/finance.js";
@@ -16,6 +17,10 @@ const DEFAULT_FINANCE_SETTINGS = {
   handlingFeeStrategy: HANDLING_FEE_STRATEGY.HIGHEST_CATEGORY_FEE,
   codEnabled: true,
   onlineEnabled: true,
+  codAdvanceEnabled: true,
+  codAdvanceAmount: 50,
+  codAdvanceScope: COD_ADVANCE_SCOPE.PER_CHECKOUT,
+  codAdvanceDecisionHours: 24,
 };
 
 /** Settings that carry two historical field names for the same value. */
@@ -60,6 +65,18 @@ export function normalizeFinanceSettings(raw = {}) {
   const handlingFeeStrategy =
     raw.handlingFeeStrategy || DEFAULT_FINANCE_SETTINGS.handlingFeeStrategy;
 
+  const codAdvanceAmount = roundCurrency(
+    Math.max(Number(raw.codAdvanceAmount ?? DEFAULT_FINANCE_SETTINGS.codAdvanceAmount) || 0, 0),
+  );
+  const codAdvanceScope = Object.values(COD_ADVANCE_SCOPE).includes(raw.codAdvanceScope)
+    ? raw.codAdvanceScope
+    : DEFAULT_FINANCE_SETTINGS.codAdvanceScope;
+  const codAdvanceDecisionHours = Math.max(
+    Number(raw.codAdvanceDecisionHours ?? DEFAULT_FINANCE_SETTINGS.codAdvanceDecisionHours) ||
+      DEFAULT_FINANCE_SETTINGS.codAdvanceDecisionHours,
+    1,
+  );
+
   const platformFee = roundCurrency(raw.platformFee ?? 0);
   const freeDeliveryThreshold = roundCurrency(raw.freeDeliveryThreshold ?? 0);
 
@@ -81,6 +98,10 @@ export function normalizeFinanceSettings(raw = {}) {
     freeDeliveryThreshold,
     codEnabled: raw.codEnabled ?? DEFAULT_FINANCE_SETTINGS.codEnabled,
     onlineEnabled: raw.onlineEnabled ?? DEFAULT_FINANCE_SETTINGS.onlineEnabled,
+    codAdvanceEnabled: raw.codAdvanceEnabled ?? DEFAULT_FINANCE_SETTINGS.codAdvanceEnabled,
+    codAdvanceAmount,
+    codAdvanceScope,
+    codAdvanceDecisionHours,
   };
 }
 

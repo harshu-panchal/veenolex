@@ -7,6 +7,7 @@ import Transaction from "../models/transaction.js";
 import Coupon from "../models/coupon.js";
 import { WORKFLOW_STATUS, DEFAULT_SELLER_TIMEOUT_MS } from "../constants/orderWorkflow.js";
 import {
+  COD_ADVANCE_STATUS,
   LEDGER_TRANSACTION_TYPE,
   ORDER_PAYMENT_STATUS,
   OWNER_TYPE,
@@ -221,8 +222,8 @@ async function consumeCartItems({
   await cart.save({ session });
 }
 
-function buildCheckoutGroupStatus(paymentMode) {
-  return paymentMode === "ONLINE" ? "PAYMENT_PENDING" : "CREATED";
+function buildCheckoutGroupStatus(requiresPrepayment) {
+  return requiresPrepayment ? "PAYMENT_PENDING" : "CREATED";
 }
 
 /**
@@ -287,9 +288,10 @@ async function seedCanonicalCustomerWalletFromUser({ customerId, user, session }
   return gap;
 }
 
-function buildCheckoutGroupPaymentStatus(paymentMode) {
-  return paymentMode === "ONLINE"
-    ? ORDER_PAYMENT_STATUS.CREATED
+function buildOrderPaymentStatus(paymentMode, hasCodAdvance) {
+  if (paymentMode === "ONLINE") return ORDER_PAYMENT_STATUS.CREATED;
+  return hasCodAdvance
+    ? ORDER_PAYMENT_STATUS.ADVANCE_PENDING
     : ORDER_PAYMENT_STATUS.PENDING_CASH_COLLECTION;
 }
 
@@ -425,20 +427,35 @@ export async function placeOrderAtomic({
       couponCode: normalizedPayload.couponCode || null,
       couponId: normalizedPayload.couponId || null,
       customerId,
+      paymentMode,
       session,
     });
 
+    // A COD order with an advance is paid online first (like ONLINE), and
+    // only reaches the seller once the advance is captured.
+    const codAdvanceTotal =
+      paymentMode === "COD"
+        ? Number(pricingSnapshot.aggregateBreakdown?.codAdvanceAmount || 0)
+        : 0;
+    const hasCodAdvance = codAdvanceTotal > 0;
+    const requiresPrepayment = paymentMode === "ONLINE" || hasCodAdvance;
+    // Stock helpers treat "ONLINE" as "hold the stock until payment".
+    const reservationMode = requiresPrepayment ? "ONLINE" : paymentMode;
+
     const checkoutGroupId = await generateUniqueCheckoutGroupId({ session });
-    const checkoutReservation = computeStockReservationWindow(paymentMode);
+    const checkoutReservation = computeStockReservationWindow(reservationMode);
     const checkoutGroup = new CheckoutGroup({
       checkoutGroupId,
       customer: customerId,
       paymentMode,
-      paymentStatus: buildCheckoutGroupPaymentStatus(paymentMode),
-      status: buildCheckoutGroupStatus(paymentMode),
+      paymentStatus: buildOrderPaymentStatus(paymentMode, hasCodAdvance),
+      status: buildCheckoutGroupStatus(requiresPrepayment),
       stockReservation: checkoutReservation,
       pricingSummary: pricingSnapshot.aggregateBreakdown,
       walletAmount,
+      codAdvance: hasCodAdvance
+        ? { amount: codAdvanceTotal, scope: pricingSnapshot.codAdvance?.scope || null }
+        : undefined,
       sellerCount: pricingSnapshot.sellerCount,
       itemCount: pricingSnapshot.itemCount,
       addressSnapshot: normalizedAddress,
@@ -457,7 +474,7 @@ export async function placeOrderAtomic({
     const orders = [];
     const pendingLowStockAlerts = [];
     const sellerTimeoutMs = DEFAULT_SELLER_TIMEOUT_MS();
-    const shouldStartSellerWorkflow = paymentMode === "COD";
+    const shouldStartSellerWorkflow = !requiresPrepayment;
     const hasAdminGroup = pricingSnapshot.sellerBreakdownEntries.some(
       (entry) => entry.sellerId === ADMIN_FULFILLER,
     );
@@ -470,7 +487,7 @@ export async function placeOrderAtomic({
       const isAdminFulfilled = entry.sellerId === ADMIN_FULFILLER;
       const orderSellerId = isAdminFulfilled ? null : entry.sellerId;
       const orderId = await generateUniquePublicOrderId({ session });
-      const orderReservation = computeStockReservationWindow(paymentMode);
+      const orderReservation = computeStockReservationWindow(reservationMode);
       const sellerPendingUntil = shouldStartSellerWorkflow
         ? new Date(Date.now() + (isAdminFulfilled ? adminTimeoutMs : sellerTimeoutMs))
         : null;
@@ -481,7 +498,7 @@ export async function placeOrderAtomic({
         sellerId: orderSellerId,
         orderId,
         session,
-        paymentMode,
+        paymentMode: reservationMode,
       });
       if (Array.isArray(sellerLowStockAlerts) && sellerLowStockAlerts.length > 0) {
         pendingLowStockAlerts.push(...sellerLowStockAlerts);
@@ -506,6 +523,10 @@ export async function placeOrderAtomic({
       // hard-coded zero. Only populated when SERVER_SIDE_COUPON_ENGINE
       // is on AND a coupon was validated — otherwise both fields stay
       // null so historical/off-flag orders are unaffected.
+      const orderCodAdvance = hasCodAdvance
+        ? Number(entry.breakdown?.codAdvanceAmount || 0)
+        : 0;
+
       const persistedCouponId = pricingSnapshot.couponSnapshot?.couponId || null;
       const persistedCouponSnapshot = pricingSnapshot.couponSnapshot || undefined;
 
@@ -527,10 +548,10 @@ export async function placeOrderAtomic({
         items: mapOrderItemsForPersistence(entry.items),
         address: normalizedAddress,
         paymentMode,
-        paymentStatus:
-          paymentMode === "ONLINE"
-            ? ORDER_PAYMENT_STATUS.CREATED
-            : ORDER_PAYMENT_STATUS.PENDING_CASH_COLLECTION,
+        paymentStatus: buildOrderPaymentStatus(paymentMode, orderCodAdvance > 0),
+        codAdvance: orderCodAdvance > 0
+          ? { amount: orderCodAdvance, status: COD_ADVANCE_STATUS.PENDING }
+          : { amount: 0, status: COD_ADVANCE_STATUS.NONE },
         payment: {
           method: paymentMode === "ONLINE" ? "online" : "cash",
           status: "pending",
@@ -768,7 +789,7 @@ export async function placeOrderAtomic({
         customerId,
         userId: customerId,
       });
-      if (order.seller) {
+      if (order.seller && shouldStartSellerWorkflow) {
         emitNotificationEvent(NOTIFICATION_EVENTS.NEW_ORDER, {
           orderId: order.orderId,
           checkoutGroupId,

@@ -5,13 +5,20 @@ import Order from "../models/order.js";
 import CheckoutGroup from "../models/checkoutGroup.js";
 import Payment from "../models/payment.js";
 import PaymentWebhookEvent from "../models/paymentWebhookEvent.js";
-import { ORDER_PAYMENT_STATUS } from "../constants/finance.js";
+import {
+  COD_ADVANCE_STATUS,
+  ORDER_PAYMENT_STATUS,
+  PAYMENT_PURPOSE,
+} from "../constants/finance.js";
 import {
   PAYMENT_EVENT_SOURCE,
   PAYMENT_STATUS,
   canTransitionPaymentStatus,
 } from "../constants/payment.js";
-import { handleOnlineOrderFinance } from "./finance/orderFinanceService.js";
+import {
+  handleCodAdvanceFinance,
+  handleOnlineOrderFinance,
+} from "./finance/orderFinanceService.js";
 import { DEFAULT_SELLER_TIMEOUT_MS, WORKFLOW_STATUS } from "../constants/orderWorkflow.js";
 import { afterPlaceOrderV2 } from "./orderWorkflowService.js";
 import {
@@ -155,6 +162,10 @@ async function resolvePaymentTarget(orderRef) {
   };
 }
 
+function isCodAdvancePending(order) {
+  return order?.paymentMode === "COD" && order?.codAdvance?.status === COD_ADVANCE_STATUS.PENDING;
+}
+
 function validatePaymentEligibility(target, userId) {
   if (!target?.orders?.length) {
     const err = new Error("Order not found");
@@ -168,8 +179,8 @@ function validatePaymentEligibility(target, userId) {
       err.statusCode = 403;
       throw err;
     }
-    if (order.paymentMode !== "ONLINE") {
-      const err = new Error("Payment is allowed only for ONLINE orders");
+    if (order.paymentMode !== "ONLINE" && !isCodAdvancePending(order)) {
+      const err = new Error("Payment is allowed only for ONLINE orders or a pending COD advance");
       err.statusCode = 400;
       throw err;
     }
@@ -197,9 +208,13 @@ function validatePaymentEligibility(target, userId) {
 }
 
 function getPayableAmountPaise(target) {
+  // COD orders only pay their advance online; the rest is cash on delivery.
   const amountRupees = target.orders.reduce(
     (sum, order) =>
-      sum + Number(order?.paymentBreakdown?.grandTotal ?? order?.pricing?.total ?? 0),
+      sum +
+      (order?.paymentMode === "COD"
+        ? Number(order?.codAdvance?.amount || 0)
+        : Number(order?.paymentBreakdown?.grandTotal ?? order?.pricing?.total ?? 0)),
     0,
   );
   if (!Number.isFinite(amountRupees) || amountRupees <= 0) {
@@ -287,7 +302,7 @@ async function moveOrderToSellerPendingAfterPayment(orderId) {
       _id: orderId,
       workflowVersion: { $gte: 2 },
       workflowStatus: WORKFLOW_STATUS.CREATED,
-      paymentMode: "ONLINE",
+      paymentMode: { $in: ["ONLINE", "COD"] },
     },
     {
       $set: {
@@ -326,8 +341,22 @@ async function getRelatedOrdersForPayment(payment) {
   return [];
 }
 
-async function updateCheckoutGroupPaymentStatus(checkoutGroupId, nextStatus) {
+async function updateCheckoutGroupPaymentStatus(checkoutGroupId, nextStatus, purpose) {
   if (!checkoutGroupId) return;
+  if (nextStatus === PAYMENT_STATUS.CAPTURED && purpose === PAYMENT_PURPOSE.COD_ADVANCE) {
+    // Advance paid: the rest is still cash on delivery.
+    await CheckoutGroup.updateOne(
+      { checkoutGroupId },
+      {
+        $set: {
+          status: "CREATED",
+          paymentStatus: ORDER_PAYMENT_STATUS.PENDING_CASH_COLLECTION,
+          "stockReservation.status": "COMMITTED",
+        },
+      },
+    );
+    return;
+  }
   if (nextStatus === PAYMENT_STATUS.CAPTURED) {
     await CheckoutGroup.updateOne(
       { checkoutGroupId },
@@ -373,15 +402,21 @@ async function handleOrderSideEffectsFromPaymentStatus(payment, nextStatus, reas
   if (!orders.length) return;
 
   if (nextStatus === PAYMENT_STATUS.CAPTURED) {
+    const isCodAdvance = payment.purpose === PAYMENT_PURPOSE.COD_ADVANCE;
     for (const order of orders) {
-      await handleOnlineOrderFinance(order._id, {
+      const financeArgs = {
         actorId: null,
         transactionId: payment.gatewayPaymentId || "",
         metadata: {
           paymentId: payment._id.toString(),
           checkoutGroupId: payment.checkoutGroupId || null,
         },
-      });
+      };
+      if (isCodAdvance) {
+        await handleCodAdvanceFinance(order._id, { ...financeArgs, paymentId: payment._id });
+      } else {
+        await handleOnlineOrderFinance(order._id, financeArgs);
+      }
       await moveOrderToSellerPendingAfterPayment(order._id);
       emitNotificationEvent(NOTIFICATION_EVENTS.PAYMENT_SUCCESS, {
         orderId: order.orderId,
@@ -396,7 +431,7 @@ async function handleOrderSideEffectsFromPaymentStatus(payment, nextStatus, reas
         sellerId: order.seller,
       });
     }
-    await updateCheckoutGroupPaymentStatus(payment.checkoutGroupId, nextStatus);
+    await updateCheckoutGroupPaymentStatus(payment.checkoutGroupId, nextStatus, payment.purpose);
     return;
   }
 
@@ -421,6 +456,9 @@ async function handleOrderSideEffectsFromPaymentStatus(payment, nextStatus, reas
           orderForUpdate.cancelledBy = "system";
           orderForUpdate.cancelReason = reason || "Payment failed";
           orderForUpdate.paymentStatus = ORDER_PAYMENT_STATUS.FAILED;
+          if (orderForUpdate.codAdvance?.status === COD_ADVANCE_STATUS.PENDING) {
+            orderForUpdate.codAdvance.status = COD_ADVANCE_STATUS.FAILED;
+          }
           await orderForUpdate.save({ session });
         }
       }
@@ -552,6 +590,9 @@ export async function createPaymentOrderForOrderRef({
     checkoutGroupId: target.checkoutGroupId || null,
     publicOrderId: target.publicOrderRef,
     customer: primaryOrder.customer,
+    purpose: target.orders.some(isCodAdvancePending)
+      ? PAYMENT_PURPOSE.COD_ADVANCE
+      : PAYMENT_PURPOSE.ORDER_FULL,
     gatewayName: provider.providerName,
     gatewayOrderId: provider.providerName === "RAZORPAY" && initResult.gatewayResponse?.id ? initResult.gatewayResponse.id : merchantOrderId,
     amount: amountPaise,
@@ -852,4 +893,109 @@ export async function verifyClientPaymentCallback(data) {
       correlationId: data.correlationId
     });
   }
+}
+
+async function findCodAdvancePayment(order) {
+  if (order?.codAdvance?.payment) {
+    const byId = await Payment.findById(order.codAdvance.payment);
+    if (byId) return byId;
+  }
+  return Payment.findOne({
+    purpose: PAYMENT_PURPOSE.COD_ADVANCE,
+    status: PAYMENT_STATUS.CAPTURED,
+    $or: [{ orderIds: order._id }, { order: order._id }],
+  }).sort({ capturedAt: -1 });
+}
+
+/**
+ * Refunds one order's COD advance to the customer's original payment
+ * source through the gateway. In a PER_CHECKOUT split several orders share
+ * one gateway payment, so each order refunds only its own share.
+ *
+ * Returns { refundId, status } where status is the gateway's
+ * "pending" | "processed" | "failed".
+ */
+export async function refundCodAdvanceToSource(order, { reason = "COD advance refund" } = {}) {
+  const amountRupees = Number(order?.codAdvance?.amount || 0);
+  if (amountRupees <= 0) {
+    const err = new Error("This order has no COD advance to refund");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const payment = await findCodAdvancePayment(order);
+  if (!payment) {
+    const err = new Error("Captured COD advance payment not found for this order");
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // A refund already issued for this order (e.g. the booking step failed
+  // after the gateway call): reuse it instead of refunding twice.
+  const existing = payment.refunds.find(
+    (row) => String(row.order) === String(order._id) && row.status !== "failed",
+  );
+  if (existing) {
+    return { refundId: existing.refundId, status: existing.status, payment };
+  }
+
+  const amountPaise = Math.round(amountRupees * 100);
+  const alreadyRefunded = Number(payment.refundedAmount || 0);
+  if (alreadyRefunded + amountPaise > Number(payment.amount || 0)) {
+    const err = new Error("Refund would exceed the amount captured for this payment");
+    err.statusCode = 409;
+    throw err;
+  }
+
+  const provider = getActivePaymentProvider();
+  const result = await provider.refund({
+    gatewayPaymentId: payment.gatewayPaymentId || null,
+    gatewayOrderId: payment.gatewayOrderId,
+    amountPaise,
+    reason,
+  });
+
+  if (result.gatewayPaymentId && !payment.gatewayPaymentId) {
+    payment.gatewayPaymentId = result.gatewayPaymentId;
+  }
+  payment.refundedAmount = alreadyRefunded + amountPaise;
+  payment.refunds.push({
+    order: order._id,
+    refundId: result.refundId,
+    amount: amountPaise,
+    status: result.status || "pending",
+    reason,
+  });
+  await payment.save();
+
+  logger.info("cod_advance_refund_initiated", {
+    orderId: order.orderId,
+    paymentId: payment._id.toString(),
+    refundId: result.refundId,
+    amountPaise,
+    status: result.status,
+  });
+
+  return { refundId: result.refundId, status: result.status || "pending", payment };
+}
+
+/** Current gateway status of a COD advance refund: "pending" | "processed" | "failed". */
+export async function getCodAdvanceRefundStatus(order) {
+  const refundId = order?.codAdvance?.refundId;
+  if (!refundId) return null;
+  const payment = await findCodAdvancePayment(order);
+  const provider = getActivePaymentProvider();
+  const result = await provider.getRefundStatus({
+    refundId,
+    gatewayPaymentId: payment?.gatewayPaymentId || null,
+  });
+  if (payment) {
+    const row = payment.refunds.find((item) => item.refundId === refundId);
+    if (row && row.status !== result.status) {
+      row.status = result.status;
+      row.updatedAt = new Date();
+      await payment.save();
+    }
+  }
+  return result.status;
 }

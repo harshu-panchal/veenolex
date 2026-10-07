@@ -14,6 +14,7 @@ import SellerOrdersContext from '@/modules/seller/context/SellerOrdersContext';
 import SellerEarningsContext, { defaultEarnings } from '@/modules/seller/context/SellerEarningsContext';
 import { getOrderSocket, onSellerOrderNew, onSellerOrderReassigned, onReturnDropOtp } from '@/core/services/orderSocket';
 import WarehouseOrderAlert from '@/modules/admin/components/WarehouseOrderAlert';
+import CodAdvanceDecisionAlert from '@shared/components/CodAdvanceDecisionAlert';
 import { createSocketTokenReader } from '@core/utils/authStorage';
 import { STORAGE_KEYS } from '@core/utils/storage';
 import orderAlertSound from '@/assets/sounds/order_alert.mp3';
@@ -681,6 +682,7 @@ const DashboardLayout = ({ children, navItems, title }) => {
             </AnimatePresence>
 
             {role === "admin" && <WarehouseOrderAlert />}
+            {(role === "admin" || role === "seller") && <CodAdvanceDecisionAlert role={role} />}
 
             {(role === "admin" || role === "seller") && <BottomNav navItems={navItems} />}
         </div>

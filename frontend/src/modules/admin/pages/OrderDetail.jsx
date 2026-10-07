@@ -477,6 +477,14 @@ const OrderDetail = () => {
                                     })()}
                                 </span>
                             </div>
+                            {Number(order.codAdvance?.amount || 0) > 0 && order.codAdvance?.status !== 'NONE' && (
+                                <div className="flex items-center justify-between px-2">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">COD Advance</span>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-900">
+                                        ₹{order.codAdvance.amount} · {String(order.codAdvance.status).replace(/_/g, ' ')}
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </Card>
 
