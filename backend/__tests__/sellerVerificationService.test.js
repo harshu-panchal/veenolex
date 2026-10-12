@@ -196,4 +196,66 @@ describe("sellerVerificationService", () => {
       }),
     ).toThrow("Verification does not match the provided details");
   });
+  describe("login OTP", () => {
+    const registeredSeller = () =>
+      mockSellerFindOne.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({ _id: "seller-1", email: "seller@example.com" }),
+        }),
+      });
+
+    it("emails a login code to a registered seller", async () => {
+      registeredSeller();
+      await issueSellerVerificationOtp({
+        channel: "email",
+        rawValue: "Seller@Example.com",
+        purpose: "login",
+      });
+
+      expect(mockSendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "seller@example.com",
+          subject: "Your seller login code",
+        }),
+      );
+      expect(otpSessions.get("seller_login:email:seller@example.com")).toBeTruthy();
+      expect(otpSessions.get("seller_signup:email:seller@example.com")).toBeUndefined();
+    });
+
+    it("refuses to send a login code to an unregistered email", async () => {
+      await expect(
+        issueSellerVerificationOtp({
+          channel: "email",
+          rawValue: "nobody@example.com",
+          purpose: "login",
+        }),
+      ).rejects.toThrow("No seller registered with this email address");
+      expect(mockSendMail).not.toHaveBeenCalled();
+    });
+
+    it("accepts a login code once and then rejects it", async () => {
+      registeredSeller();
+      await issueSellerVerificationOtp({
+        channel: "email",
+        rawValue: "seller@example.com",
+        purpose: "login",
+      });
+
+      await expect(
+        verifySellerOtpCode({ channel: "email", rawValue: "seller@example.com", otp: "1234", purpose: "login" }),
+      ).resolves.toEqual(expect.objectContaining({ verified: true }));
+
+      await expect(
+        verifySellerOtpCode({ channel: "email", rawValue: "seller@example.com", otp: "1234", purpose: "login" }),
+      ).rejects.toThrow("Invalid or expired OTP");
+    });
+
+    it("does not accept a signup code for login", async () => {
+      await issueSellerVerificationOtp({ channel: "email", rawValue: "seller@example.com" });
+
+      await expect(
+        verifySellerOtpCode({ channel: "email", rawValue: "seller@example.com", otp: "1234", purpose: "login" }),
+      ).rejects.toThrow("Invalid or expired OTP");
+    });
+  });
 });

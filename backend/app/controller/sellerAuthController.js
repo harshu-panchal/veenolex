@@ -430,6 +430,49 @@ export const setSellerNewPasswordAfterApproval = async (req, res) => {
 /* ===============================
    SELLER LOGIN
 ================================ */
+
+/**
+ * Blocks sellers whose application isn't approved or whose account is
+ * inactive. Returns the 403 response when blocked, otherwise null.
+ */
+const rejectUnapprovedSeller = (seller, res) => {
+    const applicationStatus =
+        seller.applicationStatus || (seller.isVerified ? "approved" : "pending");
+    const isApproved =
+        seller.isVerified === true &&
+        seller.isActive === true &&
+        applicationStatus === "approved";
+
+    if (isApproved) return null;
+
+    const approvalMessage =
+        applicationStatus === "rejected"
+            ? "Your seller application was rejected. Please contact support."
+            : seller.isActive === false
+            ? "Your seller account is currently inactive. Please contact support."
+            : "Your seller account is pending admin approval.";
+
+    return handleResponse(res, 403, approvalMessage, {
+        applicationStatus,
+        isVerified: seller.isVerified === true,
+        isActive: seller.isActive === true,
+        rejectionReason: seller.rejectionReason || "",
+    });
+};
+
+const completeSellerLogin = async (seller, res) => {
+    seller.lastLogin = new Date();
+    await seller.save();
+
+    const token = generateToken(seller);
+    if (seller.password !== undefined) seller.password = undefined;
+
+    return handleResponse(res, 200, "Login successful", {
+        token,
+        seller,
+    });
+};
+
 export const loginSeller = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -451,39 +494,75 @@ export const loginSeller = async (req, res) => {
             return handleResponse(res, 401, "Invalid credentials");
         }
 
-        const applicationStatus =
-            seller.applicationStatus || (seller.isVerified ? "approved" : "pending");
-        const isApproved =
-            seller.isVerified === true &&
-            seller.isActive === true &&
-            applicationStatus === "approved";
+        const blocked = rejectUnapprovedSeller(seller, res);
+        if (blocked) return blocked;
 
-        if (!isApproved) {
-            const approvalMessage =
-                applicationStatus === "rejected"
-                    ? "Your seller application was rejected. Please contact support."
-                    : seller.isActive === false
-                    ? "Your seller account is currently inactive. Please contact support."
-                    : "Your seller account is pending admin approval.";
-
-            return handleResponse(res, 403, approvalMessage, {
-                applicationStatus,
-                isVerified: seller.isVerified === true,
-                isActive: seller.isActive === true,
-                rejectionReason: seller.rejectionReason || "",
-            });
-        }
-
-        seller.lastLogin = new Date();
-        await seller.save();
-
-        const token = generateToken(seller);
-
-        return handleResponse(res, 200, "Login successful", {
-            token,
-            seller,
-        });
+        return completeSellerLogin(seller, res);
     } catch (error) {
         return handleResponse(res, 500, error.message);
+    }
+};
+
+/**
+ * Login with an emailed OTP, step 1: email a one-time code to a registered,
+ * approved seller.
+ */
+export const sendSellerLoginOtp = async (req, res) => {
+    try {
+        const email = String(req.body?.email || "").trim().toLowerCase();
+        if (!email) {
+            return handleResponse(res, 400, "Please enter your registered email address");
+        }
+
+        // Unapproved sellers can't log in, so don't send them a code.
+        const seller = await Seller.findOne({ email });
+        if (seller) {
+            const blocked = rejectUnapprovedSeller(seller, res);
+            if (blocked) return blocked;
+        }
+
+        const result = await issueSellerVerificationOtp({
+            channel: "email",
+            rawValue: email,
+            ipAddress: req.ip,
+            purpose: "login",
+        });
+
+        return handleResponse(res, 200, "OTP sent to your email", result);
+    } catch (error) {
+        return handleResponse(res, error.statusCode || 500, error.message);
+    }
+};
+
+/**
+ * Login with an emailed OTP, step 2: check the code and sign the seller in.
+ */
+export const verifySellerLoginOtp = async (req, res) => {
+    try {
+        const email = String(req.body?.email || "").trim().toLowerCase();
+        const { otp } = req.body || {};
+        if (!email || !otp) {
+            return handleResponse(res, 400, "Email and OTP are required");
+        }
+
+        await verifySellerOtpCode({
+            channel: "email",
+            rawValue: email,
+            otp,
+            ipAddress: req.ip,
+            purpose: "login",
+        });
+
+        const seller = await Seller.findOne({ email });
+        if (!seller) {
+            return handleResponse(res, 404, "Seller not found");
+        }
+
+        const blocked = rejectUnapprovedSeller(seller, res);
+        if (blocked) return blocked;
+
+        return completeSellerLogin(seller, res);
+    } catch (error) {
+        return handleResponse(res, error.statusCode || 500, error.message);
     }
 };

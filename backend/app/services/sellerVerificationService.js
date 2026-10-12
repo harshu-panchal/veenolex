@@ -155,6 +155,7 @@ function normalizePhone(value) {
 }
 
 const SELLER_FORGOT_PASSWORD_PURPOSE = "seller_forgot_password";
+const SELLER_LOGIN_PURPOSE = "seller_login";
 
 async function ensureSellerExists(channel, target) {
   const query = channel === "email" ? { email: target } : { phone: target };
@@ -172,9 +173,13 @@ async function ensureSellerExists(channel, target) {
 }
 
 function resolvePurpose(purpose) {
-  return purpose === "forgot_password" || purpose === "forgot-password" || purpose === SELLER_FORGOT_PASSWORD_PURPOSE
-    ? SELLER_FORGOT_PASSWORD_PURPOSE
-    : SELLER_SIGNUP_PURPOSE;
+  if (purpose === "forgot_password" || purpose === "forgot-password" || purpose === SELLER_FORGOT_PASSWORD_PURPOSE) {
+    return SELLER_FORGOT_PASSWORD_PURPOSE;
+  }
+  if (purpose === "login" || purpose === SELLER_LOGIN_PURPOSE) {
+    return SELLER_LOGIN_PURPOSE;
+  }
+  return SELLER_SIGNUP_PURPOSE;
 }
 
 function normalizeTarget(channel, rawValue) {
@@ -205,12 +210,13 @@ async function ensureTargetAvailable(channel, target) {
   }
 }
 
-async function dispatchEmailOtp({ email, otp }) {
+async function dispatchEmailOtp({ email, otp, purpose }) {
   try {
     await sendSellerVerificationOtpEmail({
       email,
       otp,
       expiresInMinutes: OTP_EXPIRY_MINUTES(),
+      purpose: purpose === SELLER_LOGIN_PURPOSE ? "login" : "signup",
     });
   } catch (error) {
     if (!error.statusCode) {
@@ -295,14 +301,14 @@ export async function issueSellerVerificationOtp({
   const target = normalizeTarget(normalizedChannel, rawValue);
   const resolvedPurpose = resolvePurpose(purpose);
 
-  if (resolvedPurpose === SELLER_FORGOT_PASSWORD_PURPOSE) {
+  if (resolvedPurpose === SELLER_FORGOT_PASSWORD_PURPOSE || resolvedPurpose === SELLER_LOGIN_PURPOSE) {
     await ensureSellerExists(normalizedChannel, target);
   } else {
     await ensureTargetAvailable(normalizedChannel, target);
   }
 
   const sendAllowed = await incrementWindowCounter(
-    `seller:otp:send:${normalizedChannel}:${target}`,
+    `seller:otp:send:${resolvedPurpose}:${normalizedChannel}:${target}`,
     {
       limit: OTP_SEND_LIMIT_PER_WINDOW(),
       windowSeconds: OTP_SEND_LIMIT_WINDOW_SECONDS(),
@@ -316,7 +322,7 @@ export async function issueSellerVerificationOtp({
 
   const now = new Date();
   let session = await OtpVerification.findOne({
-    purpose: SELLER_SIGNUP_PURPOSE,
+    purpose: resolvedPurpose,
     channel: normalizedChannel,
     target,
   }).select("+otpHash +expiresAt");
@@ -343,7 +349,7 @@ export async function issueSellerVerificationOtp({
 
   if (!session) {
     session = new OtpVerification({
-      purpose: SELLER_SIGNUP_PURPOSE,
+      purpose: resolvedPurpose,
       channel: normalizedChannel,
       target,
       otpHash: hashOtp(normalizedChannel, target, otp),
@@ -363,7 +369,7 @@ export async function issueSellerVerificationOtp({
   await session.save();
 
   if (normalizedChannel === "email") {
-    await dispatchEmailOtp({ email: target, otp });
+    await dispatchEmailOtp({ email: target, otp, purpose: resolvedPurpose });
   } else {
     await dispatchPhoneOtp({ phone: target, otp });
   }
@@ -372,7 +378,7 @@ export async function issueSellerVerificationOtp({
     JSON.stringify({
       level: "info",
       ts: new Date().toISOString(),
-      event: "seller_signup_otp_issued",
+      event: `${resolvedPurpose}_otp_issued`,
       channel: normalizedChannel,
       target: normalizedChannel === "email" ? maskEmail(target) : maskPhone(target),
       ipAddress,
@@ -415,7 +421,7 @@ export async function verifySellerOtpCode({
   }
 
   const verifyAllowed = await incrementWindowCounter(
-    `seller:otp:verify:${normalizedChannel}:${target}`,
+    `seller:otp:verify:${resolvedPurpose}:${normalizedChannel}:${target}`,
     {
       limit: OTP_VERIFY_LIMIT_PER_WINDOW(),
       windowSeconds: OTP_VERIFY_LIMIT_WINDOW_SECONDS(),
@@ -453,9 +459,14 @@ export async function verifySellerOtpCode({
     throw error;
   }
 
-  session.verifiedAt = new Date();
-  session.failedAttempts = 0;
-  await session.save();
+  if (resolvedPurpose === SELLER_LOGIN_PURPOSE) {
+    // A login code signs the seller in once; it cannot be reused.
+    await OtpVerification.deleteOne({ _id: session._id });
+  } else {
+    session.verifiedAt = new Date();
+    session.failedAttempts = 0;
+    await session.save();
+  }
 
   console.log(
     JSON.stringify({
