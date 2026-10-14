@@ -30,13 +30,12 @@ import {
  * POST /seller/pos/orders — Create a seller POS order.
  */
 export async function createSellerPOSOrder(req, res) {
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
     const sellerId = req.user.id;
     const { customerId, paymentMethod, paymentStatus, items } = req.body;
 
-    const order = await createPOSOrder({
+    // The service writes the bill and its stock deduction in one transaction.
+    const { order, stockUpdates } = await createPOSOrder({
       customerId: customerId || "walk-in-customer",
       paymentMethod: paymentMethod || "Cash",
       paymentStatus: paymentStatus || "Paid",
@@ -47,17 +46,13 @@ export async function createSellerPOSOrder(req, res) {
       createdById: req.user.id,
     });
 
-    await session.commitTransaction();
-    session.endSession();
-
     return res.status(201).json({
       success: true,
       message: "POS order created successfully",
       order,
+      stockUpdates,
     });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
     return res.status(error.statusCode || 400).json({
       success: false,
       message: error.message,
@@ -226,10 +221,11 @@ export async function createSellerPOSCustomer(req, res) {
 export async function getSellerPOSProducts(req, res) {
   try {
     const { search, limit } = req.query;
-    // Seller POS catalog is currently universal, but could be filtered by sellerId if needed.
+    // A seller POS sells only that seller's own products.
     const products = await getPOSProducts({
       search: search || "",
       limit: Number(limit) || 50,
+      sellerId: req.user.id,
     });
     return res.json({ success: true, products });
   } catch (error) {
