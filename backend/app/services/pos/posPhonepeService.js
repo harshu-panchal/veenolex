@@ -12,6 +12,7 @@ import Order from "../../models/order.js";
 import User from "../../models/customer.js";
 import CreditTransaction from "../../models/creditTransaction.js";
 import { getActivePaymentProvider } from "../payment/providerRegistry.js";
+import { deductPOSOrderStockOnce } from "./posOrderService.js";
 
 /**
  * Initiate PhonePe payment for a POS Order.
@@ -71,7 +72,11 @@ export async function verifyPOSPhonePePayment(publicOrderId) {
     };
     await order.save();
 
-    return { success: true, order };
+    // The bill's stock comes out of inventory now that it is paid (once).
+    const { stockUpdates, stockError } = await deductPOSOrderStockOnce(order._id);
+    const refreshed = await Order.findById(order._id);
+
+    return { success: true, order: refreshed || order, stockUpdates, stockError };
   } else if (mappedStatus === "FAILED" || mappedStatus === "CANCELLED") {
     order.paymentStatus = "FAILED";
     order.payment = {
@@ -80,8 +85,7 @@ export async function verifyPOSPhonePePayment(publicOrderId) {
     };
     await order.save();
 
-    // Note: Stock is NOT automatically restored for failed/cancelled cashiers
-    // unless manually requested or order deleted, matching Veenolex stock release logic.
+    // Stock is only deducted once paid, so a failed payment changes nothing.
     return { success: false, order };
   }
 

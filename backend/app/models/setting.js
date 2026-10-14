@@ -193,6 +193,28 @@ const settingSchema = new mongoose.Schema(
             type: Boolean,
             default: true,
         },
+        // COD advance: paid online at checkout, rest collected on delivery.
+        codAdvanceEnabled: {
+            type: Boolean,
+            default: true,
+        },
+        codAdvanceAmount: {
+            type: Number,
+            default: 50,
+            min: 0,
+        },
+        codAdvanceScope: {
+            type: String,
+            enum: ["PER_CHECKOUT", "PER_ORDER"],
+            default: "PER_CHECKOUT",
+        },
+        // Hours the seller/admin has to decide on a cancelled order's advance
+        // before it is refunded automatically.
+        codAdvanceDecisionHours: {
+            type: Number,
+            default: 24,
+            min: 1,
+        },
         onlineEnabled: {
             type: Boolean,
             default: true,

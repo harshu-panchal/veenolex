@@ -5,6 +5,20 @@ import {
   ALL_PAYMENT_STATUSES,
   PAYMENT_STATUS,
 } from "../constants/payment.js";
+import { ALL_PAYMENT_PURPOSES, PAYMENT_PURPOSE } from "../constants/finance.js";
+
+const paymentRefundSchema = new mongoose.Schema(
+  {
+    order: { type: mongoose.Schema.Types.ObjectId, ref: "Order", default: null },
+    refundId: { type: String, default: null },
+    amount: { type: Number, required: true, min: 0 },
+    status: { type: String, default: "pending" },
+    reason: { type: String, default: "" },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+  },
+  { _id: false },
+);
 
 const paymentStateChangeSchema = new mongoose.Schema(
   {
@@ -63,6 +77,13 @@ const paymentSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      index: true,
+    },
+    // ORDER_FULL pays the order total; COD_ADVANCE pays only the COD advance.
+    purpose: {
+      type: String,
+      enum: ALL_PAYMENT_PURPOSES,
+      default: PAYMENT_PURPOSE.ORDER_FULL,
       index: true,
     },
     gatewayName: {
@@ -132,6 +153,11 @@ const paymentSchema = new mongoose.Schema(
       type: Number,
       min: 0,
       default: 0,
+    },
+    // Partial gateway refunds (amount in paise), e.g. a COD advance refund.
+    refunds: {
+      type: [paymentRefundSchema],
+      default: [],
     },
     capturedAt: {
       type: Date,

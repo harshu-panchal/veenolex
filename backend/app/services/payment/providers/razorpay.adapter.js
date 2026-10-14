@@ -134,7 +134,42 @@ export class RazorpayAdapter extends PaymentProviderPort {
     }
   }
 
-  async refund({ gatewayPaymentId, amountPaise, reason }) {
+  /** The captured Razorpay payment id ("pay_...") for a Razorpay order. */
+  async getCapturedPaymentId({ gatewayOrderId }) {
+    if (!gatewayOrderId) return null;
+    try {
+      const response = await axios.get(
+        `https://api.razorpay.com/v1/orders/${gatewayOrderId}/payments`,
+        { headers: this._getAuthHeader(), timeout: 10000 },
+      );
+      const items = Array.isArray(response.data?.items) ? response.data.items : [];
+      return items.find((item) => item.status === "captured")?.id || null;
+    } catch (error) {
+      throw buildGatewayError(error, "Failed to look up the Razorpay payment");
+    }
+  }
+
+  async getRefundStatus({ refundId, gatewayPaymentId }) {
+    if (!refundId) throw new Error("refundId is required for Razorpay refund status");
+    const url = gatewayPaymentId
+      ? `https://api.razorpay.com/v1/payments/${gatewayPaymentId}/refunds/${refundId}`
+      : `https://api.razorpay.com/v1/refunds/${refundId}`;
+    try {
+      const response = await axios.get(url, { headers: this._getAuthHeader(), timeout: 10000 });
+      return {
+        refundId: response.data.id,
+        status: response.data.status, // "pending", "processed", "failed"
+        gatewayResponse: response.data,
+      };
+    } catch (error) {
+      throw buildGatewayError(error, "Failed to check Razorpay refund status");
+    }
+  }
+
+  async refund({ gatewayPaymentId, gatewayOrderId, amountPaise, reason }) {
+    if (!gatewayPaymentId) {
+      gatewayPaymentId = await this.getCapturedPaymentId({ gatewayOrderId });
+    }
     if (!gatewayPaymentId) {
       throw new Error("gatewayPaymentId is required for Razorpay refund");
     }
@@ -158,6 +193,7 @@ export class RazorpayAdapter extends PaymentProviderPort {
       const refundData = response.data;
       return {
         refundId: refundData.id,
+        gatewayPaymentId,
         status: refundData.status, // "pending", "processed", "failed"
         amount: refundData.amount,
         gatewayResponse: refundData,

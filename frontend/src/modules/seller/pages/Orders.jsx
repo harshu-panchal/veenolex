@@ -177,7 +177,9 @@ const Orders = () => {
                     : '',
                 location: order.address?.location || null,
                 payment: order.payment?.method === 'cash' || order.payment?.method === 'cod'
-                    ? 'Cash on Delivery'
+                    ? (order.codAdvance?.status === 'PAID' && Number(order.codAdvance?.amount) > 0
+                        ? `Cash on Delivery (₹${order.codAdvance.amount} advance paid)`
+                        : 'Cash on Delivery')
                     : 'Online Paid'
             }));
 

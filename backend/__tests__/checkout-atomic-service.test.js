@@ -101,6 +101,7 @@ jest.unstable_mockModule("../app/services/checkoutPricingService.js", () => ({
 }));
 
 jest.unstable_mockModule("../app/services/stockService.js", () => ({
+  invalidateProductStockCache: jest.fn(async () => {}),
   computeStockReservationWindow: jest.fn(() => ({
     status: "RESERVED",
     reservedAt: new Date("2026-03-29T00:00:00.000Z"),

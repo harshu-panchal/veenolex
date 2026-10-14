@@ -12,7 +12,8 @@ import {
     History,
     Wallet,
     Banknote,
-    CreditCard
+    CreditCard,
+    HandCoins
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@shared/components/ui/Toast';
@@ -36,6 +37,10 @@ const BillingCharges = () => {
         handlingFeeStrategy: "highest_category_fee",
         codEnabled: true,
         onlineEnabled: true,
+        codAdvanceEnabled: true,
+        codAdvanceAmount: 50,
+        codAdvanceScope: "PER_CHECKOUT",
+        codAdvanceDecisionHours: 24,
     });
 
     useEffect(() => {
@@ -71,6 +76,10 @@ const BillingCharges = () => {
                         handlingFeeStrategy: s.handlingFeeStrategy ?? prev.handlingFeeStrategy,
                         codEnabled: s.codEnabled ?? prev.codEnabled,
                         onlineEnabled: s.onlineEnabled ?? prev.onlineEnabled,
+                        codAdvanceEnabled: s.codAdvanceEnabled ?? prev.codAdvanceEnabled,
+                        codAdvanceAmount: s.codAdvanceAmount ?? prev.codAdvanceAmount,
+                        codAdvanceScope: s.codAdvanceScope ?? prev.codAdvanceScope,
+                        codAdvanceDecisionHours: s.codAdvanceDecisionHours ?? prev.codAdvanceDecisionHours,
                     }));
                 }
             } catch (error) {
@@ -83,6 +92,10 @@ const BillingCharges = () => {
     const handleSave = async () => {
         if (!config.codEnabled && !config.onlineEnabled) {
             showToast('Keep at least one payment method on', 'error');
+            return;
+        }
+        if (config.codAdvanceDecisionHours < 1) {
+            showToast('Refund decision time must be at least 1 hour', 'error');
             return;
         }
         try {
@@ -110,6 +123,10 @@ const BillingCharges = () => {
                 handlingFeeStrategy: config.handlingFeeStrategy,
                 codEnabled: config.codEnabled,
                 onlineEnabled: config.onlineEnabled,
+                codAdvanceEnabled: config.codAdvanceEnabled,
+                codAdvanceAmount: config.codAdvanceAmount,
+                codAdvanceScope: config.codAdvanceScope,
+                codAdvanceDecisionHours: config.codAdvanceDecisionHours,
             });
 
             showToast('Fees & charges updated', 'success');
@@ -286,6 +303,112 @@ const BillingCharges = () => {
                             </p>
                         </div>
                     </Card>
+
+                    {/* COD Advance */}
+                    {config.codEnabled && (
+                        <Card className="border-none shadow-xl ring-1 ring-slate-100 bg-white rounded-[32px] overflow-hidden">
+                            <div className="p-6 border-b border-slate-50 bg-slate-50/30 flex items-center justify-between gap-4">
+                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
+                                    <HandCoins className="h-4 w-4 text-amber-500" />
+                                    COD Advance
+                                </h3>
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={config.codAdvanceEnabled}
+                                    aria-label="COD advance"
+                                    onClick={() => setConfig(prev => ({ ...prev, codAdvanceEnabled: !prev.codAdvanceEnabled }))}
+                                    className={cn(
+                                        "relative inline-flex h-7 w-14 shrink-0 items-center rounded-full transition-colors duration-200",
+                                        config.codAdvanceEnabled ? "bg-emerald-500" : "bg-slate-300"
+                                    )}
+                                >
+                                    <span
+                                        className={cn(
+                                            "inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform duration-200",
+                                            config.codAdvanceEnabled ? "translate-x-7" : "translate-x-1"
+                                        )}
+                                    />
+                                </button>
+                            </div>
+                            {config.codAdvanceEnabled ? (
+                                <div className="p-8 space-y-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                Advance Amount (₹)
+                                            </label>
+                                            <div className="relative group">
+                                                <span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-slate-300 group-focus-within:text-red-500 transition-colors">₹</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    value={config.codAdvanceAmount}
+                                                    onChange={(e) => handleInputChange('codAdvanceAmount', e.target.value)}
+                                                    className="w-full pl-10 pr-5 py-4 bg-slate-50 border-none rounded-2xl text-base font-black text-slate-900 outline-none focus:ring-2 focus:ring-red-500/10 transition-all"
+                                                />
+                                            </div>
+                                            <p className="text-[10px] font-bold text-slate-400 italic">Paid online at checkout; the rest is collected in cash on delivery.</p>
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                Refund Decision Time (hours)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                value={config.codAdvanceDecisionHours}
+                                                onChange={(e) => handleInputChange('codAdvanceDecisionHours', e.target.value)}
+                                                className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl text-base font-black text-slate-900 outline-none focus:ring-2 focus:ring-red-500/10 transition-all"
+                                            />
+                                            <p className="text-[10px] font-bold text-slate-400 italic">When an order is cancelled, the seller (or admin for warehouse orders) chooses Refund or Keep. No answer in this time refunds it automatically.</p>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                            Charge the Advance
+                                        </label>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            {[
+                                                {
+                                                    value: 'PER_CHECKOUT',
+                                                    title: 'Once per checkout',
+                                                    description: `₹${config.codAdvanceAmount} in total, split across the stores in the cart.`,
+                                                },
+                                                {
+                                                    value: 'PER_ORDER',
+                                                    title: 'Per order',
+                                                    description: `₹${config.codAdvanceAmount} for each store's order (3 stores = ₹${config.codAdvanceAmount * 3}).`,
+                                                },
+                                            ].map((option) => (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => setConfig(prev => ({ ...prev, codAdvanceScope: option.value }))}
+                                                    className={cn(
+                                                        "text-left rounded-2xl border px-5 py-4 transition-all",
+                                                        config.codAdvanceScope === option.value
+                                                            ? "border-emerald-500 bg-emerald-50 ring-2 ring-emerald-500/20"
+                                                            : "border-slate-200 bg-slate-50 hover:border-slate-300"
+                                                    )}
+                                                >
+                                                    <p className="text-sm font-black text-slate-900">{option.title}</p>
+                                                    <p className="text-xs font-bold text-slate-500 mt-1">{option.description}</p>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] font-bold text-slate-400 italic">
+                                        The advance is paid through the payment gateway even when "Pay Online" is switched off. Refunds go back to the customer's original payment method.
+                                    </p>
+                                </div>
+                            ) : (
+                                <p className="p-8 text-xs font-bold text-slate-500">
+                                    Cash on Delivery orders are placed without any advance; the full amount is collected on delivery.
+                                </p>
+                            )}
+                        </Card>
+                    )}
 
                     {/* Delivery Fee Settings */}
                     <Card className="border-none shadow-xl ring-1 ring-slate-100 bg-white rounded-[32px] overflow-hidden">

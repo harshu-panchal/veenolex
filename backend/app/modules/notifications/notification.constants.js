@@ -28,6 +28,10 @@ export const NOTIFICATION_EVENTS = Object.freeze({
   LOW_STOCK_ALERT: "LOW_STOCK_ALERT",
   // An order no local seller could fulfil is waiting for admin.
   ADMIN_FULFILLMENT_ORDER: "ADMIN_FULFILLMENT_ORDER",
+  // A cancelled COD order's advance needs a refund/keep decision.
+  COD_ADVANCE_DECISION_REQUIRED: "COD_ADVANCE_DECISION_REQUIRED",
+  // Customer told what happened to their COD advance.
+  COD_ADVANCE_OUTCOME: "COD_ADVANCE_OUTCOME",
 });
 
 export const NOTIFICATION_ROLES = Object.freeze({
@@ -115,6 +119,8 @@ export function roleFromEvent(eventType) {
       return NOTIFICATION_ROLES.CUSTOMER;
     case NOTIFICATION_EVENTS.ADMIN_FULFILLMENT_ORDER:
       return NOTIFICATION_ROLES.ADMIN;
+    case NOTIFICATION_EVENTS.COD_ADVANCE_DECISION_REQUIRED:
+      return NOTIFICATION_ROLES.SELLER;
     default:
       return NOTIFICATION_ROLES.CUSTOMER;
   }

@@ -11,6 +11,15 @@ export const CustomerAudienceSelector = ({ onSelectionChange }) => {
   // "one" = Select One mode
   // "all" = Select All mode
 
+
+
+
+
+
+
+
+
+
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -502,7 +511,7 @@ export const CustomerAudienceSelector = ({ onSelectionChange }) => {
               )}
 
               {/* CUSTOMER LIST */}
-              <div 
+              <div
                 className="custom-scrollbar"
                 style={{
                   overflowY: "auto",
@@ -561,11 +570,10 @@ export const CustomerAudienceSelector = ({ onSelectionChange }) => {
                         width: "16px",
                         height: "16px",
                         borderRadius: "50%",
-                        border: `2px solid ${
-                          selectedCustomer?.id === customer.id
+                        border: `2px solid ${selectedCustomer?.id === customer.id
                             ? "#3B9FD9"
                             : "#ddd"
-                        }`,
+                          }`,
                         backgroundColor:
                           selectedCustomer?.id === customer.id
                             ? "#3B9FD9"
