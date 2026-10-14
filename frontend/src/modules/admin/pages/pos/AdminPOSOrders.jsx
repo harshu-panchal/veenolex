@@ -96,18 +96,54 @@ export default function AdminPOSOrders() {
     };
   }, []);
 
-  const fetchProducts = async (search = "") => {
+  const fetchProducts = async (search = "", { quiet = false } = {}) => {
     try {
-      setLoading(true);
+      if (!quiet) setLoading(true);
       const res = await adminPosApi.getPOSProducts({ search, limit: 100 });
       if (res.data?.success) {
         setProducts(res.data.products || []);
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to load POS products");
+      if (!quiet) toast.error(err.response?.data?.message || "Failed to load POS products");
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
+  };
+
+  // Show the stock left right after a bill (from the server's response),
+  // then reload the list in the background to pick up any other changes.
+  const applyStockUpdates = (stockUpdates = []) => {
+    if (stockUpdates.length) {
+      const remainingFor = (productId, variantId) => {
+        let remaining = null;
+        for (const update of stockUpdates) {
+          if (update.productId !== productId) continue;
+          if (update.variantId && variantId && update.variantId !== variantId) continue;
+          remaining = update.remaining;
+        }
+        return remaining;
+      };
+      setProducts((prev) =>
+        prev.map((row) => {
+          const remaining = remainingFor(row.productId, row.variantId);
+          return remaining === null ? row : { ...row, stock: remaining };
+        })
+      );
+      setBills((prevBills) =>
+        prevBills.map((b) => ({
+          ...b,
+          cart: b.cart.map((item) => {
+            const remaining = remainingFor(item.productId, item.variantId);
+            return remaining === null ? item : { ...item, stock: remaining };
+          }),
+        }))
+      );
+      const summary = stockUpdates
+        .map((u) => `${u.name}: ${u.remaining} left`)
+        .join(", ");
+      toast.info(`Stock updated — ${summary}`);
+    }
+    fetchProducts(searchQuery, { quiet: true });
   };
 
   const fetchCategories = async () => {
@@ -355,6 +391,7 @@ export default function AdminPOSOrders() {
       const res = await adminPosApi.createOrder(payload);
       if (res.data?.success) {
         toast.success("Transaction completed successfully!");
+        applyStockUpdates(res.data.stockUpdates);
         setLastCreatedOrder(res.data.order);
         setShowPaymentModal(false);
         setShowSuccessOverlay(true);
@@ -377,6 +414,10 @@ export default function AdminPOSOrders() {
       const res = await adminPosApi.verifyOnlinePayment(verificationOrderId);
       if (res.data?.success) {
         toast.success("PhonePe Payment Verified Successfully!");
+        if (res.data.stockError) {
+          toast.warning(`Paid, but stock was not reduced: ${res.data.stockError}. Please adjust it manually.`);
+        }
+        applyStockUpdates(res.data.stockUpdates);
         setLastCreatedOrder(res.data.order);
         setShowPaymentModal(false);
         setShowSuccessOverlay(true);

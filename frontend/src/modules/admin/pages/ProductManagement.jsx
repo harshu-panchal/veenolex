@@ -240,7 +240,10 @@ const ProductManagement = () => {
         const activeVariants = formData.variants || [];
         const topPrice = activeVariants.length > 0 ? Number(activeVariants[0].price) : Number(formData.price);
         const topSalePrice = activeVariants.length > 0 ? Number(activeVariants[0].salePrice) : Number(formData.salePrice);
-        const topStock = activeVariants.length > 0 ? Number(activeVariants[0].stock) : Number(formData.stock);
+        // Product stock is the total across variants (the server enforces the same).
+        const topStock = activeVariants.length > 0
+            ? activeVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
+            : Number(formData.stock);
 
         if (!formData.name || !topPrice || topStock === undefined || topStock === null || !formData.header || !formData.categoryId || !formData.subcategoryId) {
             return toast.error('Please fill all required fields, including categories');
