@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 5174",
-    "build": "vite build",
+    "dev": "node init && vite --port 5174",
+    "build": "node init && vite build",
     "lint": "eslint .",
     "lint:language": "node scripts/check-language.js",
     "report:language": "node scripts/generate-language-report.js",
