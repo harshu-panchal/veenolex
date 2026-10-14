@@ -18,7 +18,7 @@ const Header = () => {
     const isCheckoutPage = location.pathname === '/checkout';
     const [isLocationOpen, setIsLocationOpen] = useState(false);
     const [isSearchFocused, setIsSearchFocused] = useState(false);
-    const { currentLocation, refreshLocation } = useAppLocation();
+    const { currentLocation, hasRealLocation, refreshLocation } = useAppLocation();
 
     // Search placeholder animation
     const [searchPlaceholder, setSearchPlaceholder] = useState('Search ');
@@ -96,7 +96,7 @@ const Header = () => {
                                 {currentLocation.time}
                             </span>
                             <div className="flex items-center gap-1 font-black text-white text-base">
-                                <span className="max-w-[150px] truncate">{currentLocation.name}</span> <span className="text-[10px] opacity-70">▼</span>
+                                <span className="max-w-[150px] truncate">{hasRealLocation ? currentLocation.name : 'Select location'}</span> <span className="text-[10px] opacity-70">▼</span>
                             </div>
                         </div>
                     </button>
@@ -139,7 +139,7 @@ const Header = () => {
                                     Delivery in {currentLocation.time}
                                 </span>
                                 <div className="flex items-center gap-1 font-bold text-slate-700 text-sm group-hover:text-[var(--primary)] transition-colors">
-                                    <span className="max-w-[150px] truncate">{currentLocation.name}</span> <MapPin size={14} className="fill-current" />
+                                    <span className="max-w-[150px] truncate">{hasRealLocation ? currentLocation.name : 'Select location'}</span> <MapPin size={14} className="fill-current" />
                                 </div>
                             </div>
                         </button>

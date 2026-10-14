@@ -6,6 +6,7 @@ import { getRedisClient } from "../config/redis.js";
 import { sendSmsIndiaHubOtp } from "./smsIndiaHubService.js";
 import { MOCK_OTP, useRealSMS } from "../utils/otp.js";
 import { sendSellerVerificationOtpEmail, useRealEmailOTP } from "./emailService.js";
+import logger from "./logger.js";
 
 const SELLER_SIGNUP_PURPOSE = "seller_signup";
 const OTP_EXPIRY_MINUTES = () =>
@@ -219,10 +220,20 @@ async function dispatchEmailOtp({ email, otp, purpose }) {
       purpose: purpose === SELLER_LOGIN_PURPOSE ? "login" : "signup",
     });
   } catch (error) {
-    if (!error.statusCode) {
-      error.statusCode = 502;
-    }
-    throw error;
+    // Log the provider error (e.g. SMTP 535 BadCredentials) server-side only;
+    // never expose it to the client.
+    logger.error("Seller OTP email delivery failed", {
+      purpose,
+      email: maskEmail(email),
+      code: error.code,
+      responseCode: error.responseCode,
+      message: error.message,
+    });
+    const publicError = new Error(
+      "We couldn't send the verification email right now. Please try again shortly.",
+    );
+    publicError.statusCode = 502;
+    throw publicError;
   }
 }
 
@@ -338,6 +349,8 @@ export async function issueSellerVerificationOtp({
     }
   }
 
+  const previousLastSentAt = session?.lastSentAt || null;
+
   let otp = generateSellerOtp(normalizedChannel);
   if (
     normalizedChannel === "phone" &&
@@ -369,7 +382,19 @@ export async function issueSellerVerificationOtp({
   await session.save();
 
   if (normalizedChannel === "email") {
-    await dispatchEmailOtp({ email: target, otp, purpose: resolvedPurpose });
+    try {
+      await dispatchEmailOtp({ email: target, otp, purpose: resolvedPurpose });
+    } catch (error) {
+      // The user never received this OTP: don't make them wait out the
+      // resend cooldown for it.
+      if (previousLastSentAt) {
+        session.lastSentAt = previousLastSentAt;
+        await session.save().catch(() => {});
+      } else if (session._id) {
+        await OtpVerification.deleteOne({ _id: session._id }).catch(() => {});
+      }
+      throw error;
+    }
   } else {
     await dispatchPhoneOtp({ phone: target, otp });
   }

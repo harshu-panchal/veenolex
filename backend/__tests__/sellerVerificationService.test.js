@@ -143,6 +143,36 @@ describe("sellerVerificationService", () => {
     expect(session.verifiedAt).toBeNull();
   });
 
+  it("returns a generic 502 and clears the cooldown when SMTP rejects the login", async () => {
+    mockSendMail.mockRejectedValueOnce(
+      Object.assign(new Error("Invalid login: 535-5.7.8 Username and Password not accepted"), {
+        code: "EAUTH",
+        responseCode: 535,
+      }),
+    );
+
+    await expect(
+      issueSellerVerificationOtp({
+        channel: "email",
+        rawValue: "smtpfail@example.com",
+        ipAddress: "127.0.0.1",
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 502,
+      message: expect.not.stringContaining("535"),
+    });
+
+    expect(otpSessions.has("seller_signup:email:smtpfail@example.com")).toBe(false);
+
+    await expect(
+      issueSellerVerificationOtp({
+        channel: "email",
+        rawValue: "smtpfail@example.com",
+        ipAddress: "127.0.0.1",
+      }),
+    ).resolves.toMatchObject({ sent: true });
+  });
+
   it("verifies the email OTP and returns a verification token that matches signup details", async () => {
     await issueSellerVerificationOtp({
       channel: "email",

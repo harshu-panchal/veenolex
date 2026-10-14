@@ -49,7 +49,7 @@ const ProfilePage = () => {
     const [headerColor, setHeaderColor] = React.useState("#2E7D32");
     
     // Location Context
-    const { currentLocation, updateLocation } = useLocation();
+    const { currentLocation, hasRealLocation, updateLocation, refreshLocation, isFetchingLocation } = useLocation();
 
     // Location States
     const [showLocationModal, setShowLocationModal] = React.useState(false);
@@ -278,8 +278,20 @@ const ProfilePage = () => {
                             <Navigation size={16} className="text-primary" /> Current Location
                         </h4>
                         
-                        {!currentLocation?.name && !currentLocation?.latitude ? (
-                            <p className="text-xs font-medium text-slate-500 mb-0.5">📍 Location not set</p>
+                        {!hasRealLocation ? (
+                            <>
+                                <p className="text-xs font-medium text-slate-500 mb-1">📍 Location not set</p>
+                                <button
+                                    onClick={async () => {
+                                        const result = await refreshLocation();
+                                        if (!result?.ok) toast.error(result?.error || "Please enable location access");
+                                    }}
+                                    disabled={isFetchingLocation}
+                                    className="text-[11px] font-bold text-primary underline disabled:opacity-60"
+                                >
+                                    {isFetchingLocation ? "Detecting..." : "Detect my location"}
+                                </button>
+                            </>
                         ) : (
                             <>
                                 <p className="text-xs font-medium text-slate-700 leading-snug mb-1">
