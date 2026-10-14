@@ -17,3 +17,4 @@ export { useDebounce } from './useDebounce';
 export { useConfirmDialog } from './useConfirmDialog';
 export { useFilters } from './useFilters';
 export { useToast } from '../components/ui/Toast';
+export { useLiveProductStock, liveStockFor, patchProductStock } from './useLiveProductStock';

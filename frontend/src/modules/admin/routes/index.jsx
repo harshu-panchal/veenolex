@@ -96,7 +96,6 @@ const ShopByStoreManagement = React.lazy(
 );
 const AdminSettings = React.lazy(() => import("../pages/AdminSettings"));
 const PromoStripManagement = React.lazy(() => import("../pages/PromoStripManagement"));
-const EnvSettings = React.lazy(() => import("../pages/EnvSettings"));
 const AdminProfile = React.lazy(() => import("../pages/AdminProfile"));
 const PopupManagement = React.lazy(() => import("../pages/PopupManagement"));
 const TodayBestPricesManagement = React.lazy(() => import("../pages/TodayBestPricesManagement"));
@@ -254,7 +253,6 @@ const navItems = [
     ],
   },
   { label: "My Profile", path: "/admin/profile", icon: User, color: "indigo" },
-  { label: "System Settings", path: "/admin/env", icon: Terminal, color: "dark" },
 ];
 
 const BillingCharges = React.lazy(() => import("../pages/BillingCharges"));
@@ -330,7 +328,6 @@ const AdminRoutes = () => {
         <Route path="/returns" element={<Returns />} />
         <Route path="/billing" element={<BillingCharges />} />
         <Route path="/settings" element={<AdminSettings />} />
-        <Route path="/env" element={<EnvSettings />} />
         <Route path="/reports" element={<ReportsPage />} />
 
         {/* ── POS Route Entries ────────────────────────────────────────── */}

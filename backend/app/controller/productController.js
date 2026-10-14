@@ -42,6 +42,7 @@ import {
 } from "../services/searchSyncService.js";
 import { buildKey, getOrSet, getTTL, invalidate } from "../services/cacheService.js";
 import { uploadToCloudinary } from "../services/mediaService.js";
+import { broadcastProductStock } from "../services/stockService.js";
 import logger from "../services/logger.js";
 import { resolveCategoryName, resolveSellerName } from "../services/entityNameCache.js";
 import {
@@ -96,6 +97,28 @@ function parseSellerIdFilters({ sellerId, sellerIds }) {
   }
 
   return [];
+}
+
+/**
+ * Keep product-level and variant stock in step on save (sales deduct from
+ * both). One variant: the product stock field is the number the seller or
+ * admin manages, so the variant follows it. Several variants: the product
+ * stock is their total.
+ */
+function syncVariantStock(productData) {
+  const variants = productData.variants;
+  if (!Array.isArray(variants) || variants.length === 0) return;
+  const hasProductStock =
+    productData.stock !== undefined && productData.stock !== null && productData.stock !== "";
+  if (variants.length === 1) {
+    if (hasProductStock) {
+      variants[0].stock = Math.max(Number(productData.stock) || 0, 0);
+    } else {
+      productData.stock = Math.max(Number(variants[0].stock) || 0, 0);
+    }
+    return;
+  }
+  productData.stock = variants.reduce((sum, v) => sum + Math.max(Number(v.stock) || 0, 0), 0);
 }
 
 function makeProductSku(name, index = 1) {
@@ -826,6 +849,7 @@ export const createProduct = async (req, res) => {
             : makeProductSku(productData.name, idx + 1),
       }));
     }
+    syncVariantStock(productData);
 
     let moderationUpdate = {};
     let successMessage = "Product created successfully";
@@ -1031,6 +1055,17 @@ export const updateProduct = async (req, res) => {
             : makeProductSku(skuBaseName, idx + 1),
       }));
     }
+    syncVariantStock(productData);
+    // Stock changed without the variants list: move the single variant too.
+    if (
+      !Array.isArray(productData.variants) &&
+      productData.stock !== undefined &&
+      productData.stock !== "" &&
+      Array.isArray(product?.variants) &&
+      product.variants.length === 1
+    ) {
+      productData["variants.0.stock"] = Math.max(Number(productData.stock) || 0, 0);
+    }
 
     let moderationUpdate = {};
     let successMessage = "Product updated successfully";
@@ -1057,6 +1092,9 @@ export const updateProduct = async (req, res) => {
     // Enqueue search indexing asynchronously
     await enqueueProductIndex(id);
     await invalidate(`cache:catalog:product:${id}`);
+    if (productData.stock !== undefined || productData.variants !== undefined || productData["variants.0.stock"] !== undefined) {
+      void broadcastProductStock([id]);
+    }
 
     try {
       await invalidate(buildKey("catalog", "productList", "*"));
@@ -1274,6 +1312,7 @@ export const getModerationProducts = async (req, res) => {
       header,
       headerId,
       sort = "newest",
+      masterOnly,
     } = req.query;
     const { page, limit, skip } = getPagination(req, {
       defaultLimit: 25,
@@ -1286,6 +1325,15 @@ export const getModerationProducts = async (req, res) => {
     }
     if (sellerId && sellerId !== "all") {
       baseQuery.sellerId = sellerId;
+    }
+
+    const isMasterOnly = masterOnly === "true" || masterOnly === true;
+    if (isMasterOnly) {
+      baseQuery.$and = [
+        ...(baseQuery.$and || []),
+        { $or: [{ sellerId: null }, { sellerId: { $exists: false } }] },
+        { $or: [{ adminProductId: null }, { adminProductId: { $exists: false } }] },
+      ];
     }
 
     const finalHeaderId = header || headerId;
@@ -1365,8 +1413,34 @@ export const getModerationProducts = async (req, res) => {
         }),
       ]);
 
+    let finalItems = items;
+    if (isMasterOnly && items.length > 0) {
+      const itemIds = items.map((i) => i._id);
+      const sellerCounts = await Product.aggregate([
+        { $match: { adminProductId: { $in: itemIds } } },
+        {
+          $group: {
+            _id: "$adminProductId",
+            sellerCount: { $sum: 1 },
+            totalSellerStock: { $sum: "$stock" },
+          },
+        },
+      ]);
+      const countMap = new Map();
+      const stockMap = new Map();
+      sellerCounts.forEach((s) => {
+        countMap.set(String(s._id), s.sellerCount);
+        stockMap.set(String(s._id), s.totalSellerStock);
+      });
+      finalItems = items.map((item) => ({
+        ...item,
+        sellerCount: countMap.get(String(item._id)) || 0,
+        totalSellerStock: stockMap.get(String(item._id)) || 0,
+      }));
+    }
+
     return handleResponse(res, 200, "Moderation products fetched", {
-      items: normalizeProductListModeration(items),
+      items: normalizeProductListModeration(finalItems),
       page,
       limit,
       total,
@@ -1377,6 +1451,71 @@ export const getModerationProducts = async (req, res) => {
         approved: approvedCount,
         rejected: rejectedCount,
       },
+    });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/* ===============================
+   ADMIN PRODUCT SELLERS LIST
+================================ */
+export const getProductSellers = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const masterProduct = await Product.findById(id)
+      .select("name slug sku price salePrice stock mainImage headerId categoryId subcategoryId variants")
+      .populate("categoryId", "name")
+      .populate("subcategoryId", "name")
+      .lean();
+
+    if (!masterProduct) {
+      return handleResponse(res, 404, "Master product not found");
+    }
+
+    const sellerProducts = await Product.find({ adminProductId: id })
+      .populate("sellerId", "shopName name email phone city locality address status state pincode")
+      .select("sellerId stock price salePrice status approvalStatus variants updatedAt createdAt")
+      .lean();
+
+    const formattedSellers = sellerProducts
+      .filter((sp) => sp.sellerId)
+      .map((sp) => ({
+        _id: sp._id,
+        stock: Number(sp.stock || 0),
+        price: Number(sp.price || 0),
+        salePrice: Number(sp.salePrice || 0),
+        status: sp.status || "active",
+        approvalStatus: sp.approvalStatus || "approved",
+        variants: sp.variants || [],
+        updatedAt: sp.updatedAt,
+        seller: {
+          _id: sp.sellerId._id,
+          shopName: sp.sellerId.shopName,
+          name: sp.sellerId.name,
+          email: sp.sellerId.email,
+          phone: sp.sellerId.phone,
+          city: sp.sellerId.city || "",
+          locality: sp.sellerId.locality || "",
+          address: sp.sellerId.address || "",
+          status: sp.sellerId.status || "active",
+        },
+      }));
+
+    const totalSellerStock = formattedSellers.reduce((sum, s) => sum + s.stock, 0);
+    const activeSellersCount = formattedSellers.filter((s) => s.status === "active").length;
+    const inStockSellersCount = formattedSellers.filter((s) => s.stock > 0).length;
+
+    return handleResponse(res, 200, "Product sellers fetched successfully", {
+      masterProduct,
+      summary: {
+        totalSellers: formattedSellers.length,
+        totalSellerStock,
+        totalCombinedStock: Number(masterProduct.stock || 0) + totalSellerStock,
+        activeSellersCount,
+        inStockSellersCount,
+      },
+      sellers: formattedSellers,
     });
   } catch (error) {
     return handleResponse(res, 500, error.message);

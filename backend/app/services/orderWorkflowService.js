@@ -47,6 +47,7 @@ import {
   retractDeliveryBroadcastForOrder,
 } from "./orderSocketEmitter.js";
 import StockHistory from "../models/stockHistory.js";
+import { invalidateProductStockCache } from "./stockService.js";
 import Transaction from "../models/transaction.js";
 import {
   ADMIN_FULFILLER,
@@ -705,6 +706,7 @@ export async function rerouteOrderToNextFulfiller(orderDoc, reason) {
   const session = await mongoose.startSession();
   let rerouted = null;
   let previousSellerId = null;
+  let movedProductIds = [];
   try {
     session.startTransaction();
 
@@ -753,6 +755,10 @@ export async function rerouteOrderToNextFulfiller(orderDoc, reason) {
     const toAdmin = routes[0].fulfilledBy === ADMIN_FULFILLER;
     const nextSellerId = toAdmin ? null : routes[0].sellerId;
 
+    movedProductIds = [
+      ...lines.map((line) => String(line.item.product)),
+      ...routes.map((route) => String(route.productId)),
+    ];
     for (let index = 0; index < lines.length; index += 1) {
       await moveLineStock({
         fromProductId: lines[index].item.product,
@@ -842,6 +848,7 @@ export async function rerouteOrderToNextFulfiller(orderDoc, reason) {
     session.endSession();
   }
 
+  void invalidateProductStockCache(movedProductIds);
   if (previousSellerId) {
     emitToSeller(previousSellerId, {
       event: "order:reassigned",

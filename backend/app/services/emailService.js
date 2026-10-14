@@ -87,10 +87,26 @@ function getTransporter() {
   return cachedTransporter;
 }
 
+const SELLER_OTP_EMAIL_COPY = {
+  signup: {
+    subject: "Verify your seller signup email",
+    intro: "Your seller signup verification code is",
+  },
+  login: {
+    subject: "Your seller login code",
+    intro: "Your seller login code is",
+  },
+};
+
+/**
+ * Emails a seller OTP. `purpose` picks the wording: "signup" (verify the
+ * email while registering) or "login" (sign in with an emailed code).
+ */
 export async function sendSellerVerificationOtpEmail({
   email,
   otp,
   expiresInMinutes,
+  purpose = "signup",
 }) {
   const allowMock =
     process.env.USE_MOCK_OTP === "true" ||
@@ -101,6 +117,7 @@ export async function sendSellerVerificationOtpEmail({
     logger.info("Seller email OTP generated in mock mode", {
       email,
       otp,
+      purpose,
       mode: "mock",
     });
     return {
@@ -109,17 +126,19 @@ export async function sendSellerVerificationOtpEmail({
     };
   }
 
+  const copy = SELLER_OTP_EMAIL_COPY[purpose] || SELLER_OTP_EMAIL_COPY.signup;
   const transporter = getTransporter();
   await transporter.sendMail({
     from: getMailFrom(),
     to: email,
-    subject: "Verify your seller signup email",
-    text: `Your seller signup verification code is ${otp}. This code expires in ${expiresInMinutes} minutes.`,
+    subject: copy.subject,
+    text: `${copy.intro} ${otp}. This code expires in ${expiresInMinutes} minutes. If you did not request it, you can ignore this email.`,
     html: `
       <div style="font-family: Arial, sans-serif; color: #0f172a;">
-        <p>Your seller signup verification code is:</p>
+        <p>${copy.intro}:</p>
         <p style="font-size: 28px; font-weight: 700; letter-spacing: 6px;">${otp}</p>
         <p>This code expires in ${expiresInMinutes} minutes.</p>
+        <p style="color: #64748b; font-size: 12px;">If you did not request it, you can ignore this email.</p>
       </div>
     `,
   });

@@ -309,6 +309,9 @@ async function moveOrderToSellerPendingAfterPayment(orderId) {
         workflowStatus: WORKFLOW_STATUS.SELLER_PENDING,
         sellerPendingExpiresAt: sellerPendingUntil,
         expiresAt: sellerPendingUntil,
+        // Paid: the reserved stock is now a sale, not a hold that can lapse.
+        "stockReservation.status": "COMMITTED",
+        "stockReservation.expiresAt": null,
       },
     },
     { new: true },

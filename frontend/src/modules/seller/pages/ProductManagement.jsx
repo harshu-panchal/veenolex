@@ -33,6 +33,7 @@ import axiosInstance from "@core/api/axios";
 import QRScannerModal from "../../../components/QRScannerModal";
 import { toast } from "sonner";
 import Pagination from "@shared/components/ui/Pagination";
+import { useLiveProductStock, patchProductStock } from "@shared/hooks/useLiveProductStock";
 
 const ProductManagement = () => {
   const navigate = useNavigate();
@@ -47,8 +48,8 @@ const ProductManagement = () => {
   const [total, setTotal] = useState(0);
   const [summaryStats, setSummaryStats] = useState(null);
 
-  const fetchProducts = async (requestedPage = 1) => {
-    setIsLoading(true);
+  const fetchProducts = async (requestedPage = 1, { quiet = false } = {}) => {
+    if (!quiet) setIsLoading(true);
     try {
       const res = await sellerApi.getProducts({
         page: requestedPage,
@@ -86,11 +87,17 @@ const ProductManagement = () => {
         }
       }
     } catch (error) {
-      toast.error("Failed to fetch products");
+      if (!quiet) toast.error("Failed to fetch products");
     } finally {
-      setIsLoading(false);
+      if (!quiet) setIsLoading(false);
     }
   };
+
+  // Stock changes from orders / POS bills show up without a reload.
+  useLiveProductStock(
+    (updates) => setProducts((prev) => prev.map((product) => patchProductStock(product, updates))),
+    () => fetchProducts(page, { quiet: true })
+  );
 
   const fetchCategories = async () => {
     try {

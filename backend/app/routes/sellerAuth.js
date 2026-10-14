@@ -2,6 +2,8 @@ import express from "express";
 import {
     signupSeller,
     loginSeller,
+    sendSellerLoginOtp,
+    verifySellerLoginOtp,
     sendSellerSignupOtp,
     verifySellerSignupOtp,
     requestSellerForgotPassword,
@@ -67,6 +69,20 @@ router.post(
     signupSeller
 );
 router.post("/login", loginSeller);
+router.post(
+    "/login/send-otp",
+    authRouteRateLimiter,
+    otpRouteRateLimiter,
+    sellerOtpPayloadGuard,
+    sendSellerLoginOtp
+);
+router.post(
+    "/login/verify-otp",
+    authRouteRateLimiter,
+    otpRouteRateLimiter,
+    sellerOtpPayloadGuard,
+    verifySellerLoginOtp
+);
 router.get("/nearby", getNearbySellers);
 
 

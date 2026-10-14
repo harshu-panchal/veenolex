@@ -1,9 +1,74 @@
 import Product from "../models/product.js";
 import StockHistory from "../models/stockHistory.js";
 import { createLowStockAlertCandidate } from "./lowStockAlertService.js";
+import { buildKey, invalidate } from "./cacheService.js";
+import logger from "./logger.js";
 
 const ONLINE_RESERVATION_MS = () =>
   parseInt(process.env.ONLINE_STOCK_RESERVATION_MS || "900000", 10);
+
+/**
+ * Drop cached product pages/lists after their stock changed, so customers
+ * see the new quantity right away instead of after the cache TTL, then push
+ * the new numbers to open admin/seller screens (POS, product lists).
+ * Never throws: a cache miss only costs a fresh read.
+ */
+export async function invalidateProductStockCache(productIds = []) {
+  const ids = [...new Set(productIds.filter(Boolean).map(String))];
+  if (!ids.length) return;
+  try {
+    await Promise.all(ids.map((id) => invalidate(buildKey("catalog", "product", id))));
+    await invalidate(buildKey("catalog", "productList", "*"));
+  } catch (error) {
+    logger.warn("invalidateProductStockCache failed", { error: error.message });
+  }
+  await broadcastProductStock(ids);
+}
+
+/**
+ * Emit `product:stock` with the current stock of each product: every admin
+ * gets all of them, each seller only their own products.
+ */
+export async function broadcastProductStock(productIds = []) {
+  const ids = [...new Set(productIds.filter(Boolean).map(String))];
+  if (!ids.length) return;
+  try {
+    const products = await Product.find({ _id: { $in: ids } })
+      .select("_id name stock sellerId variants._id variants.sku variants.name variants.stock")
+      .lean();
+    if (!products.length) return;
+
+    const toUpdate = (product) => ({
+      productId: String(product._id),
+      name: product.name,
+      stock: Number(product.stock || 0),
+      sellerId: product.sellerId ? String(product.sellerId) : null,
+      variants: (product.variants || []).map((variant) => ({
+        _id: String(variant._id),
+        sku: variant.sku || "",
+        name: variant.name || "",
+        stock: Number(variant.stock || 0),
+      })),
+    });
+    const updates = products.map(toUpdate);
+    const at = new Date().toISOString();
+
+    const { emitToAllAdmins, emitToSeller } = await import("./orderSocketEmitter.js");
+    emitToAllAdmins({ event: "product:stock", payload: { updates, at } });
+
+    const bySeller = new Map();
+    for (const update of updates) {
+      if (!update.sellerId) continue;
+      if (!bySeller.has(update.sellerId)) bySeller.set(update.sellerId, []);
+      bySeller.get(update.sellerId).push(update);
+    }
+    for (const [sellerId, sellerUpdates] of bySeller) {
+      emitToSeller(sellerId, { event: "product:stock", payload: { updates: sellerUpdates, at } });
+    }
+  } catch (error) {
+    logger.warn("broadcastProductStock failed", { error: error.message });
+  }
+}
 
 export function computeStockReservationWindow(paymentMode) {
   const now = new Date();

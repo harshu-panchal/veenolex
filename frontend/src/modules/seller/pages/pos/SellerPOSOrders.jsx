@@ -19,6 +19,7 @@ import jsPDF from "jspdf";
 import "jspdf-autotable";
 
 import { sellerApi } from "../../services/sellerApi";
+import { useLiveProductStock, liveStockFor } from "@shared/hooks/useLiveProductStock";
 import { getCartLineId } from "../../../../utils/posCartLineId";
 import { expandPOSProducts } from "../../../../utils/posProductExpansion";
 import { calculateInclusiveGST } from "../../../../utils/gstUtils";
@@ -92,19 +93,66 @@ export default function SellerPOSOrders() {
     }
   }, [bills, activeTab]);
 
-  const fetchProducts = async (search = "") => {
+  const fetchProducts = async (search = "", { quiet = false } = {}) => {
     try {
-      setLoading(true);
+      if (!quiet) setLoading(true);
       const res = await sellerApi.sellerPos.getPOSProducts({ search, limit: 100 });
       if (res.data?.success) {
         setProducts(res.data.products || []);
       }
     } catch {
-      toast.error("Failed to load products");
+      if (!quiet) toast.error("Failed to load products");
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   };
+
+  // Show the stock left right after a bill (from the server's response),
+  // then reload the list in the background to pick up any other changes.
+  const applyStockUpdates = (stockUpdates = []) => {
+    if (stockUpdates.length) {
+      const remainingFor = (productId, variantId) => {
+        let remaining = null;
+        for (const update of stockUpdates) {
+          if (update.productId !== productId) continue;
+          if (update.variantId && variantId && update.variantId !== variantId) continue;
+          remaining = update.remaining;
+        }
+        return remaining;
+      };
+      setProducts((prev) =>
+        prev.map((row) => {
+          const remaining = remainingFor(row.productId, row.variantId);
+          return remaining === null ? row : { ...row, stock: remaining };
+        })
+      );
+      setBills((prev) =>
+        prev.map((b) => ({
+          ...b,
+          cart: b.cart.map((item) => {
+            const remaining = remainingFor(item.productId, item.variantId);
+            return remaining === null ? item : { ...item, stock: remaining };
+          }),
+        }))
+      );
+      toast.info(`Stock updated — ${stockUpdates.map((u) => `${u.name}: ${u.remaining} left`).join(", ")}`);
+    }
+    fetchProducts(searchQuery, { quiet: true });
+  };
+
+  // Stock changed somewhere else (website order, another till, reroute,
+  // product edit): patch the tiles and carts in place without a toast.
+  useLiveProductStock(
+    (updates) => {
+      const patch = (row) => {
+        const stock = liveStockFor(updates, row.productId, row.variantId);
+        return stock === null || stock === row.stock ? row : { ...row, stock };
+      };
+      setProducts((prev) => prev.map(patch));
+      setBills((prev) => prev.map((b) => ({ ...b, cart: b.cart.map(patch) })));
+    },
+    () => fetchProducts(searchQuery, { quiet: true })
+  );
 
   const fetchCategories = async () => {
     try {
@@ -347,6 +395,7 @@ export default function SellerPOSOrders() {
       const res = await sellerApi.sellerPos.createOrder(payload);
       if (res.data?.success) {
         toast.success("Transaction Complete");
+        applyStockUpdates(res.data.stockUpdates);
         setLastCreatedOrder(res.data.order);
         setShowPaymentModal(false);
         setShowSuccessOverlay(true);
@@ -366,6 +415,10 @@ export default function SellerPOSOrders() {
       const res = await axiosInstance.post("/seller/pos/orders/verify", { orderId: verificationOrderId });
       if (res.data?.success) {
         toast.success("Payment Received!");
+        if (res.data.stockError) {
+          toast.warning(`Paid, but stock was not reduced: ${res.data.stockError}. Please adjust it manually.`);
+        }
+        applyStockUpdates(res.data.stockUpdates);
         setLastCreatedOrder(res.data.order);
         setShowPaymentModal(false);
         setShowSuccessOverlay(true);

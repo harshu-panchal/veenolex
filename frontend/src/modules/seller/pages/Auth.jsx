@@ -552,16 +552,6 @@ const Auth = () => {
     }
   };
 
-  const handlePanelWheel = (e) => {
-    const panel = e.currentTarget;
-    if (panel.scrollHeight <= panel.clientHeight) {
-      return;
-    }
-
-    e.preventDefault();
-    panel.scrollTop += e.deltaY;
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -776,7 +766,7 @@ const Auth = () => {
         {/* Form Content Side */}
         <div
           className="w-full md:w-[55%] min-h-0 p-8 pt-12 md:p-12 md:pt-16 flex flex-col justify-center bg-white overflow-y-auto overscroll-contain touch-pan-y custom-scrollbar relative"
-          onWheelCapture={handlePanelWheel}
+          data-lenis-prevent
           style={{ WebkitOverflowScrolling: "touch" }}>
           <div className="hidden md:flex absolute top-8 right-8 z-20">
             <div className="w-20 h-20 rounded-2xl bg-slate-50 border border-slate-200 shadow-sm flex items-center justify-center overflow-hidden">
