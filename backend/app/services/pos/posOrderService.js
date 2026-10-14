@@ -5,6 +5,11 @@
  * POS controllers. Each controller passes role-specific parameters
  * (adminNotes string, sellerId, etc.) while this service handles
  * the common order lifecycle.
+ *
+ * Stock: a bill and its stock deduction are written in one transaction, so
+ * a line that is out of stock saves nothing. Online POS bills only check
+ * availability when created and deduct once the payment is verified
+ * (`deductPOSOrderStockOnce`).
  */
 
 import mongoose from "mongoose";
@@ -12,83 +17,99 @@ import Order from "../../models/order.js";
 import User from "../../models/customer.js";
 import CreditTransaction from "../../models/creditTransaction.js";
 import { generateUniquePublicOrderId } from "../orderIdService.js";
+import { invalidateProductStockCache } from "../stockService.js";
 import { resolvePOSCustomer, isWalkInCustomer } from "./walkInCustomerService.js";
-import { resolveVariant, isValidObjectId } from "./variantHelpers.js";
+import {
+  resolveVariant,
+  isValidObjectId,
+  effectiveStock,
+  findVariantByRef,
+} from "./variantHelpers.js";
 import { calculateInclusiveGST, resolveGSTPercent, resolveHSNCode } from "./gstUtils.js";
-import { decrementVariantStock, incrementVariantStock } from "./variantStockService.js";
+import {
+  assertVariantStockAvailable,
+  decrementVariantStock,
+  incrementVariantStock,
+} from "./variantStockService.js";
+import { isPOSProductOwner } from "./posProductService.js";
 import Product from "../../models/product.js";
 
+const POS_STOCK_VERSION = 2;
+
+function badRequest(message, statusCode = 400) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+}
+
 /**
- * Create a POS order (cash or credit).
- *
- * Flow (replicating geetaecommerce adminOrderController ~L1195):
- * 1. Validate customer + items + paymentMethod
- * 2. Resolve walk-in customer
- * 3. Create Order shell with POS markers
- * 4. For each line: resolve product/variant, compute inclusive GST, build item
- * 5. If Credit: paymentStatus = Pending, increment creditBalance, create CreditTransaction
- * 6. Update order totals
- * 7. After save: decrement variant stock + write POSStockLedger
- *
- * @param {Object} params
- * @param {string} params.customerId - "walk-in-customer" or ObjectId
- * @param {string} params.paymentMethod - "Cash" | "Credit" | "Online"
- * @param {string} params.paymentStatus - "Paid" | "Pending"
- * @param {Array}  params.items - Cart items
- * @param {string} params.adminNotes - POS discriminator string
- * @param {string|null} params.sellerId - Seller ID for seller POS
- * @param {string} params.createdByRole - "Admin" | "Seller"
- * @param {string} params.createdById - Admin/Seller ObjectId
- * @returns {Promise<Object>} Created order document
+ * Whether this bill's stock has been taken out of inventory. Bills from
+ * before stock tracking always deducted when they were created.
  */
-export async function createPOSOrder({
-  customerId,
-  paymentMethod,
-  paymentStatus,
-  items,
-  adminNotes,
-  sellerId = null,
-  createdByRole = "Admin",
-  createdById,
-}) {
-  // ── 1. Validate ─────────────────────────────────────────────────────
-  if (!items || !Array.isArray(items) || items.length === 0) {
-    throw new Error("At least one item is required");
+export function wasPOSStockDeducted(order) {
+  if (Number(order?.posStockVersion || 0) >= POS_STOCK_VERSION) {
+    return Boolean(order.posStockDeductedAt);
   }
-  if (!paymentMethod || !["Cash", "Credit", "Online"].includes(paymentMethod)) {
-    throw new Error("Invalid payment method. Must be Cash, Credit, or Online");
+  return true;
+}
+
+async function runInTransaction(work) {
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => {
+      result = await work(session);
+    });
+    return result;
+  } finally {
+    await session.endSession();
   }
-  if (paymentMethod === "Credit" && isWalkInCustomer(customerId)) {
-    throw new Error("Credit sales require a registered customer (not walk-in)");
-  }
+}
 
-  // ── 2. Resolve customer ─────────────────────────────────────────────
-  const customer = await resolvePOSCustomer(customerId);
-
-  // ── 3. Generate order ID ────────────────────────────────────────────
-  const orderId = await generateUniquePublicOrderId();
-
-  // ── 4. Build order items ────────────────────────────────────────────
+/**
+ * Turn cart items into order lines plus the stock movements they need.
+ * Catalog products must belong to the POS owner (admin catalog for the
+ * admin POS, the seller's own products for a seller POS).
+ */
+async function buildPOSLines(items, ownerSellerId, session) {
   let subtotal = 0;
   let totalTax = 0;
   const orderItems = [];
+  const stockLines = [];
 
   for (const item of items) {
-    const unitPrice = Number(item.price || item.unitPrice || 0);
-    const quantity = Number(item.quantity || 1);
+    const unitPrice = Number(item.price ?? item.unitPrice ?? 0);
+    const quantity = Number(item.quantity ?? 1);
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      throw badRequest(`Invalid quantity for ${item.name || "item"}`);
+    }
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      throw badRequest(`Invalid price for ${item.name || "item"}`);
+    }
 
-    // Resolve product & variant (if valid product ID)
     let product = null;
     let variant = null;
+    let variantId = null;
     let variantSlot = item.variantSlot || null;
 
     if (item.productId && isValidObjectId(item.productId)) {
-      product = await Product.findById(item.productId).lean();
-      if (product && item.variationId) {
-        const resolved = resolveVariant(product, item.variationId);
-        variant = resolved.variant;
-        variantSlot = variant?.name || variant?.sku || item.variationId;
+      product = await Product.findById(item.productId).session(session || null).lean();
+      if (!product) {
+        throw badRequest(`Product not found: ${item.name || item.productId}`, 404);
       }
+      if (!isPOSProductOwner(product, ownerSellerId)) {
+        throw badRequest(`${product.name} is not in this store's catalog`, 403);
+      }
+      const resolved = resolveVariant(product, item.variationId || null);
+      if (item.variationId && !resolved.variant) {
+        throw badRequest(`Variant not found for ${product.name}`);
+      }
+      if (!resolved.variant && (product.variants || []).length > 1) {
+        throw badRequest(`Choose a variant for ${product.name}`);
+      }
+      variant = resolved.variant;
+      variantId = resolved.variantId;
+      if (variant) variantSlot = variant.name || variant.sku || variantId;
     }
 
     // GST calculation (inclusive pricing)
@@ -100,13 +121,14 @@ export async function createPOSOrder({
     totalTax += gstAmount;
 
     orderItems.push({
-      product: isValidObjectId(item.productId)
-        ? new mongoose.Types.ObjectId(item.productId)
-        : new mongoose.Types.ObjectId(), // Generate dummy ObjectId for quick-add items
+      // Quick-add/custom items get a placeholder id; they carry no stock.
+      product: product ? product._id : new mongoose.Types.ObjectId(),
       name: item.name || product?.name || "Custom Item",
       quantity,
       price: unitPrice,
       variantSlot,
+      variantId: variantId || undefined,
+      stockTracked: Boolean(product),
       image: item.image || product?.mainImage || "",
       // POS extensions
       sku: item.sku || variant?.sku || product?.sku || "",
@@ -117,21 +139,187 @@ export async function createPOSOrder({
       warrantyType: item.warrantyType || "",
       warrantyDuration: item.warrantyDuration || "",
     });
+
+    if (product) {
+      stockLines.push({
+        productId: String(product._id),
+        variantId,
+        quantity,
+        name: orderItems[orderItems.length - 1].name,
+      });
+    }
   }
 
-  // ── 5. Determine payment status ─────────────────────────────────────
+  return { orderItems, stockLines, subtotal, totalTax };
+}
+
+/** Stock movements for the tracked lines of an existing bill. */
+function stockLinesFromOrderItems(order) {
+  return (order.items || [])
+    .filter((item) => item.stockTracked === true)
+    .map((item) => ({
+      productId: String(item.product),
+      variantId: item.variantId || null,
+      quantity: item.quantity,
+      name: item.name,
+    }));
+}
+
+/**
+ * Bills from before stock tracking only stored the variant's name/SKU and
+ * gave custom items a random product id (skipped when it matches nothing).
+ */
+async function legacyStockLinesFromOrderItems(order, session) {
+  const lines = [];
+  for (const item of order.items || []) {
+    const product = await Product.findById(item.product).session(session || null).lean();
+    if (!product) continue;
+    const variant = findVariantByRef(product, item.variantSlot);
+    lines.push({
+      productId: String(product._id),
+      variantId: variant ? String(variant._id) : null,
+      quantity: item.quantity,
+      name: item.name,
+    });
+  }
+  return lines;
+}
+
+async function stockLinesToRestore(order, session) {
+  if (!wasPOSStockDeducted(order)) return [];
+  return Number(order.posStockVersion || 0) >= POS_STOCK_VERSION
+    ? stockLinesFromOrderItems(order)
+    : legacyStockLinesFromOrderItems(order, session);
+}
+
+function remainingAfter(product, variantId) {
+  if (!product) return null;
+  const variant = variantId
+    ? (product.variants || []).find((v) => String(v._id) === String(variantId))
+    : null;
+  return effectiveStock(product, variant || null);
+}
+
+/**
+ * Deduct stock for lines inside `session`. Returns the stock left per line
+ * so the POS screen can show it straight away.
+ */
+async function deductStockLines(lines, { session, source, orderId, sellerId, note }) {
+  const updates = [];
+  for (const line of lines) {
+    const { product } = await decrementVariantStock({
+      productId: line.productId,
+      variantId: line.variantId,
+      quantity: line.quantity,
+      session,
+      source,
+      orderId,
+      sellerId,
+      note,
+    });
+    updates.push({
+      productId: line.productId,
+      variantId: line.variantId,
+      name: line.name,
+      quantity: line.quantity,
+      remaining: remainingAfter(product, line.variantId),
+    });
+  }
+  return updates;
+}
+
+async function restoreStockLines(lines, { session, source, orderId, sellerId, note }) {
+  const updates = [];
+  for (const line of lines) {
+    const { product } = await incrementVariantStock({
+      productId: line.productId,
+      variantId: line.variantId,
+      quantity: line.quantity,
+      session,
+      source,
+      orderId,
+      sellerId,
+      note,
+    });
+    if (product) {
+      updates.push({
+        productId: line.productId,
+        variantId: line.variantId,
+        name: line.name,
+        quantity: line.quantity,
+        remaining: remainingAfter(product, line.variantId),
+      });
+    }
+  }
+  return updates;
+}
+
+async function assertLinesAvailable(lines, session) {
+  const totals = new Map();
+  for (const line of lines) {
+    const key = `${line.productId}:${line.variantId || ""}`;
+    const entry = totals.get(key) || { ...line, quantity: 0 };
+    entry.quantity += line.quantity;
+    totals.set(key, entry);
+  }
+  for (const line of totals.values()) {
+    await assertVariantStockAvailable({ ...line, session });
+  }
+}
+
+/**
+ * Validate the request and resolve what can be resolved outside the
+ * transaction (customer, public order id).
+ */
+async function preparePOSOrder(params) {
+  const { customerId, paymentMethod, items } = params;
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    throw badRequest("At least one item is required");
+  }
+  if (!paymentMethod || !["Cash", "Credit", "Online"].includes(paymentMethod)) {
+    throw badRequest("Invalid payment method. Must be Cash, Credit, or Online");
+  }
+  if (paymentMethod === "Credit" && isWalkInCustomer(customerId)) {
+    throw badRequest("Credit sales require a registered customer (not walk-in)");
+  }
+
+  const customer = await resolvePOSCustomer(customerId);
+  const orderId = await generateUniquePublicOrderId();
+  return { ...params, customer, orderId };
+}
+
+/**
+ * Write a prepared POS bill (order, credit, stock) inside `session`.
+ */
+async function writePOSOrder(prepared, session) {
+  const {
+    customer,
+    orderId,
+    paymentMethod,
+    paymentStatus,
+    items,
+    adminNotes,
+    sellerId = null,
+    createdByRole = "Admin",
+    createdById,
+  } = prepared;
+
+  const { orderItems, stockLines, subtotal, totalTax } = await buildPOSLines(items, sellerId, session);
+
+  // Online POS bills are paid on the customer's phone afterwards: only
+  // check stock now, deduct once the payment is verified.
+  const deductNow = !(paymentMethod === "Online" && paymentStatus === "Pending");
+  if (!deductNow) {
+    await assertLinesAvailable(stockLines, session);
+  }
+
   let resolvedPaymentStatus = "PAID";
   let legacyPaymentStatus = "completed";
-
-  if (paymentMethod === "Credit") {
+  if (paymentMethod === "Credit" || paymentStatus === "Pending") {
     resolvedPaymentStatus = "CREATED"; // Pending payment
-    legacyPaymentStatus = "pending";
-  } else if (paymentStatus === "Pending") {
-    resolvedPaymentStatus = "CREATED";
     legacyPaymentStatus = "pending";
   }
 
-  // ── 6. Create order ─────────────────────────────────────────────────
   const order = new Order({
     orderId,
     customer: customer._id,
@@ -140,10 +328,11 @@ export async function createPOSOrder({
     // POS markers
     adminNotes,
     posPaymentMethod: paymentMethod,
+    posStockVersion: POS_STOCK_VERSION,
+    posStockDeductedAt: deductNow ? new Date() : null,
     customerName: customer.name || "",
     customerEmail: customer.email || "",
     customerPhone: customer.phone || "",
-    // Address
     address: {
       type: "Other",
       name: customer.name || "POS Customer",
@@ -151,7 +340,6 @@ export async function createPOSOrder({
       city: "",
       phone: customer.phone || "",
     },
-    // Pricing
     pricing: {
       subtotal,
       gst: totalTax,
@@ -165,7 +353,6 @@ export async function createPOSOrder({
       taxTotal: totalTax,
       grandTotal: subtotal,
     },
-    // Payment
     payment: {
       method: paymentMethod === "Online" ? "online" : "cash",
       status: legacyPaymentStatus,
@@ -176,68 +363,164 @@ export async function createPOSOrder({
     status: "delivered",
     orderStatus: "delivered",
     deliveredAt: new Date(),
-    // Stock
     stockReservation: {
       status: "COMMITTED",
       reservedAt: new Date(),
     },
   });
 
-  await order.save();
+  await order.save({ session });
 
-  // ── 7. Credit handling ──────────────────────────────────────────────
   if (paymentMethod === "Credit") {
-    // Increment customer credit balance
-    await User.findByIdAndUpdate(customer._id, {
-      $inc: { creditBalance: subtotal },
-    });
-
-    // Create credit transaction
-    await CreditTransaction.create({
-      customer: customer._id,
-      type: "Order",
-      amount: subtotal,
-      balanceAfter: (customer.creditBalance || 0) + subtotal,
-      order: order._id,
-      note: `POS Order #${orderId}`,
-      createdBy: createdById,
-      createdByRole,
-      seller: sellerId || undefined,
-    });
+    await User.findByIdAndUpdate(customer._id, { $inc: { creditBalance: subtotal } }, { session });
+    await CreditTransaction.create(
+      [
+        {
+          customer: customer._id,
+          type: "Order",
+          amount: subtotal,
+          balanceAfter: (customer.creditBalance || 0) + subtotal,
+          order: order._id,
+          note: `POS Order #${orderId}`,
+          createdBy: createdById,
+          createdByRole,
+          seller: sellerId || undefined,
+        },
+      ],
+      { session },
+    );
   }
 
-  // ── 8. Stock deduction ──────────────────────────────────────────────
-  for (const item of orderItems) {
-    // Skip quick-add/custom items (the original productId wasn't a valid ObjectId)
-    const originalItem = items.find(
-      (i) =>
-        (i.name || "") === (item.name || "") &&
-        (i.quantity || 0) === (item.quantity || 0)
-    );
-    const originalProductId = originalItem?.productId;
+  const stockUpdates = deductNow
+    ? await deductStockLines(stockLines, {
+      session,
+      source: "POS",
+      orderId: order._id,
+      sellerId,
+      note: `POS Sale #${orderId}`,
+    })
+    : [];
 
-    if (originalProductId && isValidObjectId(originalProductId)) {
-      await decrementVariantStock({
-        productId: originalProductId,
-        variantId: originalItem?.variationId || null,
-        quantity: item.quantity,
-        source: "POS",
-        orderId: order._id,
-        sellerId,
-        note: `POS Sale #${orderId}`,
-      });
+  return { order, stockUpdates };
+}
+
+/**
+ * Create a POS order (cash, credit, or online).
+ *
+ * Cash/Credit bills deduct stock immediately; an online bill created as
+ * Pending only checks availability (see `deductPOSOrderStockOnce`).
+ *
+ * @param {Object} params
+ * @param {string} params.customerId - "walk-in-customer" or ObjectId
+ * @param {string} params.paymentMethod - "Cash" | "Credit" | "Online"
+ * @param {string} params.paymentStatus - "Paid" | "Pending"
+ * @param {Array}  params.items - Cart items
+ * @param {string} params.adminNotes - POS discriminator string
+ * @param {string|null} params.sellerId - Seller ID for seller POS
+ * @param {string} params.createdByRole - "Admin" | "Seller"
+ * @param {string} params.createdById - Admin/Seller ObjectId
+ * @returns {Promise<{ order: Object, stockUpdates: Array }>}
+ */
+export async function createPOSOrder(params) {
+  const prepared = await preparePOSOrder(params);
+  const result = await runInTransaction((session) => writePOSOrder(prepared, session));
+  void invalidateProductStockCache(result.stockUpdates.map((u) => u.productId));
+  return result;
+}
+
+/**
+ * Exchange: return items from an earlier bill and sell new ones, as one
+ * transaction (if a new item is out of stock, nothing is returned either).
+ *
+ * @returns {Promise<{ order: Object, stockUpdates: Array }>}
+ */
+export async function exchangePOSItems({ originalOrder, returnItems = [], ...params }) {
+  const prepared = await preparePOSOrder(params);
+  const ownerSellerId = originalOrder.seller ? String(originalOrder.seller) : null;
+
+  // Returned quantities can't exceed what the original bill sold.
+  const sold = new Map();
+  for (const item of originalOrder.items || []) {
+    const key = String(item.product);
+    sold.set(key, (sold.get(key) || 0) + Number(item.quantity || 0));
+  }
+  const returning = new Map();
+  for (const item of returnItems) {
+    if (!item.productId || !isValidObjectId(item.productId)) continue;
+    const key = String(item.productId);
+    returning.set(key, (returning.get(key) || 0) + Number(item.quantity || 1));
+    if (returning.get(key) > (sold.get(key) || 0)) {
+      throw badRequest(`Cannot return more ${item.name || "units"} than were sold on ${originalOrder.orderId}`);
     }
   }
 
-  return order;
+  const result = await runInTransaction(async (session) => {
+    const restored = wasPOSStockDeducted(originalOrder)
+      ? await restoreStockLines(
+        returnItems
+          .filter((item) => item.productId && isValidObjectId(item.productId))
+          .map((item) => ({
+            productId: String(item.productId),
+            variantId: item.variationId || null,
+            quantity: Number(item.quantity || 1),
+            name: item.name,
+          })),
+        {
+          session,
+          source: "ORDER_EDIT_RESTORE",
+          orderId: originalOrder._id,
+          sellerId: ownerSellerId,
+          note: `Exchange return from ${originalOrder.orderId}`,
+        },
+      )
+      : [];
+    const written = await writePOSOrder({ ...prepared, sellerId: ownerSellerId }, session);
+    return { ...written, stockUpdates: [...restored, ...written.stockUpdates] };
+  });
+
+  void invalidateProductStockCache(result.stockUpdates.map((u) => u.productId));
+  return result;
+}
+
+/**
+ * Deduct an online POS bill's stock once its payment is verified. Safe to
+ * call repeatedly: only the first successful call deducts.
+ *
+ * @returns {Promise<{ stockUpdates: Array, stockError: string|null }>}
+ */
+export async function deductPOSOrderStockOnce(orderDocId) {
+  try {
+    const stockUpdates = await runInTransaction(async (session) => {
+      const order = await Order.findOneAndUpdate(
+        { _id: orderDocId, posStockVersion: POS_STOCK_VERSION, posStockDeductedAt: null },
+        { $set: { posStockDeductedAt: new Date() } },
+        { new: true, session },
+      );
+      if (!order) return []; // already deducted, or a bill from before tracking
+      return deductStockLines(stockLinesFromOrderItems(order), {
+        session,
+        source: "POS",
+        orderId: order._id,
+        sellerId: order.seller || null,
+        note: `POS Sale #${order.orderId}`,
+      });
+    });
+    void invalidateProductStockCache(stockUpdates.map((u) => u.productId));
+    return { stockUpdates, stockError: null };
+  } catch (error) {
+    if (error.code === "INSUFFICIENT_STOCK" || error.statusCode === 409) {
+      return { stockUpdates: [], stockError: error.message };
+    }
+    throw error;
+  }
 }
 
 /**
  * Delete a POS order.
  *
- * Rules (replicate source behavior):
+ * Rules:
  * - Only walk-in customer orders can be deleted
- * - Stock is NOT restored on deletion (intentional source quirk)
+ * - Stock that the bill took out is put back
  * - Credit orders: reverse credit balance
  *
  * @param {string} orderDocId - Order._id
@@ -246,181 +529,138 @@ export async function createPOSOrder({
 export async function deletePOSOrder(orderDocId) {
   const order = await Order.findById(orderDocId);
   if (!order) {
-    throw new Error("Order not found");
+    throw badRequest("Order not found", 404);
   }
 
   // Verify it's a POS order
   if (!order.adminNotes || !order.adminNotes.includes("POS")) {
-    throw new Error("Only POS orders can be deleted via this endpoint");
+    throw badRequest("Only POS orders can be deleted via this endpoint");
   }
 
   // Verify walk-in customer
   const customer = await User.findById(order.customer).lean();
   if (customer && customer.phone !== "0000000000") {
-    throw new Error("Only walk-in customer POS orders can be deleted");
+    throw badRequest("Only walk-in customer POS orders can be deleted");
   }
 
-  // If credit order, reverse the credit balance
-  if (order.posPaymentMethod === "Credit") {
-    const total = order.pricing?.total || order.paymentBreakdown?.grandTotal || 0;
-    if (total > 0) {
-      await User.findByIdAndUpdate(order.customer, {
-        $inc: { creditBalance: -total },
-      });
-
-      await CreditTransaction.create({
-        customer: order.customer,
-        type: "Refund",
-        amount: -total,
-        order: order._id,
-        note: `POS Order deleted: ${order.orderId}`,
-      });
+  const restoredIds = await runInTransaction(async (session) => {
+    if (order.posPaymentMethod === "Credit") {
+      const total = order.pricing?.total || order.paymentBreakdown?.grandTotal || 0;
+      if (total > 0) {
+        await User.findByIdAndUpdate(order.customer, { $inc: { creditBalance: -total } }, { session });
+        await CreditTransaction.create(
+          [
+            {
+              customer: order.customer,
+              type: "Refund",
+              amount: -total,
+              order: order._id,
+              note: `POS Order deleted: ${order.orderId}`,
+            },
+          ],
+          { session },
+        );
+      }
     }
-  }
 
-  // Delete the order (stock NOT restored — match source behavior)
-  await Order.findByIdAndDelete(orderDocId);
+    const restored = await restoreStockLines(await stockLinesToRestore(order, session), {
+      session,
+      source: "ORDER_DELETE_RESTORE",
+      orderId: order._id,
+      sellerId: order.seller || null,
+      note: `POS bill deleted: ${order.orderId}`,
+    });
 
+    await Order.deleteOne({ _id: order._id }, { session });
+    return restored.map((u) => u.productId);
+  });
+
+  void invalidateProductStockCache(restoredIds);
   return order;
 }
 
 /**
- * Update items on an existing delivered POS order (edit bill).
+ * Update items on an existing POS order (edit bill).
  *
- * Flow:
- * 1. Only for Delivered POS orders
- * 2. Restore old items stock → POSStockLedger source: ORDER_EDIT_RESTORE
- * 3. Replace items with new items
- * 4. Deduct new items stock → ORDER_EDIT_DEDUCT
- * 5. Reconcile credit balance if applicable
+ * In one transaction: put back the old lines' stock, take out the new
+ * lines' stock, reconcile credit. A bill whose stock was never deducted
+ * (online, not yet paid) only gets its lines replaced.
  *
  * @param {string} orderDocId - Order._id
  * @param {Array} newItems - New cart items
- * @param {string|null} sellerId
- * @returns {Promise<Object>} Updated order
+ * @returns {Promise<{ order: Object, stockUpdates: Array }>}
  */
-export async function updatePOSOrderItems(orderDocId, newItems, sellerId = null) {
-  const order = await Order.findById(orderDocId);
-  if (!order) throw new Error("Order not found");
-  if (!order.adminNotes || !order.adminNotes.includes("POS")) {
-    throw new Error("Only POS orders can be edited");
+export async function updatePOSOrderItems(orderDocId, newItems) {
+  if (!Array.isArray(newItems) || newItems.length === 0) {
+    throw badRequest("At least one item is required");
   }
 
-  const oldTotal = order.pricing?.total || order.paymentBreakdown?.grandTotal || 0;
-
-  // ── 1. Restore old stock ────────────────────────────────────────────
-  for (const oldItem of order.items) {
-    if (isValidObjectId(String(oldItem.product))) {
-      await incrementVariantStock({
-        productId: String(oldItem.product),
-        variantId: oldItem.variantSlot || null,
-        quantity: oldItem.quantity,
-        source: "ORDER_EDIT_RESTORE",
-        orderId: order._id,
-        sellerId,
-        note: `Edit restore for ${order.orderId}`,
-      });
+  const result = await runInTransaction(async (session) => {
+    const order = await Order.findById(orderDocId).session(session);
+    if (!order) throw badRequest("Order not found", 404);
+    if (!order.adminNotes || !order.adminNotes.includes("POS")) {
+      throw badRequest("Only POS orders can be edited");
     }
-  }
 
-  // ── 2. Build new items ──────────────────────────────────────────────
-  let subtotal = 0;
-  let totalTax = 0;
-  const orderItems = [];
+    const ownerSellerId = order.seller ? String(order.seller) : null;
+    const stockWasDeducted = wasPOSStockDeducted(order);
+    const oldTotal = order.pricing?.total || order.paymentBreakdown?.grandTotal || 0;
 
-  for (const item of newItems) {
-    const unitPrice = Number(item.price || item.unitPrice || 0);
-    const quantity = Number(item.quantity || 1);
+    const restored = await restoreStockLines(await stockLinesToRestore(order, session), {
+      session,
+      source: "ORDER_EDIT_RESTORE",
+      orderId: order._id,
+      sellerId: ownerSellerId,
+      note: `Edit restore for ${order.orderId}`,
+    });
 
-    let product = null;
-    let variant = null;
-    let variantSlot = item.variantSlot || null;
+    const { orderItems, stockLines, subtotal, totalTax } = await buildPOSLines(newItems, ownerSellerId, session);
 
-    if (item.productId && isValidObjectId(item.productId)) {
-      product = await Product.findById(item.productId).lean();
-      if (product && item.variationId) {
-        const resolved = resolveVariant(product, item.variationId);
-        variant = resolved.variant;
-        variantSlot = variant?.name || variant?.sku || item.variationId;
+    order.items = orderItems;
+    order.posStockVersion = POS_STOCK_VERSION;
+    order.posStockDeductedAt = stockWasDeducted ? (order.posStockDeductedAt || new Date()) : null;
+    order.set({
+      "pricing.subtotal": subtotal,
+      "pricing.gst": totalTax,
+      "pricing.total": subtotal,
+      "paymentBreakdown.productSubtotal": subtotal,
+      "paymentBreakdown.taxTotal": totalTax,
+      "paymentBreakdown.grandTotal": subtotal,
+    });
+    await order.save({ session });
+
+    const deducted = stockWasDeducted
+      ? await deductStockLines(stockLines, {
+        session,
+        source: "ORDER_EDIT_DEDUCT",
+        orderId: order._id,
+        sellerId: ownerSellerId,
+        note: `Edit deduct for ${order.orderId}`,
+      })
+      : [];
+
+    if (order.posPaymentMethod === "Credit") {
+      const diff = subtotal - oldTotal;
+      if (diff !== 0) {
+        await User.findByIdAndUpdate(order.customer, { $inc: { creditBalance: diff } }, { session });
+        await CreditTransaction.create(
+          [
+            {
+              customer: order.customer,
+              type: "Adjustment",
+              amount: diff,
+              order: order._id,
+              note: `Order edit adjustment for ${order.orderId}`,
+            },
+          ],
+          { session },
+        );
       }
     }
 
-    const gstPercent = Number(item.gst) || (product ? resolveGSTPercent(product, variant) : 0);
-    const { total: lineTotal, gstAmount } = calculateInclusiveGST(unitPrice, quantity, gstPercent);
-    const hsnCode = item.hsnCode || (product ? resolveHSNCode(product, variant) : "");
+    return { order, stockUpdates: [...restored, ...deducted] };
+  });
 
-    subtotal += lineTotal;
-    totalTax += gstAmount;
-
-    orderItems.push({
-      product: isValidObjectId(item.productId)
-        ? new mongoose.Types.ObjectId(item.productId)
-        : new mongoose.Types.ObjectId(),
-      name: item.name || product?.name || "Custom Item",
-      quantity,
-      price: unitPrice,
-      variantSlot,
-      image: item.image || product?.mainImage || "",
-      sku: item.sku || variant?.sku || product?.sku || "",
-      hsnCode,
-      gst: gstPercent,
-      gstAmount,
-      unitPrice,
-      warrantyType: item.warrantyType || "",
-      warrantyDuration: item.warrantyDuration || "",
-    });
-  }
-
-  // ── 3. Update order ─────────────────────────────────────────────────
-  order.items = orderItems;
-  order.pricing = {
-    ...order.pricing,
-    subtotal,
-    gst: totalTax,
-    total: subtotal,
-  };
-  order.paymentBreakdown = {
-    ...order.paymentBreakdown,
-    productSubtotal: subtotal,
-    taxTotal: totalTax,
-    grandTotal: subtotal,
-  };
-
-  await order.save();
-
-  // ── 4. Deduct new stock ─────────────────────────────────────────────
-  for (const item of newItems) {
-    if (item.productId && isValidObjectId(item.productId)) {
-      await decrementVariantStock({
-        productId: item.productId,
-        variantId: item.variationId || null,
-        quantity: Number(item.quantity || 1),
-        source: "ORDER_EDIT_DEDUCT",
-        orderId: order._id,
-        sellerId,
-        note: `Edit deduct for ${order.orderId}`,
-      });
-    }
-  }
-
-  // ── 5. Reconcile credit if applicable ───────────────────────────────
-  if (order.posPaymentMethod === "Credit") {
-    const newTotal = subtotal;
-    const diff = newTotal - oldTotal;
-    if (diff !== 0) {
-      await User.findByIdAndUpdate(order.customer, {
-        $inc: { creditBalance: diff },
-      });
-
-      await CreditTransaction.create({
-        customer: order.customer,
-        type: "Adjustment",
-        amount: diff,
-        order: order._id,
-        note: `Order edit adjustment for ${order.orderId}`,
-      });
-    }
-  }
-
-  return order;
+  void invalidateProductStockCache(result.stockUpdates.map((u) => u.productId));
+  return result;
 }
