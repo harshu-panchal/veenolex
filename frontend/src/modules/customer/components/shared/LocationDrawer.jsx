@@ -11,6 +11,7 @@ const LocationDrawer = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
   const {
     currentLocation,
+    hasRealLocation,
     savedAddresses,
     updateLocation,
     refreshLocation,
@@ -461,9 +462,11 @@ const LocationDrawer = ({ isOpen, onClose }) => {
                       ? "Detecting..."
                       : "Use current location"}
                   </h3>
-                  <p className="text-[12px] text-slate-400 font-medium truncate opacity-60">
-                    ({currentLocation.name})
-                  </p>
+                  {hasRealLocation && (
+                    <p className="text-[12px] text-slate-400 font-medium truncate opacity-60">
+                      ({currentLocation.name})
+                    </p>
+                  )}
                 </div>
                 <ChevronRight size={16} className="text-slate-300 flex-shrink-0" />
               </button>

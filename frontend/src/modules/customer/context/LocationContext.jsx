@@ -11,6 +11,7 @@ import { hasValidStoredAuthToken } from "@core/utils/authStorage";
 import { getJSON, setJSON, STORAGE_KEYS } from "@core/utils/storage";
 import {
   DEFAULT_APP_LOCATION,
+  isDefaultAppLocation,
   markLocationSynced,
   shouldSyncLocation,
   toReportedLocation,
@@ -63,6 +64,7 @@ export const LocationProvider = ({ children }) => {
         longitude: newLoc.longitude,
         // Internal app properties
         time: newLoc.time,
+        ...(newLoc.updatedAt ? { updatedAt: newLoc.updatedAt } : {}),
         // Marks the placeholder location so it is never reported as the customer's.
         ...(newLoc.isDefault ? { isDefault: true } : {}),
       };
@@ -105,11 +107,13 @@ export const LocationProvider = ({ children }) => {
       const fallbackFromCoords = (latitude, longitude) => ({
         name: `Lat ${Number(latitude).toFixed(5)}, Lng ${Number(longitude).toFixed(5)}`,
         time: "12-15 mins",
-        city: currentLocation?.city || "Indore",
-        state: currentLocation?.state || "Madhya Pradesh",
-        pincode: currentLocation?.pincode || "452018",
+        // Never borrow the placeholder's city/state/pincode for a real position.
+        city: (!currentLocation?.isDefault && currentLocation?.city) || "",
+        state: (!currentLocation?.isDefault && currentLocation?.state) || "",
+        pincode: (!currentLocation?.isDefault && currentLocation?.pincode) || "",
         latitude,
         longitude,
+        updatedAt: new Date().toISOString(),
       });
 
       const handleLocationSuccess = async (latitude, longitude) => {
@@ -195,6 +199,7 @@ export const LocationProvider = ({ children }) => {
               pincode: pincode || liveLocation.pincode,
               latitude: latitude,
               longitude: longitude,
+              updatedAt: liveLocation.updatedAt,
             };
           }
 
@@ -255,6 +260,31 @@ export const LocationProvider = ({ children }) => {
     try {
       const { data } = await customerApi.getProfile();
       const profile = data?.result ?? data?.data ?? data;
+      // A returning user on a fresh device: use the location saved on their
+      // account instead of the placeholder.
+      const saved = profile?.location;
+      if (
+        saved &&
+        Number.isFinite(Number(saved.latitude)) &&
+        Number.isFinite(Number(saved.longitude)) &&
+        saved.latitude !== null &&
+        saved.longitude !== null &&
+        isDefaultAppLocation(getJSON(STORAGE_KEY, null))
+      ) {
+        updateLocation(
+          {
+            name: saved.address || `Lat ${Number(saved.latitude).toFixed(5)}, Lng ${Number(saved.longitude).toFixed(5)}`,
+            time: "12-15 mins",
+            city: saved.city || "",
+            state: saved.state || "",
+            pincode: saved.pincode || "",
+            latitude: Number(saved.latitude),
+            longitude: Number(saved.longitude),
+            updatedAt: saved.updatedAt || undefined,
+          },
+          { persist: true, updateSavedHome: false },
+        );
+      }
       const raw = Array.isArray(profile?.addresses) ? profile.addresses : [];
       setSavedAddresses(
         raw.map((addr, idx) => ({
@@ -306,18 +336,46 @@ export const LocationProvider = ({ children }) => {
           pincode: parsed.pincode,
           latitude: parsed.latitude,
           longitude: parsed.longitude,
+          updatedAt: parsed.updatedAt,
+          // Keep the placeholder flagged so it is never shown as the customer's.
+          ...(isDefaultAppLocation(parsed) ? { isDefault: true } : {}),
         },
         { persist: false, updateSavedHome: false },
       );
-    } else {
-      // If no location is stored (or TTL expired), persist the default
-      // immediately so subsequent reads have something to anchor on.
-      updateLocation(currentLocation, {
-        persist: true,
-        updateSavedHome: false,
-      });
     }
-    // Live fetch happens only when user taps location pill or "Use current location"
+    // Otherwise keep the in-memory placeholder; it is deliberately not persisted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Browsers only show the permission prompt on a user gesture, but when the
+  // user has already granted access we can detect silently, and again the
+  // moment they enable it in browser settings.
+  useEffect(() => {
+    if (typeof navigator === "undefined") return undefined;
+    let status;
+    let cancelled = false;
+    const detectIfGranted = () => {
+      if (status?.state === "granted") fetchAndCacheLocation();
+    };
+    if (window.Flutter) {
+      // Native bridge manages its own permission; fetch once.
+      fetchAndCacheLocation();
+      return undefined;
+    }
+    if (!navigator.permissions?.query) return undefined;
+    navigator.permissions
+      .query({ name: "geolocation" })
+      .then((result) => {
+        if (cancelled) return;
+        status = result;
+        detectIfGranted();
+        status.onchange = detectIfGranted;
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (status) status.onchange = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -336,6 +394,7 @@ export const LocationProvider = ({ children }) => {
 
   const locationValue = useMemo(() => ({
     currentLocation,
+    hasRealLocation: !isDefaultAppLocation(currentLocation),
     savedAddresses,
     updateLocation,
     addAddress,

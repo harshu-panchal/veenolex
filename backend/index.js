@@ -285,6 +285,9 @@ async function startHttpServer() {
     registerOrderQueueProcessors();
   }
   
+  const { verifyEmailTransport } = await import("./app/services/emailService.js");
+  verifyEmailTransport();
+
   return new Promise((resolve) => {
     server.listen(PORT, "0.0.0.0", () => {
       logger.info('HTTP server started', {

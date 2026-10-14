@@ -149,6 +149,25 @@ export async function sendSellerVerificationOtpEmail({
   };
 }
 
+/**
+ * Verifies SMTP credentials at boot so a bad password is logged at deploy
+ * time instead of surfacing when a seller requests an OTP. Never throws.
+ */
+export async function verifyEmailTransport() {
+  if (!useRealEmailOTP()) return;
+  try {
+    await getTransporter().verify();
+    logger.info("SMTP transport verified");
+  } catch (error) {
+    cachedTransporter = null;
+    logger.error("SMTP transport verification failed - email OTPs will not be delivered", {
+      code: error.code,
+      responseCode: error.responseCode,
+      message: error.message,
+    });
+  }
+}
+
 export function __resetEmailTransportForTests() {
   cachedTransporter = null;
 }
