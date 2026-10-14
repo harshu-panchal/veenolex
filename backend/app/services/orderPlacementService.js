@@ -32,6 +32,7 @@ import {
 import { afterPlaceOrderV2 } from "./orderWorkflowService.js";
 import {
   computeStockReservationWindow,
+  invalidateProductStockCache,
   reserveStockForItems,
 } from "./stockService.js";
 import { isLowStockAlertsEnabled } from "./lowStockAlertService.js";
@@ -780,6 +781,10 @@ export async function placeOrderAtomic({
         });
       }
     }
+
+    void invalidateProductStockCache(
+      orders.flatMap((order) => (order.items || []).map((item) => item.product)),
+    );
 
     for (const order of orders) {
       void refreshOrderDeliveryEta(order._id);

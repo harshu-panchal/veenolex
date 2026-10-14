@@ -6,8 +6,29 @@
  * Returns variant-aware rows (one row per variant) for the POS grid.
  */
 
+import mongoose from "mongoose";
 import Product from "../../models/product.js";
 import { variantsFromProductDoc } from "./variantHelpers.js";
+
+/**
+ * Products a POS may sell: the admin POS sells the admin's own (warehouse)
+ * catalog, a seller POS sells that seller's products — including their
+ * copies of admin catalog items. Selling anyone else's product would take
+ * stock out of their inventory.
+ *
+ * @param {string|null} sellerId - null for the admin POS
+ */
+export function posOwnerFilter(sellerId = null) {
+  return sellerId
+    ? { sellerId: new mongoose.Types.ObjectId(String(sellerId)) }
+    : { sellerId: null };
+}
+
+/** True when `product` belongs to the POS of `sellerId` (null = admin). */
+export function isPOSProductOwner(product, sellerId = null) {
+  const owner = product?.sellerId ? String(product.sellerId) : null;
+  return sellerId ? owner === String(sellerId) : owner === null;
+}
 
 /**
  * Search and return POS-ready product rows.
@@ -15,10 +36,11 @@ import { variantsFromProductDoc } from "./variantHelpers.js";
  * @param {Object} params
  * @param {string} params.search - Search query (name, SKU, barcode, etc.)
  * @param {number} params.limit - Max results (default 50)
+ * @param {string|null} params.sellerId - Seller POS owner; null for admin POS
  * @returns {Promise<Array>} Array of variant-expanded product rows
  */
-export async function getPOSProducts({ search = "", limit = 50 } = {}) {
-  const query = { status: "active" };
+export async function getPOSProducts({ search = "", limit = 50, sellerId = null } = {}) {
+  const query = { status: "active", ...posOwnerFilter(sellerId) };
 
   if (search && search.trim()) {
     const term = search.trim();
@@ -84,9 +106,11 @@ export async function getPOSProducts({ search = "", limit = 50 } = {}) {
  * Used for barcode scanner input to auto-add to cart.
  *
  * @param {string} barcode - Scanned barcode value
+ * @param {Object} [options]
+ * @param {string|null} [options.sellerId] - Seller POS owner; null for admin POS
  * @returns {Promise<Object|null>} Matching product row or null
  */
-export async function findProductByBarcode(barcode) {
+export async function findProductByBarcode(barcode, { sellerId = null } = {}) {
   if (!barcode || !barcode.trim()) return null;
 
   const term = barcode.trim();
@@ -94,6 +118,7 @@ export async function findProductByBarcode(barcode) {
   // Search root-level barcode array and variant barcode arrays
   const product = await Product.findOne({
     status: "active",
+    ...posOwnerFilter(sellerId),
     $or: [
       { barcode: term },
       { "variants.barcode": term },

@@ -6,7 +6,12 @@
  */
 
 import Order from "../../models/order.js";
-import { createPOSOrder, deletePOSOrder, updatePOSOrderItems } from "../../services/pos/posOrderService.js";
+import {
+  createPOSOrder,
+  deletePOSOrder,
+  exchangePOSItems,
+  updatePOSOrderItems,
+} from "../../services/pos/posOrderService.js";
 import { getPOSProducts, findProductByBarcode } from "../../services/pos/posProductService.js";
 import { initiatePOSPhonePePayment, verifyPOSPhonePePayment } from "../../services/pos/posPhonepeService.js";
 
@@ -17,7 +22,7 @@ export async function createAdminPOSOrder(req, res) {
   try {
     const { customerId, paymentMethod, paymentStatus, items } = req.body;
 
-    const order = await createPOSOrder({
+    const { order, stockUpdates } = await createPOSOrder({
       customerId: customerId || "walk-in-customer",
       paymentMethod: paymentMethod || "Cash",
       paymentStatus: paymentStatus || "Paid",
@@ -32,6 +37,7 @@ export async function createAdminPOSOrder(req, res) {
       success: true,
       message: "POS order created successfully",
       order,
+      stockUpdates,
     });
   } catch (error) {
     return res.status(error.statusCode || 400).json({
@@ -49,12 +55,13 @@ export async function updateAdminPOSOrderItems(req, res) {
     const { id } = req.params;
     const { items } = req.body;
 
-    const order = await updatePOSOrderItems(id, items, null);
+    const { order, stockUpdates } = await updatePOSOrderItems(id, items);
 
     return res.json({
       success: true,
       message: "Order items updated successfully",
       order,
+      stockUpdates,
     });
   } catch (error) {
     return res.status(error.statusCode || 400).json({
@@ -89,35 +96,15 @@ export async function exchangeAdminPOSItems(req, res) {
       });
     }
 
-    // Restore stock for returned items
-    const { incrementVariantStock } = await import(
-      "../../services/pos/variantStockService.js"
-    );
-    const { isValidObjectId } = await import(
-      "../../services/pos/variantHelpers.js"
-    );
-
-    for (const item of returnItems || []) {
-      if (item.productId && isValidObjectId(item.productId)) {
-        await incrementVariantStock({
-          productId: item.productId,
-          variantId: item.variationId || null,
-          quantity: Number(item.quantity || 1),
-          source: "ORDER_EDIT_RESTORE",
-          orderId: originalOrder._id,
-          note: `Exchange return from ${originalOrder.orderId}`,
-        });
-      }
-    }
-
-    // Create new order for the new items
-    const order = await createPOSOrder({
+    // Return old items and sell the new ones in one transaction.
+    const { order, stockUpdates } = await exchangePOSItems({
+      originalOrder,
+      returnItems: returnItems || [],
       customerId: customerId || "walk-in-customer",
       paymentMethod: paymentMethod || "Cash",
       paymentStatus: "Paid",
       items: newItems,
       adminNotes: `POS Exchange from ${originalOrder.orderId}`,
-      sellerId: null,
       createdByRole: "Admin",
       createdById: req.user?._id,
     });
@@ -126,6 +113,7 @@ export async function exchangeAdminPOSItems(req, res) {
       success: true,
       message: "Exchange completed successfully",
       order,
+      stockUpdates,
       originalOrderId: originalOrder.orderId,
     });
   } catch (error) {
@@ -340,8 +328,9 @@ export async function createAdminPOSOnlineOrder(req, res) {
       });
     }
 
-    // Create the POS order shell in pending (CREATED) payment status
-    const order = await createPOSOrder({
+    // Create the POS order in pending (CREATED) payment status. Stock is
+    // only checked here; it is deducted once the payment is verified.
+    const { order } = await createPOSOrder({
       customerId: customerId || "walk-in-customer",
       paymentMethod: "Online",
       paymentStatus: "Pending",
@@ -388,7 +377,9 @@ export async function verifyAdminPOSPayment(req, res) {
     return res.json({
       success: verification.success,
       message: verification.success ? "Payment verified successfully" : "Payment verification failed/pending",
-      order: verification.order
+      order: verification.order,
+      stockUpdates: verification.stockUpdates || [],
+      stockError: verification.stockError || null,
     });
   } catch (error) {
     return res.status(500).json({

@@ -8,7 +8,40 @@
 
 import Product from "../../models/product.js";
 import POSStockLedger from "../../models/posStockLedger.js";
-import { resolveVariant, isValidObjectId } from "./variantHelpers.js";
+import { resolveVariant, isValidObjectId, effectiveStock } from "./variantHelpers.js";
+
+function insufficientStockError(productName, variantName, available) {
+  const label = variantName && variantName !== productName
+    ? `${productName} (${variantName})`
+    : productName;
+  const err = new Error(`Only ${Math.max(available, 0)} left of ${label}`);
+  err.statusCode = 409;
+  err.code = "INSUFFICIENT_STOCK";
+  return err;
+}
+
+/**
+ * Check, without changing anything, that `quantity` units can be sold.
+ * Used before an online POS payment, when stock is only deducted once the
+ * payment succeeds.
+ *
+ * @returns {Promise<{ available: number }>}
+ */
+export async function assertVariantStockAvailable({ productId, variantId, quantity, session = null }) {
+  if (!isValidObjectId(productId)) return { available: Infinity };
+  const product = await Product.findById(productId).session(session || null).lean();
+  if (!product) {
+    const err = new Error(`Product not found: ${productId}`);
+    err.statusCode = 404;
+    throw err;
+  }
+  const { variant } = resolveVariant(product, variantId);
+  const available = effectiveStock(product, variant);
+  if (available < quantity) {
+    throw insufficientStockError(product.name, variant?.name, available);
+  }
+  return { available };
+}
 
 /**
  * Decrement stock for a POS sale.
@@ -53,9 +86,8 @@ export async function decrementVariantStock({
     const updated = await Product.findOneAndUpdate(
       {
         _id: productId,
-        "variants._id": resolvedVariantId,
         stock: { $gte: quantity },
-        "variants.stock": { $gte: quantity },
+        variants: { $elemMatch: { _id: resolvedVariantId, stock: { $gte: quantity } } },
       },
       {
         $inc: {
@@ -67,9 +99,7 @@ export async function decrementVariantStock({
     );
 
     if (!updated) {
-      throw new Error(
-        `Insufficient stock for ${product.name} (variant: ${variant.name || resolvedVariantId})`
-      );
+      throw insufficientStockError(product.name, variant.name, effectiveStock(product, variant));
     }
 
     // Write ledger entry
@@ -107,7 +137,7 @@ export async function decrementVariantStock({
     );
 
     if (!updated) {
-      throw new Error(`Insufficient stock for ${product.name}`);
+      throw insufficientStockError(product.name, null, effectiveStock(product, null));
     }
 
     await POSStockLedger.create(
@@ -153,7 +183,8 @@ export async function incrementVariantStock({
 
   const product = await Product.findById(productId).session(session || null);
   if (!product) {
-    throw new Error(`Product not found: ${productId}`);
+    // Deleted since the sale (or a quick-add line): nothing to restore.
+    return { product: null, variant: null };
   }
 
   const { variant, variantId: resolvedVariantId } = resolveVariant(product, variantId);
