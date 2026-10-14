@@ -352,10 +352,6 @@ const Auth = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [signupStep, setSignupStep] = useState(1);
   const [isMapOpen, setIsMapOpen] = useState(false);
-  // Login: "password", or "otp" (a code emailed to the seller).
-  const [loginMethod, setLoginMethod] = useState("password");
-  const [loginOtp, setLoginOtp] = useState({ code: "", sent: false, sending: false, maskedEmail: "" });
-  const isOtpLogin = isLogin && loginMethod === "otp";
   const { login } = useAuth();
   const { settings } = useSettings();
   const navigate = useNavigate();
@@ -431,33 +427,7 @@ const Auth = () => {
       : { channel, phone: formData.phone };
   };
 
-  const resetLoginOtp = () =>
-    setLoginOtp({ code: "", sent: false, sending: false, maskedEmail: "" });
-
-  const sendLoginOtp = async () => {
-    const email = (formData.email || "").trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      toast.error("Please enter your registered email address.");
-      return;
-    }
-    setLoginOtp((prev) => ({ ...prev, sending: true }));
-    try {
-      const response = await sellerApi.sendLoginOtp({ email });
-      setLoginOtp({
-        code: "",
-        sent: true,
-        sending: false,
-        maskedEmail: response.data?.result?.maskedTarget || email,
-      });
-      toast.success("OTP sent to your email.");
-    } catch (error) {
-      setLoginOtp((prev) => ({ ...prev, sending: false }));
-      throw error;
-    }
-  };
-
   const handleChange = (e) => {
-    if (e.target.name === "email" && loginOtp.sent) resetLoginOtp();
     const { name, value } = e.target;
     if (name === "name") {
       // Owner name: only alphabets and spaces
@@ -608,22 +578,9 @@ const Auth = () => {
           return;
         }
       }
-      // Login with an emailed code: send it first, then verify it.
-      if (isOtpLogin) {
-        if (!loginOtp.sent) {
-          setIsLoading(true);
-          await sendLoginOtp();
-          return;
-        }
-        if (!/^\d{4}$/.test(loginOtp.code)) {
-          toast.error("Please enter the 4-digit OTP from your email.");
-          return;
-        }
-      }
-
       // Password: min 6 characters
       const pwd = (formData.password || "").trim();
-      if (!isOtpLogin && pwd.length < 6) {
+      if (pwd.length < 6) {
         toast.error(
           "Password must be at least 6 characters.",
         );
@@ -660,12 +617,7 @@ const Auth = () => {
           .filter(Boolean)
           .join(", ");
 
-      const response = isOtpLogin
-        ? await sellerApi.verifyLoginOtp({
-          email: formData.email,
-          otp: loginOtp.code,
-        })
-        : isLogin
+      const response = isLogin
         ? await sellerApi.login({
           email: formData.email,
           password: formData.password,
@@ -703,7 +655,6 @@ const Auth = () => {
           token,
           role: "seller",
         });
-        resetLoginOtp();
         toast.success("Welcome back, Partner!");
         navigate("/seller");
       } else {
@@ -912,29 +863,6 @@ const Auth = () => {
                       </div>
                     )}
 
-                    {isLogin && (
-                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
-                        {[
-                          { value: "password", label: "Password" },
-                          { value: "otp", label: "Email OTP" },
-                        ].map((option) => (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => {
-                              setLoginMethod(option.value);
-                              resetLoginOtp();
-                            }}
-                            className={`py-2 rounded-md text-[11px] font-black uppercase tracking-wider transition-all ${loginMethod === option.value
-                              ? "bg-white text-slate-900 shadow-sm"
-                              : "text-slate-500 hover:text-slate-700"
-                              }`}>
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
                     <div className="relative group">
                       <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-violet-600 transition-colors">
                         <Mail size={18} />
@@ -1079,40 +1007,6 @@ const Auth = () => {
                       </>
                     )}
 
-                    {isOtpLogin && loginOtp.sent && (
-                      <div className="space-y-2">
-                        <p className="text-[11px] font-bold text-slate-500">
-                          Enter the code sent to {loginOtp.maskedEmail}
-                        </p>
-                        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            autoComplete="one-time-code"
-                            autoFocus
-                            placeholder="Enter 4-digit OTP"
-                            className="flex-1 bg-transparent text-sm font-bold tracking-[4px] text-slate-700 outline-none placeholder:tracking-normal placeholder:text-slate-300"
-                            value={loginOtp.code}
-                            onChange={(e) =>
-                              setLoginOtp((prev) => ({
-                                ...prev,
-                                code: e.target.value.replace(/\D/g, "").slice(0, 4),
-                              }))
-                            }
-                          />
-                          <button
-                            type="button"
-                            onClick={() => sendLoginOtp().catch((error) =>
-                              toast.error(error.response?.data?.message || "Could not send OTP"))}
-                            disabled={loginOtp.sending}
-                            className="px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 disabled:opacity-50">
-                            {loginOtp.sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Resend"}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {!isOtpLogin && (
                     <div className="relative group">
                       <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-violet-600 transition-colors">
                         <Lock size={18} />
@@ -1136,9 +1030,8 @@ const Auth = () => {
                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
-                    )}
 
-                    {isLogin && !isOtpLogin && (
+                    {isLogin && (
                       <div className="flex justify-end">
                         <button
                           type="button"
@@ -1339,8 +1232,6 @@ const Auth = () => {
                     className={`${!isLogin && signupStep > 1 ? "w-2/3" : "w-full"} bg-slate-900 text-white rounded-lg py-4 text-sm font-black tracking-[2px] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.3)] hover:bg-black transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-3 group`}>
                     {isLoading
                       ? "WORKING..."
-                      : isOtpLogin
-                        ? loginOtp.sent ? "VERIFY & LOGIN" : "SEND OTP"
                       : isLogin
                         ? "ENTER DASHBOARD"
                         : signupStep < 3
@@ -1361,7 +1252,6 @@ const Auth = () => {
                     onClick={() => {
                       setIsLogin(!isLogin);
                       setSignupStep(1);
-                      resetLoginOtp();
                       setVerifications({
                         email: createInitialVerificationState(),
                         phone: createInitialVerificationState(),
