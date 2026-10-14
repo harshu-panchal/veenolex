@@ -1,9 +1,27 @@
 import Product from "../models/product.js";
 import StockHistory from "../models/stockHistory.js";
 import { createLowStockAlertCandidate } from "./lowStockAlertService.js";
+import { buildKey, invalidate } from "./cacheService.js";
+import logger from "./logger.js";
 
 const ONLINE_RESERVATION_MS = () =>
   parseInt(process.env.ONLINE_STOCK_RESERVATION_MS || "900000", 10);
+
+/**
+ * Drop cached product pages/lists after their stock changed, so customers
+ * see the new quantity right away instead of after the cache TTL.
+ * Never throws: a cache miss only costs a fresh read.
+ */
+export async function invalidateProductStockCache(productIds = []) {
+  const ids = [...new Set(productIds.filter(Boolean).map(String))];
+  if (!ids.length) return;
+  try {
+    await Promise.all(ids.map((id) => invalidate(buildKey("catalog", "product", id))));
+    await invalidate(buildKey("catalog", "productList", "*"));
+  } catch (error) {
+    logger.warn("invalidateProductStockCache failed", { error: error.message });
+  }
+}
 
 export function computeStockReservationWindow(paymentMode) {
   const now = new Date();

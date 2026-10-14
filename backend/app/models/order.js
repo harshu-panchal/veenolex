@@ -36,6 +36,11 @@ const orderSchema = new mongoose.Schema(
       enum: ["Cash", "Credit", "Online", null],
       default: null,
     },
+    // POS stock tracking. Bills from posStockVersion 2 record whether their
+    // stock has been deducted (online POS bills deduct only once paid);
+    // older bills always deducted at creation.
+    posStockVersion: { type: Number, default: null },
+    posStockDeductedAt: { type: Date, default: null },
     customerName: { type: String, default: null },
     customerEmail: { type: String, default: null },
     customerPhone: { type: String, default: null },
@@ -66,6 +71,10 @@ const orderSchema = new mongoose.Schema(
         unitPrice: Number,     // Alias for price in POS context
         warrantyType: String,
         warrantyDuration: String,
+        // POS: variant the line sold from, and whether it is a catalog
+        // product whose stock moves (false for quick-add custom items).
+        variantId: String,
+        stockTracked: Boolean,
       },
     ],
     address: {

@@ -1,7 +1,7 @@
 import Transaction from "../models/transaction.js";
 import Order from "../models/order.js";
 import CheckoutGroup from "../models/checkoutGroup.js";
-import { releaseReservedStockForOrder } from "./stockService.js";
+import { invalidateProductStockCache, releaseReservedStockForOrder } from "./stockService.js";
 import { clearOrderTracking } from "./firebaseService.js";
 import { reverseOrderFinanceOnCancellation } from "./finance/orderFinanceService.js";
 import { requestCodAdvanceDecision } from "./codAdvanceService.js";
@@ -33,6 +33,7 @@ export async function compensateOrderCancellation(order, orderIdString, opts = {
       reason: "Cancelled",
     });
     await existing.save();
+    void invalidateProductStockCache((existing.items || []).map((item) => item.product));
   }
 
   await Transaction.findOneAndUpdate(

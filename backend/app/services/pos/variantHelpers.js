@@ -6,6 +6,23 @@
  */
 
 /**
+ * Units of a product/variant that can actually be sold.
+ *
+ * A variant line needs both its own stock and the product-level stock
+ * (online checkout and POS both deduct from both), so the sellable number
+ * is the smaller of the two. Products without variants use product stock.
+ *
+ * @param {Object} product
+ * @param {Object|null} variant - variant subdocument, or null for root stock
+ * @returns {number}
+ */
+export function effectiveStock(product, variant = null) {
+  const productStock = Math.max(Number(product?.stock || 0), 0);
+  if (!variant || variant.isVirtual) return productStock;
+  return Math.min(productStock, Math.max(Number(variant.stock || 0), 0));
+}
+
+/**
  * Extract variant rows from a product document.
  * Returns an array of variant objects, each with product-level defaults
  * applied for any missing variant-specific fields.
@@ -49,7 +66,7 @@ export function variantsFromProductDoc(product) {
     purchasePrice: v.purchasePrice ?? 0,
     wholesalePrice: v.wholesalePrice ?? 0,
     compareAtPrice: v.compareAtPrice ?? v.price ?? product.price ?? 0,
-    stock: v.stock ?? 0,
+    stock: effectiveStock(product, v),
     barcode: v.barcode || product.barcode || [],
     mainImage: v.mainImage || product.mainImage || "",
     isVirtual: false,
@@ -67,6 +84,18 @@ export function findVariantById(product, variantId) {
   if (!product || !variantId) return null;
   const variants = product.variants || [];
   return variants.find((v) => String(v._id) === String(variantId)) || null;
+}
+
+/**
+ * Find a variant by id, name or SKU. Bills created before variant ids were
+ * stored on POS lines only kept the variant's name/SKU (`variantSlot`).
+ */
+export function findVariantByRef(product, ref) {
+  if (!product || !ref) return null;
+  const value = String(ref);
+  return (product.variants || []).find(
+    (v) => String(v._id) === value || v.name === value || v.sku === value,
+  ) || null;
 }
 
 /**

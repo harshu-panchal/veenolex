@@ -31,6 +31,7 @@ const posStockLedgerSchema = new mongoose.Schema(
         "ORDER_EDIT_DEDUCT",    // Stock deducted during order edit
         "PURCHASE",             // Purchase entry stock-in
         "ADJUSTMENT",           // Manual correction
+        "ORDER_DELETE_RESTORE", // Stock returned when a POS bill is deleted
       ],
       required: true,
     },

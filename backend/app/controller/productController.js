@@ -98,6 +98,28 @@ function parseSellerIdFilters({ sellerId, sellerIds }) {
   return [];
 }
 
+/**
+ * Keep product-level and variant stock in step on save (sales deduct from
+ * both). One variant: the product stock field is the number the seller or
+ * admin manages, so the variant follows it. Several variants: the product
+ * stock is their total.
+ */
+function syncVariantStock(productData) {
+  const variants = productData.variants;
+  if (!Array.isArray(variants) || variants.length === 0) return;
+  const hasProductStock =
+    productData.stock !== undefined && productData.stock !== null && productData.stock !== "";
+  if (variants.length === 1) {
+    if (hasProductStock) {
+      variants[0].stock = Math.max(Number(productData.stock) || 0, 0);
+    } else {
+      productData.stock = Math.max(Number(variants[0].stock) || 0, 0);
+    }
+    return;
+  }
+  productData.stock = variants.reduce((sum, v) => sum + Math.max(Number(v.stock) || 0, 0), 0);
+}
+
 function makeProductSku(name, index = 1) {
   const prefix = String(name || "")
     .toLowerCase()
@@ -826,6 +848,7 @@ export const createProduct = async (req, res) => {
             : makeProductSku(productData.name, idx + 1),
       }));
     }
+    syncVariantStock(productData);
 
     let moderationUpdate = {};
     let successMessage = "Product created successfully";
@@ -1030,6 +1053,17 @@ export const updateProduct = async (req, res) => {
             ? variant.sku
             : makeProductSku(skuBaseName, idx + 1),
       }));
+    }
+    syncVariantStock(productData);
+    // Stock changed without the variants list: move the single variant too.
+    if (
+      !Array.isArray(productData.variants) &&
+      productData.stock !== undefined &&
+      productData.stock !== "" &&
+      Array.isArray(product?.variants) &&
+      product.variants.length === 1
+    ) {
+      productData["variants.0.stock"] = Math.max(Number(productData.stock) || 0, 0);
     }
 
     let moderationUpdate = {};
