@@ -25,11 +25,14 @@ import {
     HiOutlineSwatch,
     HiOutlineSquaresPlus,
     HiOutlineArrowDownTray,
+    HiOutlineBuildingStorefront,
+    HiOutlineUsers,
 } from 'react-icons/hi2';
 import Modal from '@shared/components/ui/Modal';
 import Pagination from '@shared/components/ui/Pagination';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import ProductSellersDrawer from '../components/ProductSellersDrawer';
 
 const ProductManagement = () => {
     const navigate = useNavigate();
@@ -43,6 +46,14 @@ const ProductManagement = () => {
 
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [activeScanIndex, setActiveScanIndex] = useState(null);
+
+    const [selectedProductForSellers, setSelectedProductForSellers] = useState(null);
+    const [isSellersDrawerOpen, setIsSellersDrawerOpen] = useState(false);
+
+    const handleOpenSellersDrawer = (product) => {
+        setSelectedProductForSellers(product);
+        setIsSellersDrawerOpen(true);
+    };
 
     const handleBarcodeScan = async (code) => {
         if (activeScanIndex === null) return;
@@ -193,7 +204,7 @@ const ProductManagement = () => {
     const fetchProducts = async (requestedPage = 1) => {
         setIsLoading(true);
         try {
-            const params = { page: requestedPage, limit: pageSize };
+            const params = { page: requestedPage, limit: pageSize, masterOnly: true };
             if (searchTerm) params.search = searchTerm;
             if (filterCategory !== 'all') params.category = filterCategory;
             if (filterStatus !== 'all') params.status = filterStatus;
@@ -732,7 +743,7 @@ const ProductManagement = () => {
                                     />
                                 </th>
                                 <th className="px-6 py-3 text-left text-[10px] font-medium text-slate-500 uppercase tracking-[0.18em]">Product</th>
-                                <th className="px-6 py-3 text-left text-[10px] font-medium text-slate-500 uppercase tracking-[0.18em]">Seller</th>
+                                <th className="px-6 py-3 text-left text-[10px] font-medium text-slate-500 uppercase tracking-[0.18em]">Sellers / Stock</th>
                                 <th className="px-6 py-3 text-left text-[10px] font-medium text-slate-500 uppercase tracking-[0.18em]">Variant</th>
                                 <th className="px-6 py-3 text-left text-[10px] font-medium text-slate-500 uppercase tracking-[0.18em]">Category</th>
                                 <th className="px-6 py-3 text-left text-[10px] font-medium text-slate-500 uppercase tracking-[0.18em]">Subcategory</th>
@@ -773,13 +784,17 @@ const ProductManagement = () => {
                                         />
                                     </td>
                                     {/* Product Column */}
-                                    <td className="px-6 py-5 align-middle">
+                                    <td
+                                        className="px-6 py-5 align-middle cursor-pointer group/item"
+                                        onClick={() => handleOpenSellersDrawer(p)}
+                                        title="Click to view seller distribution"
+                                    >
                                         <div className="flex items-center gap-3 min-w-0">
                                             <div className="h-11 w-11 shrink-0 rounded-xl overflow-hidden bg-slate-100 ring-1 ring-slate-200 shadow-sm">
-                                                <img src={p.mainImage || p.images?.[0]} alt={p.name} className="h-full w-full object-contain p-1 group-hover:scale-110 transition-transform duration-500" />
+                                                <img src={p.mainImage || p.images?.[0]} alt={p.name} className="h-full w-full object-contain p-1 group-hover/item:scale-110 transition-transform duration-500" />
                                             </div>
                                             <div className="min-w-0">
-                                                <p className="truncate text-[13px] font-semibold leading-5 text-slate-900" title={p.name}>{p.name}</p>
+                                                <p className="truncate text-[13px] font-semibold leading-5 text-slate-900 group-hover/item:text-primary transition-colors" title={p.name}>{p.name}</p>
                                                 <p className="truncate text-[10px] font-medium uppercase tracking-widest text-slate-400" title={p.unit}>{p.unit}</p>
                                                 {p.approvalStatus === 'rejected' && p.approvalNote ? (
                                                     <p className="truncate text-[10px] font-medium text-rose-500" title={p.approvalNote}>
@@ -790,14 +805,42 @@ const ProductManagement = () => {
                                         </div>
                                     </td>
 
-                                    {/* Seller Column */}
+                                    {/* Sellers Column */}
                                     <td className="px-6 py-5 align-middle">
-                                        <div className="flex items-center gap-2 min-w-0">
-                                            <div className="h-2.5 w-2.5 shrink-0 rounded-full bg-brand-500 shadow-[0_0_0_4px_rgba(59,130,246,0.12)]" />
-                                            <span className="truncate text-[13px] font-medium text-slate-700" title={p.sellerId?.shopName || 'Admin'}>
-                                                {p.sellerId?.shopName || 'Admin'}
-                                            </span>
-                                        </div>
+                                        {p.sellerCount > 0 ? (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleOpenSellersDrawer(p);
+                                                }}
+                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 hover:bg-blue-100 text-blue-700 ring-1 ring-blue-200/80 hover:ring-blue-300 transition-all cursor-pointer group/seller shadow-2xs"
+                                                title={`Click to view all ${p.sellerCount} sellers carrying this product`}
+                                            >
+                                                <HiOutlineBuildingStorefront className="h-3.5 w-3.5 text-blue-600 group-hover/seller:scale-110 transition-transform" />
+                                                <span className="text-xs font-bold whitespace-nowrap">
+                                                    {p.sellerCount} {p.sellerCount === 1 ? 'Seller' : 'Sellers'}
+                                                </span>
+                                                {p.totalSellerStock > 0 && (
+                                                    <span className="text-[10px] font-semibold text-blue-600 bg-white/80 px-1.5 py-0.5 rounded-full shadow-2xs">
+                                                        {p.totalSellerStock} pcs
+                                                    </span>
+                                                )}
+                                            </button>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleOpenSellersDrawer(p);
+                                                }}
+                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-500 ring-1 ring-slate-200/60 transition-all cursor-pointer text-xs"
+                                                title="No sellers have added this product yet (Click to inspect)"
+                                            >
+                                                <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+                                                <span className="text-[11px] font-medium">Admin Only</span>
+                                            </button>
+                                        )}
                                     </td>
 
                                     {/* Variant Column */}
@@ -1821,6 +1864,11 @@ const ProductManagement = () => {
                     setActiveScanIndex(null);
                 }}
                 onScan={handleBarcodeScan}
+            />
+            <ProductSellersDrawer
+                isOpen={isSellersDrawerOpen}
+                onClose={() => setIsSellersDrawerOpen(false)}
+                product={selectedProductForSellers}
             />
         </div>
     );

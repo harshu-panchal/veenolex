@@ -19,6 +19,8 @@ export const adminCatalogApi = {
     getProducts: (params) => axiosInstance.get('/products', { params }),
     getProductModerationList: (params) =>
         axiosInstance.get('/products/moderation', { params }),
+    getProductSellers: (id) =>
+        axiosInstance.get(`/products/${id}/sellers`),
     approveProductModeration: (id, data = {}) =>
         axiosInstance.patch(`/products/moderation/${id}/approve`, data),
     rejectProductModeration: (id, data = {}) =>
