@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useLiveProductStock, patchProductStock } from '@shared/hooks/useLiveProductStock';
 import { useNavigate } from "react-router-dom";
 import Card from '@shared/components/ui/Card';
 import Badge from '@shared/components/ui/Badge';
@@ -201,8 +202,8 @@ const ProductManagement = () => {
         }
     };
 
-    const fetchProducts = async (requestedPage = 1) => {
-        setIsLoading(true);
+    const fetchProducts = async (requestedPage = 1, { quiet = false } = {}) => {
+        if (!quiet) setIsLoading(true);
         try {
             const params = { page: requestedPage, limit: pageSize, masterOnly: true };
             if (searchTerm) params.search = searchTerm;
@@ -226,11 +227,26 @@ const ProductManagement = () => {
                 });
             }
         } catch (error) {
-            toast.error('Failed to fetch products');
+            if (!quiet) toast.error('Failed to fetch products');
         } finally {
-            setIsLoading(false);
+            if (!quiet) setIsLoading(false);
         }
     };
+
+    // Live stock: patch master rows in place; a seller copy changing moves
+    // the per-row seller totals, so reload those quietly (debounced).
+    const sellerStockReload = useRef(null);
+    useLiveProductStock(
+        (updates) => {
+            setProducts((prev) => prev.map((product) => patchProductStock(product, updates)));
+            if (updates.some((u) => u.sellerId)) {
+                clearTimeout(sellerStockReload.current);
+                sellerStockReload.current = setTimeout(() => fetchProducts(page, { quiet: true }), 1500);
+            }
+        },
+        () => fetchProducts(page, { quiet: true })
+    );
+    useEffect(() => () => clearTimeout(sellerStockReload.current), []);
 
     useEffect(() => {
         fetchCategories();

@@ -26,6 +26,7 @@ import autoTable from "jspdf-autotable";
 
 import axiosInstance from "@core/api/axios";
 import adminPosApi from "../../services/api/posApi";
+import { useLiveProductStock, liveStockFor } from "@shared/hooks/useLiveProductStock";
 import { getCartLineId } from "../../../../utils/posCartLineId";
 import { expandPOSProducts } from "../../../../utils/posProductExpansion";
 import { calculateInclusiveGST, splitGST } from "../../../../utils/gstUtils";
@@ -145,6 +146,20 @@ export default function AdminPOSOrders() {
     }
     fetchProducts(searchQuery, { quiet: true });
   };
+
+  // Stock changed somewhere else (website order, another till, reroute,
+  // product edit): patch the tiles and carts in place without a toast.
+  useLiveProductStock(
+    (updates) => {
+      const patch = (row) => {
+        const stock = liveStockFor(updates, row.productId, row.variantId);
+        return stock === null || stock === row.stock ? row : { ...row, stock };
+      };
+      setProducts((prev) => prev.map(patch));
+      setBills((prev) => prev.map((b) => ({ ...b, cart: b.cart.map(patch) })));
+    },
+    () => fetchProducts(searchQuery, { quiet: true })
+  );
 
   const fetchCategories = async () => {
     try {

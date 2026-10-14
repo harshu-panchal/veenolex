@@ -325,3 +325,15 @@ export function onCodAdvanceDecided(getToken, handler) {
   s.on("order:cod-advance:decided", handler);
   return () => s.off("order:cod-advance:decided", handler);
 }
+
+/**
+ * Admin / seller: product stock changed anywhere (website order, POS bill,
+ * reroute, cancellation, manual edit). Payload: { updates: [{ productId,
+ * stock, variants: [{ _id, sku, name, stock }] }], at }.
+ */
+export function onProductStock(getToken, handler) {
+  const s = getOrderSocket(getToken);
+  if (!s || typeof handler !== "function") return () => {};
+  s.on("product:stock", handler);
+  return () => s.off("product:stock", handler);
+}

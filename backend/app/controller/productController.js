@@ -42,6 +42,7 @@ import {
 } from "../services/searchSyncService.js";
 import { buildKey, getOrSet, getTTL, invalidate } from "../services/cacheService.js";
 import { uploadToCloudinary } from "../services/mediaService.js";
+import { broadcastProductStock } from "../services/stockService.js";
 import logger from "../services/logger.js";
 import { resolveCategoryName, resolveSellerName } from "../services/entityNameCache.js";
 import {
@@ -1091,6 +1092,9 @@ export const updateProduct = async (req, res) => {
     // Enqueue search indexing asynchronously
     await enqueueProductIndex(id);
     await invalidate(`cache:catalog:product:${id}`);
+    if (productData.stock !== undefined || productData.variants !== undefined || productData["variants.0.stock"] !== undefined) {
+      void broadcastProductStock([id]);
+    }
 
     try {
       await invalidate(buildKey("catalog", "productList", "*"));
