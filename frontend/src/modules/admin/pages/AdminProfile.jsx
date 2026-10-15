@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import Card from '@shared/components/ui/Card';
-import { MapPin } from 'lucide-react';
 import {
     Save,
     User,
@@ -198,18 +197,6 @@ const AdminProfile = () => {
                             >
                                 <Lock className="h-4 w-4" />
                                 Security & Password
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('location')}
-                                className={cn(
-                                    "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all mt-1",
-                                    activeTab === 'location'
-                                        ? "bg-white text-brand-600 shadow-sm ring-1 ring-slate-100"
-                                        : "text-slate-400 hover:text-slate-600 hover:bg-slate-100/50"
-                                )}
-                            >
-                                <MapPin className="h-4 w-4" />
-                                Warehouse Location
                             </button>
                         </div>
                     </Card>
