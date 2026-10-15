@@ -199,8 +199,6 @@ const AdminSettings = () => {
         { id: 'general', label: 'General', icon: Settings },
         { id: 'branding', label: 'Branding', icon: Globe },
         { id: 'legal', label: 'Legal & Contact', icon: Building2 },
-        { id: 'social', label: 'Social & Apps', icon: Share2 },
-        { id: 'seo', label: 'SEO & Meta', icon: Search },
     ];
 
     return (
