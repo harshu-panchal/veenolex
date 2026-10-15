@@ -45,7 +45,7 @@ const AboutPage = () => {
                                 </div>
                                 <div className="p-6 flex flex-col flex-grow text-center">
                                     <h3 className="text-2xl font-bold font-serif text-slate-800 mb-1" style={{fontFamily: "'Playfair Display', serif"}}>Mr. Rajesh Patel</h3>
-                                    <p className="text-xs text-slate-400 mb-4 uppercase tracking-widest font-semibold">CEO</p>
+                                    <p className="text-xs text-slate-400 mb-4 uppercase tracking-widest font-semibold">Co-Founder &amp; CEO</p>
                                     <p className="text-sm text-slate-500 leading-relaxed">Future is in your hand, think about it and take action and move on</p>
                                 </div>
                             </div>
@@ -57,7 +57,7 @@ const AboutPage = () => {
                                 </div>
                                 <div className="p-6 flex flex-col flex-grow text-center">
                                     <h3 className="text-2xl font-bold font-serif text-slate-800 mb-1" style={{fontFamily: "'Playfair Display', serif"}}>Mr. Sandeep Rathore</h3>
-                                    <p className="text-xs text-slate-400 mb-4 uppercase tracking-widest font-semibold">Co - Founder</p>
+                                    <p className="text-xs text-slate-400 mb-4 uppercase tracking-widest font-semibold">Co-Founder &amp; Director</p>
                                     <p className="text-sm text-slate-500 leading-relaxed">After a Succesful journey in Yash Courier and Cargo Agency, dive in Veenolex Herbal as Co - Founder @ Veenolex.com</p>
                                 </div>
                             </div>
