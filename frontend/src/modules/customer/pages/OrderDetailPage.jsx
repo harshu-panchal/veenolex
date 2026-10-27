@@ -9,6 +9,7 @@ import OrderProgressTracker from "../components/order/OrderProgressTracker";
 import ReturnProgressTracker from "../components/order/ReturnProgressTracker";
 import ReschedulePicker from "@/components/ReschedulePicker";
 import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
+import { formatOrderAddress, getOrderAddressCoords } from "@shared/utils/orderAddress";
 import {
   ChevronLeft,
   Package,
@@ -1167,11 +1168,9 @@ const OrderDetailPage = () => {
               </div>
               <h4 className="font-bold text-slate-900 text-base mb-1">{order.address.name}</h4>
               <p className="text-sm text-slate-500 leading-relaxed">
-                {order.address.address}, {order.address.city}
+                {formatOrderAddress(order.address) || "No delivery address on record"}
               </p>
-              {order.address?.location &&
-                typeof order.address.location.lat === "number" &&
-                typeof order.address.location.lng === "number" && (
+              {getOrderAddressCoords(order.address) && (
                   <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 bg-brand-50 px-2 py-1 rounded-lg">
                     <CheckCircle size={14} className="text-brand-600" />
                     Precise location confirmed

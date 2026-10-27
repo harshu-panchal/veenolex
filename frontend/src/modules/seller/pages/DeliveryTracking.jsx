@@ -17,6 +17,7 @@ import { BlurFade } from "@/components/ui/blur-fade";
 import { MagicCard } from "@/components/ui/magic-card";
 
 import { sellerApi } from "../services/sellerApi";
+import { formatOrderAddress } from "@shared/utils/orderAddress";
 import { useToast } from "@shared/components/ui/Toast";
 import { Loader2 } from "lucide-react";
 import Pagination from "@shared/components/ui/Pagination";
@@ -99,9 +100,7 @@ const DeliveryTracking = () => {
               : "",
             estimatedDelivery: "20-30 mins",
             customerName: order.customer?.name || "Customer",
-            address: order.address
-              ? `${order.address.address || ""}, ${order.address.city || ""}`.trim()
-              : "",
+            address: formatOrderAddress(order.address),
             addressCoords: order.address?.location || null,
           };
         });

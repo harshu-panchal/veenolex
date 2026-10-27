@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Order from "../models/order.js";
 import Delivery from "../models/delivery.js";
 import Seller from "../models/seller.js";
@@ -149,6 +150,18 @@ function normalizeSellerStatusFilter(statusParam) {
   return {};
 }
 
+/**
+ * `Order.find` casts a string id to an ObjectId through the schema, but an
+ * aggregation pipeline is raw MongoDB and does no casting — a `$match` on a
+ * string seller id silently matches nothing. Cast before every pipeline.
+ */
+function toObjectId(value) {
+  if (value instanceof mongoose.Types.ObjectId) return value;
+  return typeof value === "string" && mongoose.Types.ObjectId.isValid(value)
+    ? new mongoose.Types.ObjectId(value)
+    : value;
+}
+
 function appendDateRange(query, { startDate, endDate }) {
   if (!startDate && !endDate) {
     return query;
@@ -210,7 +223,12 @@ export function buildSellerOrdersQuery({
     }
   }
 
-  return { finalQuery, baseQuery };
+  // Same filter as `baseQuery`, but safe to hand to an aggregation pipeline.
+  const aggregateQuery = baseQuery.seller
+    ? { ...baseQuery, seller: toObjectId(baseQuery.seller) }
+    : { ...baseQuery };
+
+  return { finalQuery, baseQuery, aggregateQuery };
 }
 
 const SELLER_ORDER_LIST_EXCLUDED_FIELDS = [
@@ -236,7 +254,7 @@ export async function fetchSellerOrdersPage({
   limit,
   sellerId,
 }) {
-  const { finalQuery: query, baseQuery } = buildSellerOrdersQuery({
+  const { finalQuery: query, aggregateQuery } = buildSellerOrdersQuery({
     role,
     userId,
     statusParam,
@@ -260,7 +278,7 @@ export async function fetchSellerOrdersPage({
       .lean(),
     Order.countDocuments(query),
     Order.aggregate([
-      { $match: baseQuery },
+      { $match: aggregateQuery },
       {
         $group: {
           _id: null,
@@ -796,7 +814,9 @@ export async function getOrderWithAccess(orderId, userId, role) {
 
         const rawAddr = sellerObj.address || request.sellerAddress || request.address || "";
         const parts = [rawAddr, sellerObj.locality, sellerObj.city, sellerObj.state, sellerObj.pincode].filter(Boolean);
-        const sellerAddressStr = parts.length > 0 ? parts.join(", ") : (rawAddr || "Seller Store, Indore");
+        // No invented address: an unset seller address stays empty so the UI
+        // can say so instead of pointing a rider at the wrong place.
+        const sellerAddressStr = parts.length > 0 ? parts.join(", ") : rawAddr;
         const sellerNameStr = sellerObj.shopName || sellerObj.name || request.sellerName || "Seller Store";
         const sellerPhoneStr = sellerObj.phone || request.sellerPhone || "";
         const sellerEmailStr = sellerObj.email || request.sellerEmail || "";
@@ -820,10 +840,10 @@ export async function getOrderWithAccess(orderId, userId, role) {
               addressLine1: sellerAddressStr,
               street: sellerAddressStr,
               completeAddress: sellerAddressStr,
-              city: sellerObj.city || "Indore",
-              state: sellerObj.state || "MP",
-              pincode: sellerObj.pincode || "452001",
-              location: sellerObj.location || { type: "Point", coordinates: [75.8577, 22.7196] },
+              city: sellerObj.city || "",
+              state: sellerObj.state || "",
+              pincode: sellerObj.pincode || "",
+              location: sellerObj.location || null,
             },
             customer: {
               name: sellerNameStr,
@@ -838,7 +858,7 @@ export async function getOrderWithAccess(orderId, userId, role) {
               phone: sellerPhoneStr,
               shopName: sellerNameStr,
               address: sellerAddressStr,
-              location: sellerObj.location || { type: "Point", coordinates: [75.8577, 22.7196] },
+              location: sellerObj.location || null,
             },
             deliveryBoy: request.deliveryBoy,
             deliveryRiderStep: request.deliveryWorkflowStatus === "DELIVERED" ? 4 : request.deliveryWorkflowStatus === "OUT_FOR_DELIVERY" ? 3 : request.deliveryWorkflowStatus === "PICKUP_READY" ? 2 : 1,

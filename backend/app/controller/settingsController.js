@@ -161,7 +161,7 @@ export const getPublicSettings = async (req, res) => {
       async () => {
         const existing = await Setting.findOne(filter)
           .select(
-            "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor returnDeliveryCommission deliveryPricingMode pricingMode customerBaseDeliveryFee riderBasePayout baseDeliveryCharge baseDistanceCapacityKm incrementalKmSurcharge deliveryPartnerRatePerKm fleetCommissionRatePerKm fixedDeliveryFee handlingFeeStrategy codEnabled onlineEnabled codAdvanceEnabled codAdvanceAmount codAdvanceScope codAdvanceDecisionHours lowStockAlertsEnabled productApproval promoMessages createdAt",
+            "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor returnDeliveryCommission deliveryPricingMode pricingMode customerBaseDeliveryFee riderBasePayout baseDeliveryCharge baseDistanceCapacityKm incrementalKmSurcharge deliveryPartnerRatePerKm fleetCommissionRatePerKm fixedDeliveryFee handlingFeeStrategy codEnabled onlineEnabled codAdvanceEnabled codAdvanceAmount codAdvanceScope codAdvanceDecisionHours lowStockAlertsEnabled productApproval promoMessages fulfillmentWarehouse createdAt",
           )
           .lean();
         return existing || null;
@@ -177,7 +177,24 @@ export const getPublicSettings = async (req, res) => {
 
     settings.productApproval = normalizeProductApprovalConfig(settings || {});
 
-    return handleResponse(res, 200, "Settings fetched successfully", settings);
+    // The storefront needs somewhere to centre the catalog before the customer
+    // shares a location. That centre is the configured fulfilment warehouse —
+    // never a coordinate baked into the app. Only the coarse location is
+    // exposed; the rest of the warehouse config stays private.
+    const { fulfillmentWarehouse, ...publicSettings } = settings;
+    const warehouseLat = Number(fulfillmentWarehouse?.lat);
+    const warehouseLng = Number(fulfillmentWarehouse?.lng);
+    publicSettings.defaultBrowseLocation =
+      Number.isFinite(warehouseLat) && Number.isFinite(warehouseLng)
+        ? {
+            latitude: warehouseLat,
+            longitude: warehouseLng,
+            city: fulfillmentWarehouse?.city || "",
+            state: fulfillmentWarehouse?.state || "",
+          }
+        : null;
+
+    return handleResponse(res, 200, "Settings fetched successfully", publicSettings);
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }

@@ -325,9 +325,16 @@ export const getOrderRoute = async (req, res) => {
           );
         }
       } else if (isRequest) {
-        // Seller Request Pickup Phase: Admin/Warehouse
-        // Use a default coordinate if warehouse isn't configured in the request.
-        dest = { lat: 22.7196, lng: 75.8577 }; // Central Indore fallback
+        // Seller Request Pickup Phase: picked up from the admin warehouse.
+        const warehouse = await getFulfillmentWarehouse();
+        if (!warehouse.hasLocation) {
+          return handleResponse(
+            res,
+            400,
+            "Fulfilment warehouse location is not configured. Set it in Admin → Fulfilment settings.",
+          );
+        }
+        dest = { lat: warehouse.lat, lng: warehouse.lng };
       } else {
         if (!hasSellerLoc) {
           return handleResponse(res, 400, "Seller location missing or invalid in database");

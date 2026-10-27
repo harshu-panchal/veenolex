@@ -5,6 +5,7 @@ import BottomNav from './BottomNav';
 import MiniCart from '../shared/MiniCart';
 import ProductDetailSheet from '../shared/ProductDetailSheet';
 import MobileFooterMessage from './MobileFooterMessage';
+import LocationEnablePrompt from '../shared/LocationEnablePrompt';
 import { useProductDetail } from '../../context/ProductDetailContext';
 import { cn } from '@/lib/utils';
 import { useLocation } from 'react-router-dom';
@@ -121,6 +122,7 @@ const CustomerLayout = ({ children, showHeader: showHeaderProp, fullHeight = fal
 
             {showCart && <MiniCart />}
             <ProductDetailSheet />
+            <LocationEnablePrompt />
 
             <div className="hidden md:block">
                 <Footer />

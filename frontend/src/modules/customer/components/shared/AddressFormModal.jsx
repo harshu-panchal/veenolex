@@ -470,7 +470,7 @@ export const AddressFormModal = ({
               </div>
               <Input
                 id="addr-city"
-                placeholder="Type city (e.g. Indore)"
+                placeholder="Type your city"
                 value={formData.city}
                 onChange={handleCityInputChange}
                 onFocus={() => {
