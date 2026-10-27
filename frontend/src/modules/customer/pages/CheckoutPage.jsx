@@ -69,12 +69,22 @@ import CheckoutAddressSection from "./checkout/components/CheckoutAddressSection
 
 import CheckoutCartSummary from "./checkout/components/CheckoutCartSummary";
 import CheckoutPricingBreakdown from "./checkout/components/CheckoutPricingBreakdown";
+import CheckoutTipSection from "./checkout/components/CheckoutTipSection";
 import CheckoutPaymentSelector from "./checkout/components/CheckoutPaymentSelector";
 import CheckoutCouponSection from "./checkout/components/CheckoutCouponSection";
 import CheckoutRecommendedProducts from "./checkout/components/CheckoutRecommendedProducts";
 import CheckoutWishlistSection from "./checkout/components/CheckoutWishlistSection";
 import CheckoutOrderSuccess from "./checkout/components/CheckoutOrderSuccess";
 import { formatDeliveryText } from "@shared/utils/deliveryTime";
+
+// Static, so it lives at module scope: rebuilding it each render handed every
+// memoised child a new prop identity and defeated their React.memo.
+const TIP_AMOUNTS = [
+  { value: 0, label: "No Tip" },
+  { value: 10, label: "Rs.10" },
+  { value: 20, label: "Rs.20" },
+  { value: 30, label: "Rs.30" },
+];
 
 const CheckoutPage = () => {
   const {
@@ -171,6 +181,7 @@ const CheckoutPage = () => {
   // COD advance for this cart (from the preview): { enabled, amount, scope, orderCount }
   const [codAdvancePreview, setCodAdvancePreview] = useState(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [step, setStep] = useState(1); // 1 = delivery & cart, 2 = payment
   const [showOutOfZoneConfirm, setShowOutOfZoneConfirm] = useState(false);
   const [outOfZoneShippingCost, setOutOfZoneShippingCost] = useState(0);
   const postOrderNavigateRef = useRef(null);
@@ -237,7 +248,10 @@ const CheckoutPage = () => {
 
   const codAdvanceAmount = codAdvancePreview?.enabled ? Number(codAdvancePreview.amount || 0) : 0;
 
-  const paymentMethods = [
+  // Memoised: this array is a dependency of the effect that keeps
+  // `selectedPayment` valid, so a fresh identity each render made that effect
+  // run on every render.
+  const paymentMethods = useMemo(() => [
     ...(settings?.onlineEnabled === false
       ? []
       : [
@@ -260,14 +274,7 @@ const CheckoutPage = () => {
             : "Pay after delivery",
         },
       ]),
-  ];
-
-  const tipAmounts = [
-    { value: 0, label: "No Tip" },
-    { value: 10, label: "Rs.10" },
-    { value: 20, label: "Rs.20" },
-    { value: 30, label: "Rs.30" },
-  ];
+  ], [settings?.onlineEnabled, settings?.codEnabled, codAdvanceAmount]);
 
   const discountAmount = selectedCoupon
     ? selectedCoupon.discountAmount || selectedCoupon.discount || 0
@@ -393,15 +400,24 @@ const CheckoutPage = () => {
     showToast("Recipient details saved!", "success");
   };
 
-  const handleMoveToWishlist = (item) => {
+  const handleMoveToWishlist = useCallback((item) => {
     addToWishlist(item);
     removeFromCart(item.id, item.variantSku);
     showToast(`${item.name} moved to wishlist`, "success");
-  };
+  }, [addToWishlist, removeFromCart, showToast]);
 
-  const handleOpenEditAddress = () => {
+  const handleOpenEditAddress = useCallback(() => {
     setIsEditAddressOpen(true);
-  };
+  }, []);
+
+  // Stable identities for props handed to React.memo children; inline arrows
+  // here re-rendered the cart list and product grid on every keystroke.
+  const handleOpenAddressModal = useCallback(() => setIsAddressModalOpen(true), []);
+  const handleToggleRecipientForm = useCallback(() => setShowRecipientForm((v) => !v), []);
+  const handleRemoveRecipient = useCallback(() => setSavedRecipient(null), []);
+  const handleToggleShowAllCartItems = useCallback(() => setShowAllCartItems((v) => !v), []);
+  const handleRemoveCoupon = useCallback(() => setSelectedCoupon(null), []);
+  const handleToggleWallet = useCallback(() => setUseWallet((v) => !v), []);
 
   const isValidLatLng = (loc) =>
     loc &&
@@ -794,12 +810,15 @@ const CheckoutPage = () => {
     }
   };
 
-  const handleAddToCart = (product) => {
+  const handleAddToCart = useCallback((product) => {
     addToCart(product);
     showToast(`${product.name} added to cart!`, "success");
-  };
+  }, [addToCart, showToast]);
 
-  const getCartItem = (productId) => cart.find((item) => item.id === productId);
+  const getCartItem = useCallback(
+    (productId) => cart.find((item) => item.id === productId),
+    [cart]
+  );
 
   // Stable key for recommended products effect — only changes when product IDs change
   const cartProductIdKey = useMemo(
@@ -810,6 +829,30 @@ const CheckoutPage = () => {
         .join(","),
     [cart]
   );
+
+  // Stable key for the pricing preview: the preview only depends on what is in
+  // the cart, not on the array's identity. Keying on the array itself restarted
+  // the debounce (and refired the request) on every unrelated cart re-create.
+  const cartPricingKey = useMemo(
+    () =>
+      cart
+        .map((i) => `${i.id || i._id}:${i.variantSku || ""}:${i.quantity}:${i.price}:${i.stock ?? ""}`)
+        .sort()
+        .join("|"),
+    [cart]
+  );
+
+  // Primitive address fields the preview and the recommendation fetch care
+  // about, so a re-created address object with identical values is a no-op.
+  const addressLat = savedRecipient
+    ? (currentLocation?.latitude ?? null)
+    : (currentAddress?.location?.lat ?? currentLocation?.latitude ?? null);
+  const addressLng = savedRecipient
+    ? (currentLocation?.longitude ?? null)
+    : (currentAddress?.location?.lng ?? currentLocation?.longitude ?? null);
+  const addressTextKey = savedRecipient
+    ? `${savedRecipient.completeAddress || ""}|${savedRecipient.pincode || ""}`
+    : `${currentAddress?.address || ""}|${currentAddress?.pincode || ""}`;
 
   // Load recipient from localStorage + fetch coupons on mount
   useEffect(() => {
@@ -889,16 +932,20 @@ const CheckoutPage = () => {
     previewDebounceRef.current = setTimeout(fetchPreview, 400);
 
     return () => clearTimeout(previewDebounceRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     isAuthenticated,
-    cart,
+    // Value-based keys, not array/object identities — see cartPricingKey.
+    cartPricingKey,
+    addressTextKey,
+    addressLat,
+    addressLng,
     selectedPayment,
     selectedTip,
     selectedTimeSlot,
     discountAmount,
-    savedRecipient,
-    currentAddress,
-    currentLocation,
+    deliveryType,
+    scheduledDate,
   ]);
 
   // Recommended products — only re-fetches when the set of product IDs changes
@@ -914,8 +961,8 @@ const CheckoutPage = () => {
 
     if (!categoryId) return;
 
-    const lat = currentLocation?.latitude || currentAddress?.location?.lat;
-    const lng = currentLocation?.longitude || currentAddress?.location?.lng;
+    const lat = addressLat;
+    const lng = addressLng;
     if (!lat || !lng) return;
 
     const cartIds = new Set(cart.map((i) => i.id || i._id));
@@ -930,12 +977,57 @@ const CheckoutPage = () => {
         }
       })
       .catch(() => { });
-  }, [cartProductIdKey, currentLocation, currentAddress]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartProductIdKey, addressLat, addressLng]);
 
   // The order is only ready when we have the customer's own delivery address.
   const hasDeliveryAddress = Boolean(
     savedRecipient?.completeAddress?.trim() || currentAddress?.address?.trim(),
   );
+
+  // ── Two-step checkout ────────────────────────────────────────────────
+  // Step 1 collects the delivery details and the cart; step 2 collects how
+  // the customer pays. Both steps stay mounted (the inactive one is hidden)
+  // so going back never remounts the cart or refires the preview.
+
+  // Everything step 2 needs must be valid before the customer can reach it,
+  // so an address problem surfaces on the step that can fix it.
+  const canAdvanceToPayment = useCallback(() => {
+    if (!hasDeliveryAddress) {
+      showToast(
+        "Please enable location access or enter your delivery address manually to continue.",
+        "error",
+      );
+      setIsAddressModalOpen(true);
+      return false;
+    }
+    if (hasOutOfStockItems) {
+      showToast("Please remove out of stock items to continue.", "error");
+      return false;
+    }
+    return true;
+  }, [hasDeliveryAddress, hasOutOfStockItems, showToast]);
+
+  const goToPayment = useCallback(() => {
+    if (!canAdvanceToPayment()) return;
+    setStep(2);
+  }, [canAdvanceToPayment]);
+
+  const goToDelivery = useCallback(() => setStep(1), []);
+
+  // Opening step 2 part-way down the page reads as a broken jump.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [step]);
+
+  // If the cart empties or the address is cleared while the customer is on
+  // the payment step, that step can no longer be completed — send them back
+  // to the one that can fix it.
+  useEffect(() => {
+    if (step === 2 && (cart.length === 0 || !hasDeliveryAddress)) {
+      setStep(1);
+    }
+  }, [step, cart.length, hasDeliveryAddress]);
 
   const handlePrePlaceOrderCheck = () => {
     if (!hasDeliveryAddress) {
@@ -1295,17 +1387,50 @@ const CheckoutPage = () => {
         <div className="max-w-7xl mx-auto px-4 md:px-8 relative z-10">
           <div className="flex items-center justify-between">
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => (step === 2 ? goToDelivery() : navigate(-1))}
+              aria-label={step === 2 ? "Back to delivery details" : "Go back"}
               className="w-12 h-12 flex items-center justify-center bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-2xl transition-all active:scale-95">
               <ChevronLeft size={28} className="text-white" />
             </button>
             <div className="flex flex-col items-center">
               <h1 className="text-xl md:text-3xl font-[1000] text-white tracking-tight ">Checkout</h1>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="h-1.5 w-1.5 bg-brand-400 rounded-full animate-pulse" />
-                <p className="text-brand-100/90 text-[10px] md:text-xs font-black tracking-[0.2em] uppercase">
-                  {cartCount} {cartCount === 1 ? "Item" : "Items"} in cart
-                </p>
+              <div className="flex items-center gap-2 mt-2">
+                {[
+                  { n: 1, label: "Delivery" },
+                  { n: 2, label: "Payment" },
+                ].map(({ n, label }) => {
+                  const isActive = step === n;
+                  const isDone = step > n;
+                  return (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => (n === 1 ? goToDelivery() : goToPayment())}
+                      aria-current={isActive ? "step" : undefined}
+                      className="flex items-center gap-1.5 group"
+                    >
+                      <span
+                        className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-black transition-all ${
+                          isActive
+                            ? "bg-white text-brand-700 scale-110"
+                            : isDone
+                              ? "bg-white/70 text-brand-700"
+                              : "bg-white/20 text-white/70"
+                        }`}
+                      >
+                        {isDone ? "✓" : n}
+                      </span>
+                      <span
+                        className={`text-[10px] md:text-xs font-black tracking-[0.15em] uppercase transition-colors ${
+                          isActive ? "text-white" : "text-brand-100/70"
+                        }`}
+                      >
+                        {label}
+                      </span>
+                      {n === 1 && <span className="w-4 h-px bg-white/30 ml-1" />}
+                    </button>
+                  );
+                })}
               </div>
             </div>
             <button
@@ -1318,11 +1443,13 @@ const CheckoutPage = () => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 md:px-8 -mt-12 md:-mt-16 lg:-mt-20 relative z-20">
-        <div className="lg:grid lg:grid-cols-12 lg:gap-8 items-start">
+      <div className="max-w-3xl mx-auto px-4 md:px-8 -mt-12 md:-mt-16 lg:-mt-20 relative z-20">
+        <div>
 
-          {/* Left Column */}
-          <div className="lg:col-span-7 xl:col-span-8 space-y-6 pb-8">
+          {/* ── STEP 1 — delivery, cart, recommendations ────────────── */}
+          {/* Hidden rather than unmounted: keeps scroll, DOM and fetched
+              data intact when the customer steps back from payment. */}
+          <div className={`space-y-6 pb-8 ${step === 1 ? "" : "hidden"}`}>
             {/* Delivery Time Banner */}
             <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 mt-3">
               <div className="flex items-center justify-between">
@@ -1378,16 +1505,16 @@ const CheckoutPage = () => {
               currentAddress={currentAddress}
               savedRecipient={savedRecipient}
               savedAddresses={locationSavedAddresses}
-              onSelectAddress={() => setIsAddressModalOpen(true)}
+              onSelectAddress={handleOpenAddressModal}
               onEditAddress={handleOpenEditAddress}
               onUseCurrentLocation={handleUseCurrentLiveLocation}
               isFetchingLocation={isFetchingLocation}
               showRecipientForm={showRecipientForm}
-              onToggleRecipientForm={() => setShowRecipientForm((v) => !v)}
+              onToggleRecipientForm={handleToggleRecipientForm}
               recipientData={recipientData}
               onRecipientDataChange={setRecipientData}
               onSaveRecipient={handleSaveRecipient}
-              onRemoveRecipient={() => setSavedRecipient(null)}
+              onRemoveRecipient={handleRemoveRecipient}
               displayName={displayName}
               displayPhone={displayPhone}
               displayAddress={displayAddress}
@@ -1402,7 +1529,7 @@ const CheckoutPage = () => {
               onRemoveFromCart={removeFromCart}
               onMoveToWishlist={handleMoveToWishlist}
               showAll={showAllCartItems}
-              onToggleShowAll={() => setShowAllCartItems((v) => !v)}
+              onToggleShowAll={handleToggleShowAllCartItems}
             />
 
             {/* Wishlist Section */}
@@ -1418,37 +1545,48 @@ const CheckoutPage = () => {
               onAddToCart={handleAddToCart}
               onGetCartItem={getCartItem}
             />
+
+            <div className="hidden lg:block pt-2">
+              <button
+                type="button"
+                onClick={goToPayment}
+                disabled={cart.length === 0 || hasOutOfStockItems}
+                className="w-full flex items-center justify-between gap-3 bg-primary disabled:bg-slate-300 text-white rounded-2xl px-6 py-4 font-black transition-all active:scale-[0.99] shadow-lg shadow-primary/20"
+              >
+                <span className="flex flex-col items-start leading-tight">
+                  <span className="text-[10px] uppercase tracking-[0.2em] opacity-80">
+                    {cartCount} {cartCount === 1 ? "item" : "items"}
+                  </span>
+                  <span className="text-lg">₹{Number(cartTotal || 0).toLocaleString("en-IN")}</span>
+                </span>
+                <span className="flex items-center gap-2 text-sm uppercase tracking-widest">
+                  Continue to Payment
+                  <ChevronLeft size={18} className="rotate-180" />
+                </span>
+              </button>
+            </div>
           </div>
 
-          {/* Right Column */}
-          <div className="lg:col-span-5 xl:col-span-4 space-y-6 lg:sticky lg:top-8 pb-32 lg:pb-8">
+          {/* ── STEP 2 — coupon, tip, payment, order summary ────────── */}
+          <div className={`space-y-6 pb-32 lg:pb-8 ${step === 2 ? "" : "hidden"}`}>
             {/* Coupon Section */}
             <CheckoutCouponSection
               coupons={coupons}
               selectedCoupon={selectedCoupon}
               manualCode={manualCode}
               onApplyCoupon={handleApplyCoupon}
-              onRemoveCoupon={() => setSelectedCoupon(null)}
+              onRemoveCoupon={handleRemoveCoupon}
               onManualCodeChange={setManualCode}
               isOpen={isCouponModalOpen}
               onOpenChange={setIsCouponModalOpen}
               onApplyManualCode={handleApplyManualCode}
             />
 
-            {/* Pricing Breakdown */}
-            <CheckoutPricingBreakdown
-              pricingPreview={pricingPreview}
-              isPreviewLoading={isPreviewLoading}
+            {/* Tip for the delivery partner */}
+            <CheckoutTipSection
               selectedTip={selectedTip}
               onSelectTip={setSelectedTip}
-              tipAmounts={tipAmounts}
-              walletAmountToUse={walletAmountToUse}
-              finalAmountToPay={finalAmountToPay}
-              codAdvanceNow={codAdvanceNow}
-              cartTotal={cartTotal}
-              selectedCoupon={selectedCoupon}
-              discountAmount={discountAmount}
-              deliveryText={formatDeliveryText(deliveryEstimate)}
+              tipAmounts={TIP_AMOUNTS}
             />
 
             {/* Payment Selector */}
@@ -1457,9 +1595,23 @@ const CheckoutPage = () => {
               selectedPayment={selectedPayment}
               onSelectPayment={setSelectedPayment}
               useWallet={useWallet}
-              onToggleWallet={() => setUseWallet((v) => !v)}
+              onToggleWallet={handleToggleWallet}
               walletBalance={user?.walletBalance || 0}
               walletAmountToUse={walletAmountToUse}
+            />
+
+            {/* Order Summary — last, so the customer confirms the final bill */}
+            <CheckoutPricingBreakdown
+              pricingPreview={pricingPreview}
+              isPreviewLoading={isPreviewLoading}
+              selectedTip={selectedTip}
+              walletAmountToUse={walletAmountToUse}
+              finalAmountToPay={finalAmountToPay}
+              codAdvanceNow={codAdvanceNow}
+              cartTotal={cartTotal}
+              selectedCoupon={selectedCoupon}
+              discountAmount={discountAmount}
+              deliveryText={formatDeliveryText(deliveryEstimate)}
             />
 
             <div className="hidden lg:block mt-6">
@@ -1478,16 +1630,37 @@ const CheckoutPage = () => {
         </div>
       </div>
 
-      {/* Sticky Footer — Mobile Only */}
+      {/* Sticky Footer — step 1 continues, step 2 pays (mobile only; the
+          desktop pay control sits inside step 2). */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-4 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-50 rounded-t-3xl">
         <div className="max-w-4xl mx-auto">
-          <SlideToPay 
-            onSuccess={handlePrePlaceOrderCheck}
-            amount={slideAmount}
-            isLoading={isPlacingOrder}
-            disabled={isPlacingOrder || hasOutOfStockItems}
-            text={slideText}
-          />
+          {step === 1 ? (
+            <button
+              type="button"
+              onClick={goToPayment}
+              disabled={cart.length === 0 || hasOutOfStockItems}
+              className="w-full flex items-center justify-between gap-3 bg-primary disabled:bg-slate-300 text-white rounded-2xl px-5 py-4 font-black transition-all active:scale-[0.99] shadow-lg shadow-primary/20"
+            >
+              <span className="flex flex-col items-start leading-tight">
+                <span className="text-[10px] uppercase tracking-[0.2em] opacity-80">
+                  {cartCount} {cartCount === 1 ? "item" : "items"}
+                </span>
+                <span className="text-lg">₹{Number(cartTotal || 0).toLocaleString("en-IN")}</span>
+              </span>
+              <span className="flex items-center gap-2 text-sm uppercase tracking-widest">
+                Continue
+                <ChevronLeft size={18} className="rotate-180" />
+              </span>
+            </button>
+          ) : (
+            <SlideToPay 
+              onSuccess={handlePrePlaceOrderCheck}
+              amount={slideAmount}
+              isLoading={isPlacingOrder}
+              disabled={isPlacingOrder || hasOutOfStockItems}
+              text={slideText}
+            />
+          )}
         </div>
       </div>
 
