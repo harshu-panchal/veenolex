@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { Check, Contact2, MapPin, Loader2 } from "lucide-react";
+import { Check, Contact2, MapPin, Loader2, AlertTriangle, Navigation } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,8 @@ import { useGooglePlacesAutocomplete } from "@/hooks/useGooglePlacesAutocomplete
  *   onSelectAddress      – () => void  — opens the address-selection modal
  *   onEditAddress        – () => void  — opens the edit-address modal
  *   onUseCurrentLocation – () => void  — triggers live-location detection
+ *   hasDeliveryAddress   – false when the customer has given us no address
+ *   locationError        – browser/geolocation error text, when there is one
  *
  * Internal state for the "order for someone else" form is kept here because
  * it is purely presentational; the parent only needs the saved result.
@@ -37,6 +39,8 @@ const CheckoutAddressSection = React.memo(function CheckoutAddressSection({
   displayName,
   displayPhone,
   displayAddress,
+  hasDeliveryAddress = true,
+  locationError,
 }) {
   const [showRecipientSuggestions, setShowRecipientSuggestions] = useState(false);
   const {
@@ -246,7 +250,50 @@ const CheckoutAddressSection = React.memo(function CheckoutAddressSection({
         <p className="text-xs text-slate-500">Select or edit your saved address</p>
       </div>
 
+      {/* No address yet: the customer has neither shared a location nor typed one */}
+      {!hasDeliveryAddress && (
+        <div className="border border-amber-200 bg-amber-50 rounded-xl p-3 mb-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="font-bold text-amber-900 text-sm">
+                Location not enabled
+              </h4>
+              <p className="text-[11px] text-amber-800/90 leading-relaxed mt-0.5">
+                {locationError
+                  ? `${locationError}. Enter your delivery address manually to continue.`
+                  : "You haven't enabled location access, so we don't know where to deliver. Enable it or enter your address manually."}
+              </p>
+              <div className="flex flex-wrap gap-2 mt-3">
+                <button
+                  type="button"
+                  onClick={onUseCurrentLocation}
+                  disabled={isFetchingLocation}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600 text-white text-[11px] font-bold disabled:opacity-60"
+                >
+                  {isFetchingLocation ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <Navigation size={13} />
+                  )}
+                  {isFetchingLocation ? "Detecting..." : "Enable location"}
+                </button>
+                <button
+                  type="button"
+                  onClick={onSelectAddress}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-300 bg-white text-amber-800 text-[11px] font-bold"
+                >
+                  <MapPin size={13} />
+                  Enter address manually
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Active address card */}
+      {hasDeliveryAddress && (
       <div className="border rounded-xl p-3 mb-3 relative cursor-pointer transition-all border-primary bg-brand-50/50">
         <div className="flex items-start gap-3">
           <div className="mt-1">
@@ -275,6 +322,7 @@ const CheckoutAddressSection = React.memo(function CheckoutAddressSection({
           </div>
         </div>
       </div>
+      )}
 
       {/* Use current location */}
       <button
@@ -285,7 +333,8 @@ const CheckoutAddressSection = React.memo(function CheckoutAddressSection({
         {isFetchingLocation ? "Detecting live location..." : "Use current live location"}
       </button>
 
-      {/* Confirmation banner */}
+      {/* Confirmation banner — only once we actually have an address */}
+      {hasDeliveryAddress && (
       <motion.div className="mt-3 rounded-2xl border border-brand-100 bg-brand-50/70 px-4 py-3 flex items-center gap-3 shadow-sm">
         <div className="h-8 w-8 rounded-full bg-black  flex items-center justify-center shadow-brand-500/40 shadow-md">
           <Check size={16} className="text-white stroke-[3]" />
@@ -299,6 +348,7 @@ const CheckoutAddressSection = React.memo(function CheckoutAddressSection({
           </p>
         </div>
       </motion.div>
+      )}
     </motion.div>
   );
 });

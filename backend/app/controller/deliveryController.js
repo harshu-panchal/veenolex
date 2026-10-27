@@ -298,7 +298,9 @@ export const getMyDeliveryOrders = async (req, res) => {
                 const s = (r.sellerId && typeof r.sellerId === "object") ? r.sellerId : {};
                 const rawAddr = s.address || r.sellerAddress || "";
                 const parts = [rawAddr, s.locality, s.city, s.pincode].filter(Boolean);
-                const completeAddr = parts.length > 0 ? parts.join(", ") : (rawAddr || "Seller Store, Indore");
+                // Left empty when the seller has no address on file, rather
+                // than filling in a place the rider cannot actually go to.
+                const completeAddr = parts.length > 0 ? parts.join(", ") : rawAddr;
 
                 return {
                     _id: r._id,
@@ -330,8 +332,8 @@ export const getMyDeliveryOrders = async (req, res) => {
                         phone: s.phone || r.sellerPhone || "",
                         completeAddress: completeAddr,
                         street: completeAddr,
-                        city: s.city || "Indore",
-                        location: s.location || { type: "Point", coordinates: [75.8577, 22.7196] }
+                        city: s.city || "",
+                        location: s.location || null
                     },
                     items: (r.items || []).map((item) => ({
                         product: {

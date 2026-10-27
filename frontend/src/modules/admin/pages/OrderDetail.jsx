@@ -32,6 +32,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useToast } from '@shared/components/ui/Toast';
 import { formatArrivalText } from '@shared/utils/deliveryTime';
+import { formatOrderAddress, getOrderAddressCoords } from '@shared/utils/orderAddress';
 
 const OrderDetail = () => {
     const { orderId } = useParams();
@@ -167,6 +168,11 @@ const OrderDetail = () => {
         );
     }
 
+    // The address the customer ordered to, as stored on the order. Empty when
+    // the order carries no real address (older orders kept a placeholder).
+    const deliveryAddress = formatOrderAddress(order.address);
+    const deliveryCoords = getOrderAddressCoords(order.address);
+
     return (
         <div className="ds-section-spacing animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
             {/* Control Bar */}
@@ -226,7 +232,7 @@ const OrderDetail = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Left Column */}
-                <div className="lg:col-span-2 space-y-6">
+                <div className="lg:col-span-2 space-y-6 min-w-0">
                     {/* Items Section */}
                     <Card className="border-none shadow-xl ring-1 ring-slate-100 bg-white rounded-xl overflow-hidden">
                         <div className="p-6 border-b border-slate-50 bg-slate-50/30 flex items-center justify-between">
@@ -334,7 +340,7 @@ const OrderDetail = () => {
                 </div>
 
                 {/* Right Column */}
-                <div className="space-y-6">
+                <div className="space-y-6 min-w-0">
                     {/* Customer Node */}
                     <Card className="border-none shadow-xl ring-1 ring-slate-100 bg-white rounded-2xl p-6">
                         <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
@@ -342,56 +348,66 @@ const OrderDetail = () => {
                             Customer Node Information
                         </h4>
                         <div className="flex items-center gap-4">
-                            <img 
-                                src="https://cdn-icons-png.flaticon.com/512/149/149071.png" 
-                                alt="" 
-                                className="h-16 w-16 rounded-2xl bg-slate-50 ring-2 ring-white shadow-sm object-cover" 
+                            <img
+                                src="https://cdn-icons-png.flaticon.com/512/149/149071.png"
+                                alt=""
+                                className="h-14 w-14 sm:h-16 sm:w-16 shrink-0 rounded-2xl bg-slate-50 ring-2 ring-white shadow-sm object-cover"
                             />
-                            <div className="text-left">
-                                <h3 className="text-lg font-black text-slate-900 leading-tight">
+                            <div className="text-left min-w-0">
+                                <h3 className="text-lg font-black text-slate-900 leading-tight break-words">
                                     {order.customer?.name}
                                 </h3>
-                                <p className="text-xs font-bold text-slate-400">
+                                <p
+                                    className="text-xs font-bold text-slate-400 truncate"
+                                    title={order.customer?._id}
+                                >
                                     Node ID: {order.customer?._id}
                                 </p>
                             </div>
                         </div>
                         <div className="space-y-6 text-left mt-6">
-                            <div className="flex flex-col gap-2">
-                                <span className="text-[10px] font-bold text-slate-400 flex items-center gap-3">
-                                    <Mail className="h-3.5 w-3.5" /> {order.customer?.email}
+                            <div className="flex flex-col gap-2 min-w-0">
+                                <span className="text-[10px] font-bold text-slate-400 flex items-center gap-3 min-w-0">
+                                    <Mail className="h-3.5 w-3.5 shrink-0" />
+                                    <span className="truncate" title={order.customer?.email}>
+                                        {order.customer?.email || "—"}
+                                    </span>
                                 </span>
-                                <span className="text-[10px] font-bold text-slate-400 flex items-center gap-3">
-                                    <Phone className="h-3.5 w-3.5" /> {order.customer?.phone}
+                                <span className="text-[10px] font-bold text-slate-400 flex items-center gap-3 min-w-0">
+                                    <Phone className="h-3.5 w-3.5 shrink-0" />
+                                    <span className="truncate">{order.customer?.phone || "—"}</span>
                                 </span>
                             </div>
                             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                <div className="flex items-center justify-between gap-2 mb-1">
+                                <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-1">
                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                        Destination Protocol
+                                        Delivery Address
                                     </span>
-                                    {order?.address?.location &&
-                                        typeof order.address.location.lat === "number" &&
-                                        typeof order.address.location.lng === "number" && (
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const { lat, lng } = order.address.location;
-                                                    window.open(
-                                                        `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
-                                                        "_blank",
-                                                    );
-                                                }}
-                                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-primary hover:bg-primary/5 transition-colors"
-                                            >
-                                                <MapPin className="h-3 w-3" />
-                                                Open in Maps
-                                            </button>
-                                        )}
+                                    {deliveryCoords && (
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                window.open(
+                                                    `https://www.google.com/maps/dir/?api=1&destination=${deliveryCoords.lat},${deliveryCoords.lng}`,
+                                                    "_blank",
+                                                )
+                                            }
+                                            className="inline-flex shrink-0 items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-primary hover:bg-primary/5 transition-colors"
+                                        >
+                                            <MapPin className="h-3 w-3" />
+                                            Open in Maps
+                                        </button>
+                                    )}
                                 </div>
-                                <p className="text-xs font-bold text-slate-600 leading-relaxed italic">
-                                    "{order.address?.address}, {order.address?.landmark}, {order.address?.city}"
-                                </p>
+                                {deliveryAddress ? (
+                                    <p className="text-xs font-bold text-slate-600 leading-relaxed break-words">
+                                        {deliveryAddress}
+                                    </p>
+                                ) : (
+                                    <p className="text-xs font-bold text-slate-400 leading-relaxed italic">
+                                        No delivery address was captured for this order.
+                                    </p>
+                                )}
                             </div>
                             {order.address?.type === "Other" &&
                                 (order.address?.name || order.address?.phone) && (
@@ -550,8 +566,7 @@ const OrderDetail = () => {
                                     <div style={{ fontSize: "9px", fontWeight: "900", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "12px" }}>Billed To</div>
                                     <div style={{ fontSize: "16px", fontWeight: "800", color: "#0f172a", marginBottom: "8px" }}>{order.customer?.name}</div>
                                     <div style={{ fontSize: "12px", color: "#475569", lineHeight: "1.7" }}>
-                                        {order.address?.address},<br />
-                                        {order.address?.landmark && `${order.address.landmark}, `}{order.address?.city}
+                                        {deliveryAddress || "No delivery address on record"}
                                     </div>
                                     <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", marginTop: "15px" }}>Contact: {order.customer?.phone}</div>
                                 </td>

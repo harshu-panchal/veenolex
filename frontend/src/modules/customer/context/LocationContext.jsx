@@ -7,6 +7,7 @@ import React, {
   useMemo,
 } from "react";
 import { customerApi } from "../services/customerApi";
+import { useSettings } from "@core/context/SettingsContext";
 import { hasValidStoredAuthToken } from "@core/utils/authStorage";
 import { getJSON, setJSON, STORAGE_KEYS } from "@core/utils/storage";
 import {
@@ -25,7 +26,9 @@ const STORAGE_KEY = STORAGE_KEYS.LOCATION;
 const LOCATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const LocationProvider = ({ children }) => {
-  // Default location (used until we can resolve a better one)
+  const { settings } = useSettings();
+
+  // Empty placeholder until the customer picks or we detect a real location.
   const [currentLocation, setCurrentLocation] = useState({
     ...DEFAULT_APP_LOCATION,
     isDefault: true,
@@ -162,7 +165,8 @@ export const LocationProvider = ({ children }) => {
               components.find((c) => types.every((t) => c.types.includes(t)))
                 ?.long_name;
 
-            // Build address from components to match: "214, Rajshri Palace Colony, Pipliyahana, Indore, Madhya Pradesh 452018, India"
+            // Build a readable address from the components, e.g.
+            // "<premise>, <neighbourhood>, <locality>, <state> <pincode>, <country>"
             const premise = getComponent(["premise"]);
             const neighborhood = getComponent(["neighborhood"]);
             const sublocality = getComponent([
@@ -346,6 +350,21 @@ export const LocationProvider = ({ children }) => {
     // Otherwise keep the in-memory placeholder; it is deliberately not persisted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Until the customer gives us a location, the catalog is centred on the
+  // service centre the admin configured (the fulfilment warehouse). It stays
+  // flagged as the default, so it is never reported or sent with an order.
+  useEffect(() => {
+    const centre = settings?.defaultBrowseLocation;
+    const lat = Number(centre?.latitude);
+    const lng = Number(centre?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    setCurrentLocation((prev) => {
+      if (!prev?.isDefault) return prev;
+      if (Number(prev.latitude) === lat && Number(prev.longitude) === lng) return prev;
+      return { ...prev, latitude: lat, longitude: lng, isDefault: true };
+    });
+  }, [settings?.defaultBrowseLocation]);
 
   // Browsers only show the permission prompt on a user gesture, but when the
   // user has already granted access we can detect silently, and again the

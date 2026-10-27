@@ -1,29 +1,32 @@
 import { getJSON, setJSON, STORAGE_KEYS } from "@core/utils/storage";
+import { isPlaceholderAddressText } from "@shared/utils/orderAddress";
 
 /**
- * Placeholder location the storefront uses until the customer picks or
- * detects a real one. It is persisted to storage, so anything that reports a
- * customer's location must filter it out.
+ * Empty placeholder the storefront starts from, before the customer picks or
+ * detects a location. It holds no address and no coordinates: anything the
+ * catalog needs before then comes from the admin-configured service centre
+ * (`settings.defaultBrowseLocation`), never from a value baked into the app.
  */
 export const DEFAULT_APP_LOCATION = Object.freeze({
-  name: "214, Rajshri Palace Colony, Pipliyahana, Indore, Madhya Pradesh 452018, India",
+  name: "",
   time: "12-15 mins",
-  city: "Indore",
-  state: "Madhya Pradesh",
-  pincode: "452018",
-  latitude: 22.711140989838025,
-  longitude: 75.9001552518043,
+  city: "",
+  state: "",
+  pincode: "",
+  latitude: null,
+  longitude: null,
 });
 
 export const isDefaultAppLocation = (loc) => {
   if (!loc || typeof loc !== "object") return true;
   if (loc.isDefault) return true;
   const address = loc.address || loc.name || "";
-  return (
-    address === DEFAULT_APP_LOCATION.name ||
-    (Number(loc.latitude) === DEFAULT_APP_LOCATION.latitude &&
-      Number(loc.longitude) === DEFAULT_APP_LOCATION.longitude)
-  );
+  // Locations stored before the placeholder lost its address text still carry
+  // it, so recognise those too.
+  if (isPlaceholderAddressText(address)) return true;
+  // No address text means nothing the customer gave us, whatever coordinates
+  // the catalog is currently centred on.
+  return !String(address).trim();
 };
 
 /**

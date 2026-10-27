@@ -26,10 +26,23 @@ import { cn } from '@/lib/utils';
 
 // Orders Page
 
+// Tab -> the `status` slug `normalizeSellerStatusFilter` accepts on the API.
+// "All" is absent on purpose: no slug means no status filter.
+const TAB_STATUS_PARAM = {
+    Pending: 'pending',
+    Confirmed: 'confirmed',
+    Packed: 'packed',
+    'Out for Delivery': 'out-for-delivery',
+    Delivered: 'delivered',
+    Cancelled: 'cancelled',
+    Rescheduled: 'rescheduled',
+};
+
 import { MagicCard } from '@/components/ui/magic-card';
 import { BlurFade } from '@/components/ui/blur-fade';
 import ShimmerButton from '@/components/ui/shimmer-button';
 import { sellerApi } from '../services/sellerApi';
+import { getOrderAddressDisplay } from '@shared/utils/orderAddress';
 import { useToast } from '@shared/components/ui/Toast';
 import { getLegacyStatusFromOrder } from '@/shared/utils/orderStatus';
 import { Loader2 } from 'lucide-react';
@@ -127,16 +140,21 @@ const Orders = () => {
         if (!hasMountedRef.current) return;
         fetchOrders(page, false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, startDate, endDate]);
+    }, [page, pageSize, activeTab, startDate, endDate]);
 
-    const fetchOrders = async (requestedPage = 1, showPageLoader = false) => {
+    const fetchOrders = async (requestedPage = 1, showPageLoader = false, overrides = {}) => {
         try {
             if (showPageLoader) {
                 setLoading(true);
             }
-            const params = { page: requestedPage };
+            const limit = overrides.pageSize ?? pageSize;
+            const tab = overrides.activeTab ?? activeTab;
+            const params = { page: requestedPage, limit };
             if (startDate) params.startDate = startDate;
             if (endDate) params.endDate = endDate;
+            // The server owns the status filter so the rows listed match the
+            // tab counts, which are counted across every page.
+            if (TAB_STATUS_PARAM[tab]) params.status = TAB_STATUS_PARAM[tab];
 
             const response = await sellerApi.getOrders(params);
 
@@ -172,10 +190,9 @@ const Orders = () => {
                 time: order.createdAt
                     ? new Date(order.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
                     : '',
-                address: order.address
-                    ? `${order.address.address || ''}, ${order.address.city || ''}`.trim()
-                    : '',
-                location: order.address?.location || null,
+                delivery: getOrderAddressDisplay(order.address),
+                // Kept as a plain string: the invoice generator reads it directly.
+                address: getOrderAddressDisplay(order.address).text,
                 payment: order.payment?.method === 'cash' || order.payment?.method === 'cod'
                     ? (order.codAdvance?.status === 'PAID' && Number(order.codAdvance?.amount) > 0
                         ? `Cash on Delivery (₹${order.codAdvance.amount} advance paid)`
@@ -234,22 +251,15 @@ const Orders = () => {
     ], [summary]);
 
     const filteredOrders = useMemo(() => {
-        return safeOrders.filter(order => {
-            const matchesSearch = (order.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (order.customer?.name || '').toLowerCase().includes(searchTerm.toLowerCase());
-            
-            const normalizedStatus = String(order.status || '').toLowerCase();
-            let matchesTab = true;
-            if (activeTab === 'All') {
-                matchesTab = true;
-            } else if (activeTab === 'Out for Delivery') {
-                matchesTab = normalizedStatus === 'out_for_delivery';
-            } else {
-                matchesTab = normalizedStatus === activeTab.toLowerCase();
-            }
-            return matchesSearch && matchesTab;
-        });
-    }, [safeOrders, searchTerm, activeTab]);
+        // The status filter is applied by the server (see TAB_STATUS_PARAM);
+        // only the free-text search narrows the fetched page here.
+        if (!searchTerm) return safeOrders;
+        const needle = searchTerm.toLowerCase();
+        return safeOrders.filter(order =>
+            (order.id || '').toLowerCase().includes(needle) ||
+            (order.customer?.name || '').toLowerCase().includes(needle)
+        );
+    }, [safeOrders, searchTerm]);
 
     const stats = useMemo(() => [
         {
@@ -411,7 +421,7 @@ const Orders = () => {
                                         return (
                                             <button
                                                 key={tab.id}
-                                                onClick={() => setActiveTab(tab.id)}
+                                                onClick={() => { setActiveTab(tab.id); setPage(1); }}
                                                 className={cn(
                                                     "relative py-3 sm:py-4 px-2.5 sm:px-4 text-xs sm:text-sm font-bold whitespace-nowrap transition-all duration-300 flex items-center gap-1.5",
                                                     isSelected
@@ -547,9 +557,7 @@ const Orders = () => {
                                     </div>
                                 ) : (
                                 <AnimatePresence mode="popLayout">
-                                    {filteredOrders
-                                        .slice((page - 1) * pageSize, page * pageSize)
-                                        .map((order) => (
+                                    {filteredOrders.map((order) => (
                                         <motion.div
                                             key={order.id}
                                             initial={{ opacity: 0, y: 10 }}
@@ -570,6 +578,14 @@ const Orders = () => {
                                                         </div>
                                                         <p className="text-xs font-bold text-slate-800 truncate">{order.customer.name}</p>
                                                     </div>
+                                                    <p className="text-xs font-semibold text-slate-600 mt-1.5 flex items-start gap-1">
+                                                        <HiOutlineMapPin className="h-3 w-3 shrink-0 mt-0.5" />
+                                                        {order.delivery?.isMissing ? (
+                                                            <span className="text-slate-400 italic">No address on record</span>
+                                                        ) : (
+                                                            <span className="line-clamp-2">{order.delivery.text}</span>
+                                                        )}
+                                                    </p>
                                                     <p className="text-sm font-black text-slate-900 mt-2">₹{order.total.toLocaleString()}</p>
                                                 </div>
                                                 <div className="flex flex-col items-end gap-2 shrink-0">
@@ -615,6 +631,7 @@ const Orders = () => {
                                         <tr className="bg-slate-50/50 border-b border-slate-100">
                                             <th className="px-4 lg:px-6 py-3 lg:py-4 text-xs font-bold text-slate-600 uppercase tracking-widest">Order Details</th>
                                             <th className="px-4 lg:px-6 py-3 lg:py-4 text-xs font-bold text-slate-600 uppercase tracking-widest">Customer</th>
+                                            <th className="px-4 lg:px-6 py-3 lg:py-4 text-xs font-bold text-slate-600 uppercase tracking-widest">Delivery Address</th>
                                             <th className="px-4 lg:px-6 py-3 lg:py-4 text-xs font-bold text-slate-600 uppercase tracking-widest">Total</th>
                                             <th className="px-4 lg:px-6 py-3 lg:py-4 text-xs font-bold text-slate-600 uppercase tracking-widest">Status</th>
                                             <th className="px-4 lg:px-6 py-3 lg:py-4 text-xs font-bold text-slate-600 uppercase tracking-widest text-right">Actions</th>
@@ -622,9 +639,7 @@ const Orders = () => {
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
                                         <AnimatePresence mode="popLayout">
-                                            {filteredOrders
-                                                .slice((page - 1) * pageSize, page * pageSize)
-                                                .map((order) => (
+                                            {filteredOrders.map((order) => (
                                                 <motion.tr
                                                     layout
                                                     initial={{ opacity: 0, y: 10 }}
@@ -654,6 +669,18 @@ const Orders = () => {
                                                                 <p className="text-xs font-semibold text-slate-600">{order.customer.phone}</p>
                                                             </div>
                                                         </div>
+                                                    </td>
+                                                    <td className="px-4 lg:px-6 py-3 lg:py-4 max-w-[220px]">
+                                                        {order.delivery?.isMissing ? (
+                                                            <span className="text-xs font-semibold text-slate-400 italic">No address on record</span>
+                                                        ) : (
+                                                            <p
+                                                                className="text-xs font-semibold text-slate-700 line-clamp-2 leading-relaxed"
+                                                                title={order.delivery.text}
+                                                            >
+                                                                {order.delivery.text}
+                                                            </p>
+                                                        )}
                                                     </td>
                                                     <td className="px-4 lg:px-6 py-3 lg:py-4">
                                                         <div className="flex flex-col">
@@ -748,9 +775,9 @@ const Orders = () => {
                             pageSize={pageSize}
                             onPageChange={(p) => setPage(p)}
                             onPageSizeChange={(newSize) => {
+                                // The refetch effect picks the new size up.
                                 setPageSize(newSize);
                                 setPage(1);
-                                fetchOrders(1, false);
                             }}
                             loading={loading}
                         />
@@ -876,27 +903,46 @@ const Orders = () => {
                                                         <h4 className="text-xs font-black text-slate-600 uppercase tracking-widest flex items-center gap-2">
                                                             <HiOutlineMapPin className="h-3 w-3 text-primary" /> Delivery Address
                                                         </h4>
-                                                        {selectedOrder.location &&
-                                                            typeof selectedOrder.location.lat === "number" &&
-                                                            typeof selectedOrder.location.lng === "number" && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        const { lat, lng } = selectedOrder.location;
-                                                                        window.open(
-                                                                            `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
-                                                                            "_blank",
-                                                                        );
-                                                                    }}
-                                                                    className="text-[10px] font-bold text-primary hover:underline"
-                                                                >
-                                                                    View on map
-                                                                </button>
-                                                            )}
+                                                        {selectedOrder.delivery?.coords && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const { lat, lng } = selectedOrder.delivery.coords;
+                                                                    window.open(
+                                                                        `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
+                                                                        "_blank",
+                                                                    );
+                                                                }}
+                                                                className="text-[10px] font-bold text-primary hover:underline"
+                                                            >
+                                                                View on map
+                                                            </button>
+                                                        )}
                                                     </div>
-                                                    <p className="text-xs font-bold text-slate-800 leading-relaxed bg-slate-50 p-3 rounded-2xl border border-slate-100 shadow-sm">
-                                                        {selectedOrder.address}
-                                                    </p>
+                                                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 shadow-sm">
+                                                        {selectedOrder.delivery?.isMissing ? (
+                                                            <p className="text-xs font-semibold text-slate-500 italic">
+                                                                No address on record for this order
+                                                            </p>
+                                                        ) : (
+                                                            <>
+                                                                {(selectedOrder.delivery.name || selectedOrder.delivery.phone) && (
+                                                                    <p className="text-xs font-black text-slate-900 mb-1">
+                                                                        {selectedOrder.delivery.name}
+                                                                        {selectedOrder.delivery.name && selectedOrder.delivery.phone && (
+                                                                            <span className="text-slate-300 font-bold"> • </span>
+                                                                        )}
+                                                                        {selectedOrder.delivery.phone && (
+                                                                            <span className="font-semibold text-slate-600">{selectedOrder.delivery.phone}</span>
+                                                                        )}
+                                                                    </p>
+                                                                )}
+                                                                <p className="text-xs font-bold text-slate-800 leading-relaxed">
+                                                                    {selectedOrder.delivery.text}
+                                                                </p>
+                                                            </>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 <div>
                                                     <h4 className="text-xs font-black text-slate-600 uppercase tracking-widest mb-2 flex items-center gap-2">

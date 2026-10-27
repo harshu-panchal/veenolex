@@ -135,11 +135,16 @@ const CheckoutPage = () => {
   const {
     savedAddresses: locationSavedAddresses,
     currentLocation,
+    hasRealLocation,
     refreshLocation,
     refreshAddresses,
     isFetchingLocation,
+    locationError,
     updateLocation,
   } = useAppLocation();
+  // Only a location the customer picked or we detected may become the
+  // delivery address; the app's placeholder never does.
+  const orderLocation = hasRealLocation ? currentLocation : null;
   const navigate = useNavigate();
 
   // State management
@@ -175,35 +180,37 @@ const CheckoutPage = () => {
   const [currentAddress, setCurrentAddress] = useState({
     type: "Home",
     name: user?.name || "",
-    address: currentLocation?.name || "",
+    address: orderLocation?.name || "",
     landmark: "",
-    city: currentLocation?.city || "",
-    state: currentLocation?.state || "",
-    pincode: currentLocation?.pincode || "",
+    city: orderLocation?.city || "",
+    state: orderLocation?.state || "",
+    pincode: orderLocation?.pincode || "",
     phone: user?.phone || "",
-    location: currentLocation?.latitude && currentLocation?.longitude 
-      ? { lat: currentLocation.latitude, lng: currentLocation.longitude } 
+    location: orderLocation?.latitude && orderLocation?.longitude
+      ? { lat: orderLocation.latitude, lng: orderLocation.longitude }
       : null,
   });
   const [isEditAddressOpen, setIsEditAddressOpen] = useState(false);
   const [isAddAddressModalOpen, setIsAddAddressModalOpen] = useState(false);
   
-  // Sync currentAddress if global currentLocation changes AND user hasn't custom-selected an address
+  // Sync currentAddress when the customer's real location changes AND they
+  // haven't custom-selected an address. The placeholder is skipped, so an
+  // order never carries an address the customer did not provide.
   useEffect(() => {
-    if (currentLocation && !hasUserSelectedAddressRef.current) {
+    if (orderLocation && !hasUserSelectedAddressRef.current) {
       setCurrentAddress(prev => ({
         ...prev,
         name: user?.name || prev.name,
-        address: currentLocation.name || prev.address,
-        city: currentLocation.city || prev.city,
-        state: currentLocation.state || prev.state,
-        pincode: currentLocation.pincode || prev.pincode,
-        location: currentLocation.latitude && currentLocation.longitude
-          ? { lat: currentLocation.latitude, lng: currentLocation.longitude }
+        address: orderLocation.name || prev.address,
+        city: orderLocation.city || prev.city,
+        state: orderLocation.state || prev.state,
+        pincode: orderLocation.pincode || prev.pincode,
+        location: orderLocation.latitude && orderLocation.longitude
+          ? { lat: orderLocation.latitude, lng: orderLocation.longitude }
           : prev.location
       }));
     }
-  }, [currentLocation, user?.name]);
+  }, [orderLocation, user?.name]);
 
   const [showRecipientForm, setShowRecipientForm] = useState(false);
   const [recipientData, setRecipientData] = useState({
@@ -351,8 +358,8 @@ const CheckoutPage = () => {
         pincode: savedRecipient.pincode ? `${savedRecipient.pincode}` : "",
         phone: savedRecipient.phone,
         location:
-          currentLocation?.latitude && currentLocation?.longitude
-            ? { lat: currentLocation.latitude, lng: currentLocation.longitude }
+          orderLocation?.latitude && orderLocation?.longitude
+            ? { lat: orderLocation.latitude, lng: orderLocation.longitude }
             : undefined,
       };
     }
@@ -925,7 +932,20 @@ const CheckoutPage = () => {
       .catch(() => { });
   }, [cartProductIdKey, currentLocation, currentAddress]);
 
+  // The order is only ready when we have the customer's own delivery address.
+  const hasDeliveryAddress = Boolean(
+    savedRecipient?.completeAddress?.trim() || currentAddress?.address?.trim(),
+  );
+
   const handlePrePlaceOrderCheck = () => {
+    if (!hasDeliveryAddress) {
+      showToast(
+        "Please enable location access or enter your delivery address manually to continue.",
+        "error",
+      );
+      setIsAddressModalOpen(true);
+      return;
+    }
     if (hasOutOfStockItems) {
       showToast("Please remove out of stock items to place your order.", "error");
       return;
@@ -1371,6 +1391,8 @@ const CheckoutPage = () => {
               displayName={displayName}
               displayPhone={displayPhone}
               displayAddress={displayAddress}
+              hasDeliveryAddress={hasDeliveryAddress}
+              locationError={locationError}
             />
 
             {/* Cart Summary */}

@@ -22,6 +22,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { adminApi } from "../services/adminApi";
+import { useSettings } from "@core/context/SettingsContext";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { getAllSellerRequests } from "../../../services/sellerProductRequestService";
@@ -33,6 +34,7 @@ const currency = (value) =>
   })}`;
 
 export default function SellerInvoices() {
+  const { settings } = useSettings();
   const [sellers, setSellers] = useState([]);
   const [selectedSellerId, setSelectedSellerId] = useState("");
   const [selectedSeller, setSelectedSeller] = useState(null);
@@ -876,11 +878,14 @@ export default function SellerInvoices() {
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
-      // Sender (Admin)
-      doc.text("Veenolex Wholesale Warehouse", 14, 60);
-      doc.text("Email: warehouse@veenolex.com", 14, 65);
-      doc.text("Phone: +91 9999999999", 14, 70);
-      doc.text("Address: Indore wholesale division, MP", 14, 75);
+      // Sender (Admin) — taken from Settings, never hardcoded
+      const senderLines = [
+        settings?.companyName || settings?.appName || "Warehouse",
+        settings?.supportEmail ? `Email: ${settings.supportEmail}` : null,
+        settings?.supportPhone ? `Phone: ${settings.supportPhone}` : null,
+        settings?.address ? `Address: ${settings.address}` : null,
+      ].filter(Boolean);
+      senderLines.forEach((line, i) => doc.text(line, 14, 60 + i * 5));
 
       // Seller details
       doc.text(`Store: ${selectedSeller.shopName || "N/A"}`, 110, 60);

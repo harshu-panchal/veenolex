@@ -1,9 +1,9 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation as useRouterLocation } from 'react-router-dom';
 import {
     User, MapPin, Package, CreditCard, Wallet, ChevronRight,
     LogOut, ShieldCheck, Heart, HelpCircle, Info, Edit2, ChevronLeft, Bell,
-    Facebook, Twitter, Instagram, Youtube, Navigation
+    Facebook, Twitter, Instagram, Youtube, Navigation, AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '@core/context/AuthContext';
 import { useSettings } from '@core/context/SettingsContext';
@@ -42,6 +42,7 @@ function hexToRgba(hex, alpha = 0.95) {
 
 const ProfilePage = () => {
     const navigate = useNavigate();
+    const routerLocation = useRouterLocation();
     const { user, role, logout } = useAuth();
     const { settings } = useSettings();
     const appName = settings?.appName || 'App';
@@ -49,11 +50,26 @@ const ProfilePage = () => {
     const [headerColor, setHeaderColor] = React.useState("#2E7D32");
     
     // Location Context
-    const { currentLocation, hasRealLocation, updateLocation, refreshLocation, isFetchingLocation } = useLocation();
+    const {
+        currentLocation,
+        hasRealLocation,
+        updateLocation,
+        refreshLocation,
+        isFetchingLocation,
+        locationError,
+    } = useLocation();
 
     // Location States
     const [showLocationModal, setShowLocationModal] = React.useState(false);
     const [locationLoading, setLocationLoading] = React.useState(false);
+
+    // Opened straight from the "Enter manually" prompt elsewhere in the app.
+    React.useEffect(() => {
+        if (routerLocation.state?.openLocationModal) {
+            setShowLocationModal(true);
+            navigate(routerLocation.pathname, { replace: true, state: {} });
+        }
+    }, [routerLocation.state, routerLocation.pathname, navigate]);
 
     const timeAgo = (date) => {
         if (!date) return '';
@@ -165,6 +181,36 @@ const ProfilePage = () => {
         }
     };
 
+    // Ask the browser for the live location and persist it to the account, so
+    // the next checkout already knows where to deliver.
+    const handleEnableLocation = async () => {
+        const result = await refreshLocation();
+        if (!result?.ok || !result.location) {
+            toast.error(
+                result?.error ||
+                "Location access is blocked. Allow it in your browser settings, or enter your address manually.",
+            );
+            return;
+        }
+        const live = result.location;
+        try {
+            await customerApi.updateProfile({
+                location: {
+                    latitude: live.latitude,
+                    longitude: live.longitude,
+                    address: live.name,
+                    city: live.city,
+                    state: live.state,
+                    pincode: live.pincode,
+                    updatedAt: new Date().toISOString(),
+                },
+            });
+        } catch {
+            // The location is already live in the app; saving it is best-effort.
+        }
+        toast.success("Location enabled");
+    };
+
     const handleSaveLocation = async (newLocation) => {
         setLocationLoading(true);
         try {
@@ -272,51 +318,66 @@ const ProfilePage = () => {
                 </div>
 
                 {/* Location Section */}
-                <div className="bg-white rounded-xl p-4 border border-slate-200 flex items-start justify-between">
-                    <div className="flex-1 pr-4">
-                        <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-1.5 mb-1.5">
-                            <Navigation size={16} className="text-primary" /> Current Location
-                        </h4>
-                        
-                        {!hasRealLocation ? (
-                            <>
-                                <p className="text-xs font-medium text-slate-500 mb-1">📍 Location not set</p>
-                                <button
-                                    onClick={async () => {
-                                        const result = await refreshLocation();
-                                        if (!result?.ok) toast.error(result?.error || "Please enable location access");
-                                    }}
-                                    disabled={isFetchingLocation}
-                                    className="text-[11px] font-bold text-primary underline disabled:opacity-60"
-                                >
-                                    {isFetchingLocation ? "Detecting..." : "Detect my location"}
-                                </button>
-                            </>
-                        ) : (
-                            <>
-                                <p className="text-xs font-medium text-slate-700 leading-snug mb-1">
-                                    {currentLocation.name || currentLocation.address}
+                {!hasRealLocation ? (
+                    <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                        <div className="flex items-start gap-3">
+                            <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                                <h4 className="text-sm font-semibold text-amber-900">
+                                    Location not enabled
+                                </h4>
+                                <p className="text-xs text-amber-800/90 leading-relaxed mt-1">
+                                    {locationError
+                                        ? `${locationError}. Add your address manually so we know where to deliver.`
+                                        : "You haven't enabled location access yet. Enable it to get accurate delivery times, or enter your address manually."}
                                 </p>
-                                {(currentLocation.latitude && currentLocation.longitude) && (
-                                    <p className="text-[10px] text-slate-400 font-mono tracking-wide mb-1">
-                                        Lat: {Number(currentLocation.latitude).toFixed(5)}, Lng: {Number(currentLocation.longitude).toFixed(5)}
-                                    </p>
-                                )}
-                                {currentLocation.updatedAt && (
-                                    <p className="text-[10px] font-medium text-slate-400 italic">
-                                        Last updated: {timeAgo(currentLocation.updatedAt)}
-                                    </p>
-                                )}
-                            </>
-                        )}
+                                <div className="flex flex-wrap gap-2 mt-3">
+                                    <button
+                                        onClick={handleEnableLocation}
+                                        disabled={isFetchingLocation}
+                                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 text-white text-[11px] font-bold disabled:opacity-60"
+                                    >
+                                        <Navigation size={13} />
+                                        {isFetchingLocation ? "Detecting..." : "Enable location"}
+                                    </button>
+                                    <button
+                                        onClick={() => setShowLocationModal(true)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-amber-300 bg-white text-amber-800 text-[11px] font-bold"
+                                    >
+                                        <MapPin size={13} /> Enter manually
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <button 
-                        onClick={() => setShowLocationModal(true)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-primary text-primary bg-transparent hover:bg-primary/5 text-[11px] font-bold transition-colors whitespace-nowrap shrink-0 mt-1"
-                    >
-                        <MapPin size={12} /> Change Location
-                    </button>
-                </div>
+                ) : (
+                    <div className="bg-white rounded-xl p-4 border border-slate-200 flex items-start justify-between">
+                        <div className="flex-1 pr-4">
+                            <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-1.5 mb-1.5">
+                                <Navigation size={16} className="text-primary" /> Current Location
+                            </h4>
+                            <p className="text-xs font-medium text-slate-700 leading-snug mb-1">
+                                {currentLocation.name || currentLocation.address}
+                            </p>
+                            {(currentLocation.latitude && currentLocation.longitude) && (
+                                <p className="text-[10px] text-slate-400 font-mono tracking-wide mb-1">
+                                    Lat: {Number(currentLocation.latitude).toFixed(5)}, Lng: {Number(currentLocation.longitude).toFixed(5)}
+                                </p>
+                            )}
+                            {currentLocation.updatedAt && (
+                                <p className="text-[10px] font-medium text-slate-400 italic">
+                                    Last updated: {timeAgo(currentLocation.updatedAt)}
+                                </p>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => setShowLocationModal(true)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-primary text-primary bg-transparent hover:bg-primary/5 text-[11px] font-bold transition-colors whitespace-nowrap shrink-0 mt-1"
+                        >
+                            <MapPin size={12} /> Change Location
+                        </button>
+                    </div>
+                )}
 
                 {/* Menu Sections */}
                 <div className="space-y-4">
