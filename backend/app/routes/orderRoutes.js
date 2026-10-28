@@ -272,7 +272,7 @@ router.post(
 router.get(
   "/workflow/:orderId/otp/active",
   verifyToken,
-  // allow roles seller or customer
+  allowRoles("customer", "user", "seller", "admin"),
   getActiveDeliveryOtp,
 );
 router.post(

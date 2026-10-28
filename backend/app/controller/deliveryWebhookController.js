@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import Order from "../models/order.js";
 import SellerProductRequest from "../models/sellerProductRequest.js";
+import { materializeSellerRequestStock } from "../services/sellerRequestFulfillmentService.js";
 import DeliveryShipment from "../models/deliveryShipment.js";
 import DeliveryWebhookEvent from "../models/deliveryWebhookEvent.js";
 import { emitToOrder } from "../services/orderSocketEmitter.js";
@@ -171,14 +172,34 @@ export const handleShiprocketWebhook = async (req, res) => {
         if (awb) target.shipRocketDetails.trackingNumber = awb;
         if (etd) target.shipRocketDetails.estimatedDelivery = etd;
 
+        let creditSellerStock = false;
         if (mappedWorkflowStatus === "DELIVERED") {
           target.status = "DELIVERED";
           target.deliveryWorkflowStatus = "DELIVERED";
           target.deliveredAt = new Date();
+          // Shiprocket collects on the courier's own terms, so a
+          // pay-after-delivery request is settled when the shipment lands.
+          if (target.paymentType === "PAY_AFTER_DELIVERY" && target.paymentStatus !== "PAID") {
+            target.paymentStatus = "PAID";
+            target.paidAt = new Date();
+            target.collectedAmount = target.totalAmount || 0;
+            target.collectedAt = new Date();
+          }
+          creditSellerStock = true;
         } else if (mappedWorkflowStatus === "OUT_FOR_DELIVERY") {
           target.deliveryWorkflowStatus = "OUT_FOR_DELIVERY";
         }
         await target.save();
+
+        // Same gate as the local-rider path: the seller's catalogue is only
+        // credited once the goods have landed and the bill is settled.
+        if (creditSellerStock) {
+          try {
+            await materializeSellerRequestStock(target);
+          } catch (stockErr) {
+            console.error("⚠️ Failed to credit seller stock after Shiprocket delivery:", stockErr.message);
+          }
+        }
       }
       console.log(`✅ Shipment status updated & Order/Request transitioned: ${orderId} -> ${mappedWorkflowStatus}`);
     } else {

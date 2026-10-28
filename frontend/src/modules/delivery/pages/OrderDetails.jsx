@@ -1474,7 +1474,9 @@ const OrderDetails = () => {
                 <h3 className="font-bold text-lg">Generate Delivery OTP</h3>
               </div>
               <p className="text-gray-500 text-sm mb-4">
-                Slide to generate OTP for the customer.
+                {isSellerRequest
+                  ? "Slide to generate the PIN for the seller. They will read it back to you once they have checked the goods."
+                  : "Slide to generate OTP for the customer."}
               </p>
               <DeliverySlideButton
                 orderId={orderId}

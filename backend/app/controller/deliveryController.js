@@ -283,11 +283,25 @@ export const getMyDeliveryOrders = async (req, res) => {
             .populate("customer", "name phone")
             .lean();
 
+        // Seller product requests are a second source of deliveries for the
+        // rider and have their own status vocabulary. Without mapping each
+        // history tab onto it, a completed admin-to-seller delivery showed up
+        // under "All" and then disappeared from "Delivered" entirely.
+        const REQUEST_STATUS_BY_FILTER = {
+            all: ["APPROVED", "DISPATCHED", "DELIVERED", "CANCELLED"],
+            active: ["APPROVED", "DISPATCHED"],
+            delivered: ["DELIVERED"],
+            cancelled: ["CANCELLED"],
+            // Requests have no return journey, so the Returns tab stays orders-only.
+            returns: [],
+        };
+
         let sellerRequests = [];
-        if (normalized === "all" || normalized === "active") {
+        const requestStatuses = REQUEST_STATUS_BY_FILTER[normalized] || [];
+        if (requestStatuses.length > 0) {
             const rawRequests = await SellerProductRequest.find({
                 deliveryBoy: deliveryBoyId,
-                status: { $in: ["APPROVED", "DISPATCHED"] }
+                status: { $in: requestStatuses }
             })
                 .sort({ createdAt: -1 })
                 .limit(50)
@@ -308,12 +322,22 @@ export const getMyDeliveryOrders = async (req, res) => {
                     requestNumber: r.requestNumber,
                     isSellerRequest: true,
                     status: r.status?.toLowerCase() || "approved",
-                    workflowStatus: r.deliveryWorkflowStatus || "DELIVERY_ASSIGNED",
+                    workflowStatus:
+                        r.deliveryWorkflowStatus ||
+                        (r.status === "DELIVERED"
+                            ? "DELIVERED"
+                            : r.status === "CANCELLED"
+                              ? "CANCELLED"
+                              : "DELIVERY_ASSIGNED"),
                     total: r.totalAmount || 0,
                     finalAmount: r.totalAmount || 0,
                     totalAmount: r.totalAmount || 0,
                     paymentStatus: r.paymentStatus === "PAID" ? "PAID" : "PENDING",
-                    paymentMode: r.paymentType || "ONLINE",
+                    // "PAY_AFTER_DELIVERY" is not a mode the rider app knows;
+                    // it reads "cod"/"cash", so map it before sending.
+                    paymentType: r.paymentType || "PAY_NOW",
+                    paymentMode:
+                      r.paymentType === "PAY_AFTER_DELIVERY" ? "COD" : "ONLINE",
                     createdAt: r.createdAt,
                     seller: {
                         _id: s._id || r.sellerId,

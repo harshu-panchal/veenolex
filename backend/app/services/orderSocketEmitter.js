@@ -4,6 +4,7 @@
 
 import mongoose from "mongoose";
 import Notification from "../models/notification.js";
+import Delivery from "../models/delivery.js";
 import { 
   getDeliveryPartnerIdsWithinSellerRadius,
   getDeliveryPartnerIdsWithinCustomerRadius,

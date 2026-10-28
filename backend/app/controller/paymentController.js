@@ -12,6 +12,7 @@ import {
 } from "../validation/paymentValidation.js";
 import logger from "../services/logger.js";
 import SellerProductRequest from "../models/sellerProductRequest.js";
+import { materializeSellerRequestStock } from "../services/sellerRequestFulfillmentService.js";
 import { getActivePaymentProvider } from "../services/payment/providerRegistry.js";
 
 function resolvePaymentErrorMessage(error) {
@@ -197,6 +198,21 @@ export const handlePhonePeSellerWebhook = async (req, res) => {
     }
 
     await request.save();
+
+    // A PAY_NOW request can be delivered before the gateway callback lands.
+    // In that case the stock gate was held open at delivery time, so settling
+    // the payment is what finally releases the goods to the seller.
+    if (request.paymentStatus === "PAID") {
+      try {
+        await materializeSellerRequestStock(request);
+      } catch (stockErr) {
+        logger.error("Failed to credit seller stock after payment confirmation", {
+          requestNumber: request.requestNumber,
+          error: stockErr.message,
+        });
+      }
+    }
+
     return res.status(200).send("OK");
 
   } catch (error) {

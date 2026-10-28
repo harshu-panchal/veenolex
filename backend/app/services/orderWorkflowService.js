@@ -57,6 +57,7 @@ import {
   routeMasterLines,
 } from "./fulfillmentRoutingService.js";
 import { refreshOrderDeliveryEta } from "./deliveryEtaService.js";
+import { materializeSellerRequestStock } from "./sellerRequestFulfillmentService.js";
 import { distanceMeters } from "../utils/geoUtils.js";
 import { applyDeliveredSettlement } from "./orderSettlement.js";
 import { requireCanonicalOrderId } from "../utils/orderLookup.js";
@@ -1867,6 +1868,31 @@ export async function confirmPickupAtomic(deliveryId, orderId, lat, lng) {
  */
 export async function advanceDeliveryRiderUiAtomic(deliveryId, orderId) {
   orderId = await requireCanonicalOrderId(orderId);
+
+  // Seller product requests live in their own collection, so looking only in
+  // Order made this 404 for every REQ- id and stalled the rider's UI on the
+  // last step of an admin-to-seller delivery.
+  if (orderId && orderId.toUpperCase().startsWith("REQ-")) {
+    const request = await SellerProductRequest.findOne({
+      requestNumber: orderId,
+      deliveryBoy: deliveryId,
+    });
+
+    if (!request) {
+      const err = new Error("Order not found");
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (request.deliveryWorkflowStatus !== "OUT_FOR_DELIVERY") {
+      const err = new Error("Order is not out for delivery");
+      err.statusCode = 409;
+      throw err;
+    }
+
+    return request;
+  }
+
   const order = await Order.findOne({
     orderId,
     deliveryBoy: deliveryId,
@@ -2104,9 +2130,11 @@ export async function requestHandoffOtpAtomic(deliveryId, orderId, lat, lng) {
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS());
   await OrderOtp.create({
     orderId,
-    orderMongoId: order._id,
+    // orderMongoId is an Order ref, so it stays empty for seller requests;
+    // sourceId + sourceType carry the real link.
+    orderMongoId: isRequest ? undefined : order._id,
     sourceId: order._id,
-    sourceType: "ORDER",
+    sourceType: isRequest ? "SELLER_REQUEST" : "ORDER",
     type: "delivery",
     codeHash,
     code,
@@ -2364,6 +2392,18 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
   if (!isRequest && isV2Out) {
     updateSet.workflowStatus = WORKFLOW_STATUS.DELIVERED;
   }
+
+  // A seller request paid on delivery is settled by the same act that proves
+  // handover: the seller gives the 4-digit PIN only once the rider has the
+  // money. Recording it here, inside the atomic delivery update, is what lets
+  // the stock gate downstream require both delivered AND paid.
+  if (isRequest && order.paymentType === "PAY_AFTER_DELIVERY") {
+    updateSet.paymentStatus = "PAID";
+    updateSet.paidAt = now;
+    updateSet.collectedAmount = order.totalAmount || 0;
+    updateSet.collectedBy = deliveryId;
+    updateSet.collectedAt = now;
+  }
   if (validationLocation) {
     updateSet.otpValidationLocation = validationLocation;
   }
@@ -2415,62 +2455,36 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
     });
     
     // -----------------------------------------------------
-    // Move delivered items into SellerInventory
+    // Credit the seller's catalogue — the only place this happens.
+    //
+    // Gated on delivered AND paid, so an approved or in-transit request is
+    // never visible in /seller/products. A PAY_NOW request whose gateway
+    // callback has not landed yet stays pending here and is credited by the
+    // payment webhook instead.
     // -----------------------------------------------------
+    let stockWarning = null;
     try {
-      if (updated.items && Array.isArray(updated.items)) {
-        const sellerId = updated.sellerId;
-        const sellerName = updated.sellerName || "Unknown Seller";
-        
-        for (const item of updated.items) {
-          const productId = item.productId;
-          const quantity = item.quantity || 0;
-          
-          if (!productId || quantity <= 0) continue;
-          
-          const adminProduct = await Product.findById(productId);
-          if (adminProduct) {
-            await SellerInventory.updateOne(
-              {
-                sellerId,
-                productId,
-                requestId: updated._id
-              },
-              {
-                $setOnInsert: {
-                  sellerId,
-                  sellerName,
-                  productId: adminProduct._id,
-                  productName: adminProduct.name,
-                  productImage: adminProduct.mainImage || adminProduct.images?.[0] || "",
-                  productSku: adminProduct.sku || "",
-                  category: adminProduct.category || "General",
-                  subCategory: adminProduct.subCategory || "",
-                  description: adminProduct.description || "",
-                  originalPrice: adminProduct.price,
-                  sellerPrice: adminProduct.salePrice || adminProduct.price,
-                  totalStock: quantity,
-                  availableStock: quantity,
-                  soldStock: 0,
-                  requestId: updated._id,
-                  requestNumber: updated.requestNumber,
-                  paymentType: updated.paymentType || "PAY_NOW",
-                  paymentStatus: updated.paymentStatus || "PENDING",
-                  status: "ACTIVE",
-                  approvedAt: now
-                }
-              },
-              { upsert: true }
-            );
-
-
-          }
-        }
+      const result = await materializeSellerRequestStock(updated);
+      if (!result.materialized && result.reason === "PAYMENT_PENDING") {
+        stockWarning = {
+          code: "REQUEST_PAYMENT_PENDING",
+          message:
+            "Delivered, but payment is not settled yet. Stock will be released to the seller once payment confirms.",
+        };
+        logger.warn("Seller request delivered with payment unsettled", {
+          orderId,
+          paymentType: updated.paymentType,
+          paymentStatus: updated.paymentStatus,
+        });
       }
     } catch (invError) {
-      logger.error("Failed to update SellerInventory after delivery", {
+      stockWarning = {
+        code: "SELLER_STOCK_CREDIT_FAILED",
+        message: invError.message,
+      };
+      logger.error("Failed to credit seller stock after delivery", {
         orderId,
-        error: invError.message
+        error: invError.message,
       });
     }
 
@@ -2478,7 +2492,7 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
       order: updated,
       orderId: updated.requestNumber,
       deliveredAt: now.toISOString(),
-      warning: null,
+      warning: stockWarning,
     };
   }
 

@@ -3,16 +3,16 @@ import SellerProductRequest from
   "../models/sellerProductRequest.js";
 import Product from "../models/product.js";
 import Seller from "../models/seller.js";
-import SellerInventory from "../models/sellerInventory.js";
-import { emitToDelivery } from "../services/orderSocketEmitter.js";
-import { emitNotificationEvent } from "../modules/notifications/notification.emitter.js";
-import { NOTIFICATION_EVENTS } from "../modules/notifications/notification.constants.js";
-import Notification from "../models/notification.js";
 import Delivery from "../models/delivery.js";
 import { startRequestDeliverySearch } from "../services/orderWorkflowService.js";
 import { getActivePaymentProvider } from "../services/payment/providerRegistry.js";
 import { createShipRocketOrderForRequest } from "../../utils/shipRocketService.js";
 import { shiprocketQueue, JOB_NAMES } from "../queues/orderQueues.js";
+import {
+  reserveWarehouseStockForRequest,
+  releaseWarehouseStockForRequest,
+  notifyRiderOfRequestAssignment
+} from "../services/sellerRequestFulfillmentService.js";
 
 // ═══════════════════════════════════════════════
 // SELLER: CREATE NEW PRODUCT REQUEST
@@ -346,143 +346,22 @@ export const approveSellerRequest = async (req, res) => {
     await request.save();
 
     // ─────────────────────────────────────────────
-    // NEW: ADD PRODUCTS TO SELLER INVENTORY
+    // THE CARTON LEAVES THE WAREHOUSE
+    //
+    // Approval only moves stock OUT of the admin warehouse. The products are
+    // in transit, so they are deliberately NOT credited to the seller here —
+    // that happens in materializeSellerRequestStock() once the rider's PIN is
+    // validated and the bill is settled. Crediting at approval was what made
+    // undelivered requests show up in /seller/products.
     // ─────────────────────────────────────────────
-    for (const item of request.items) {
-      const existingInventory = await SellerInventory.findOne({
-        sellerId: request.sellerId,
-        productId: item.productId
+    try {
+      await reserveWarehouseStockForRequest(request);
+    } catch (stockErr) {
+      console.error("❌ Failed to reserve warehouse stock:", stockErr.message);
+      return res.status(500).json({
+        success: false,
+        message: "Approved but warehouse stock could not be reserved: " + stockErr.message
       });
-
-      if (existingInventory) {
-        existingInventory.availableStock += (item.quantity || 0);
-        existingInventory.totalStock += (item.quantity || 0);
-        existingInventory.status = "ACTIVE";
-        await existingInventory.save();
-      } else {
-        await SellerInventory.create({
-          sellerId: request.sellerId,
-          sellerName: request.sellerName,
-          productId: item.productId,
-          productName: item.productName,
-          category: item.category,
-          originalPrice: item.pricePerUnit,
-          sellerPrice: item.pricePerUnit,
-          availableStock: item.quantity || 0,
-          totalStock: item.quantity || 0,
-          soldStock: 0,
-          status: "ACTIVE",
-          requestId: request._id,
-          requestNumber: request.requestNumber,
-          paymentType: request.paymentType || "PAY_NOW"
-        });
-      }
-
-      // Clone product to Seller's catalog (atomic upsert to prevent race conditions)
-      const adminProduct = await Product.findById(item.productId);
-      if (adminProduct) {
-        // Prevent "clone of clone" bug. Trace back to original master product ID
-        const actualMasterId = adminProduct.adminProductId || adminProduct._id;
-        const quantity = item.quantity || 0;
-
-        // Resolve the true master product for cloning properties
-        let baseProduct = adminProduct;
-        if (adminProduct.adminProductId) {
-          const masterProduct = await Product.findById(adminProduct.adminProductId);
-          if (masterProduct) {
-            baseProduct = masterProduct;
-          }
-        }
-
-        const uniqueSuffix = `-${request.sellerId.toString().slice(-6)}-${Date.now().toString().slice(-4)}`;
-        const baseObj = baseProduct.toObject();
-        delete baseObj._id;
-        delete baseObj.__v;
-        delete baseObj.sellerId;
-        delete baseObj.adminProductId;
-        delete baseObj.stock;
-        delete baseObj.slug;
-        delete baseObj.sku;
-        delete baseObj.createdAt;
-        delete baseObj.updatedAt;
-
-        // Atomic upsert or find & update to ensure both root stock & variant stock are incremented
-        const existingSellerProduct = await Product.findOne({ adminProductId: actualMasterId, sellerId: request.sellerId });
-
-        if (existingSellerProduct) {
-          existingSellerProduct.stock = (existingSellerProduct.stock || 0) + quantity;
-          if (Array.isArray(existingSellerProduct.variants) && existingSellerProduct.variants.length > 0) {
-            let vIndex = -1;
-            if (item.variantSku) {
-              vIndex = existingSellerProduct.variants.findIndex(
-                (v) => String(v.sku || "").trim() === String(item.variantSku).trim()
-              );
-            }
-            if (vIndex === -1) vIndex = 0;
-            if (existingSellerProduct.variants[vIndex]) {
-              existingSellerProduct.variants[vIndex].stock = (existingSellerProduct.variants[vIndex].stock || 0) + quantity;
-            }
-          }
-          await existingSellerProduct.save();
-        } else {
-          // Create new seller product from master catalog product
-          const clonedVariants = Array.isArray(baseObj.variants)
-            ? baseObj.variants.map((v) => ({ ...v, stock: 0 }))
-            : [];
-          if (clonedVariants.length > 0) {
-            let vIndex = -1;
-            if (item.variantSku) {
-              vIndex = clonedVariants.findIndex(
-                (v) => String(v.sku || "").trim() === String(item.variantSku).trim()
-              );
-            }
-            if (vIndex === -1) vIndex = 0;
-            if (clonedVariants[vIndex]) {
-              clonedVariants[vIndex].stock = quantity;
-            }
-          }
-
-          await Product.create({
-            ...baseObj,
-            stock: quantity,
-            variants: clonedVariants,
-            sellerId: request.sellerId,
-            adminProductId: actualMasterId,
-            slug: `${baseProduct.slug}${uniqueSuffix}`,
-            sku: `${baseProduct.sku || 'SKU'}${uniqueSuffix}`,
-            lastSubmittedByRole: "admin",
-            approvalStatus: "approved",
-            approvalNote: "Automatically approved from admin warehouse delivery.",
-          });
-        }
-
-        // Stock supplied to the seller leaves the admin warehouse, so the
-        // master product's stock (what warehouse orders are fulfilled
-        // from) goes down by the same amount.
-        if (quantity > 0 && !baseProduct.sellerId) {
-          const shortBy = quantity - Number(baseProduct.stock || 0);
-          if (shortBy > 0) {
-            console.warn(
-              `⚠️ Warehouse stock for ${baseProduct.name} was ${baseProduct.stock || 0}, supplied ${quantity}; clamping to 0.`,
-            );
-          }
-          baseProduct.stock = Math.max(0, Number(baseProduct.stock || 0) - quantity);
-          if (Array.isArray(baseProduct.variants) && baseProduct.variants.length > 0) {
-            let vIndex = -1;
-            if (item.variantSku) {
-              vIndex = baseProduct.variants.findIndex(
-                (v) => String(v.sku || "").trim() === String(item.variantSku).trim()
-              );
-            }
-            if (vIndex === -1) vIndex = 0;
-            const variant = baseProduct.variants[vIndex];
-            if (variant) {
-              variant.stock = Math.max(0, Number(variant.stock || 0) - quantity);
-            }
-          }
-          await baseProduct.save();
-        }
-      }
     }
 
     // ─────────────────────────────────────────────
@@ -518,70 +397,7 @@ export const approveSellerRequest = async (req, res) => {
 
       console.log("🚚 Delivery boy manually assigned for request upon approval:", request.requestNumber);
 
-      try {
-        const payload = {
-          orderId: request.requestNumber,
-          sourceType: "SELLER_REQUEST",
-          workflowStatus: "DELIVERY_ASSIGNED",
-          preview: {
-            pickup: "Veenolex Wholesale Warehouse",
-            drop: request.sellerName || "Seller Store",
-            total: request.totalAmount || 0,
-          }
-        };
-
-        emitToDelivery(deliveryBoyId, { event: "delivery:assigned", payload });
-
-        const deliveryPartner = await Delivery.findById(deliveryBoyId).select("fcmToken").lean();
-
-        if (deliveryPartner?.fcmToken) {
-          emitNotificationEvent(NOTIFICATION_EVENTS.BULK_PUSH, {
-            messages: [{
-              token: deliveryPartner.fcmToken,
-              notification: {
-                title: "New Delivery Assigned",
-                body: `You have been manually assigned to deliver ${request.requestNumber}`,
-              },
-              data: {
-                event: "delivery:assigned",
-                payload: JSON.stringify(payload),
-              }
-            }]
-          });
-        }
-
-        const notificationDoc = await Notification.create({
-          recipient: deliveryBoyId,
-          userId: deliveryBoyId,
-          recipientModel: "Delivery",
-          role: "delivery",
-          title: "Delivery Assigned",
-          message: `You have been manually assigned to deliver ${request.requestNumber}`,
-          body: `You have been manually assigned to deliver ${request.requestNumber}`,
-          type: "order",
-          channel: "in_app",
-          provider: "internal",
-          status: "sent",
-          sentAt: new Date(),
-          data: { orderId: request.requestNumber, sourceType: "SELLER_REQUEST" },
-        });
-
-        emitToDelivery(deliveryBoyId, {
-          event: "notification:new",
-          payload: {
-            notificationId: notificationDoc._id.toString(),
-            eventType: "DELIVERY_ASSIGNED",
-            role: "delivery",
-            title: "Delivery Assigned",
-            body: notificationDoc.body,
-            data: notificationDoc.data,
-            createdAt: notificationDoc.createdAt.toISOString()
-          }
-        });
-
-      } catch (err) {
-        console.warn("❌ Failed to notify delivery boy on approval manual assign:", err.message);
-      }
+      await notifyRiderOfRequestAssignment(request, deliveryBoyId);
     } else if (startDelivery || deliveryMode === "BROADCAST") {
       request.deliveryType = "STANDARD";
       await request.save();
@@ -642,6 +458,15 @@ export const rejectSellerRequest = async (req, res) => {
     request.approvedAt = new Date();
 
     await request.save();
+
+    // A PENDING request has normally not drawn down warehouse stock yet, but
+    // restore it if anything did reserve it, so a rejection never leaves the
+    // warehouse short.
+    try {
+      await releaseWarehouseStockForRequest(request);
+    } catch (stockErr) {
+      console.error("⚠️ Failed to release warehouse stock on reject:", stockErr.message);
+    }
 
     console.log("✅ Request rejected:", request.requestNumber);
 
@@ -767,73 +592,7 @@ export const manualAssignDelivery = async (req, res) => {
 
     console.log("🚚 Delivery boy manually assigned for request:", request.requestNumber);
 
-    try {
-
-      const payload = {
-        orderId: request.requestNumber,
-        sourceType: "SELLER_REQUEST",
-        workflowStatus: "DELIVERY_ASSIGNED",
-        preview: {
-          pickup: "Veenolex Wholesale Warehouse",
-          drop: request.sellerName || "Seller Store",
-          total: request.totalAmount || 0,
-        }
-      };
-
-      emitToDelivery(deliveryBoyId, { event: "delivery:assigned", payload });
-
-      const deliveryPartner = await Delivery.findById(deliveryBoyId).select("fcmToken").lean();
-      
-      if (deliveryPartner?.fcmToken) {
-        emitNotificationEvent(NOTIFICATION_EVENTS.BULK_PUSH, {
-          messages: [{
-            token: deliveryPartner.fcmToken,
-            notification: {
-              title: "New Delivery Assigned",
-              body: `You have been manually assigned to pickup from Veenolex Wholesale Warehouse`,
-            },
-            data: {
-              event: "delivery:assigned",
-              payload: JSON.stringify(payload),
-            }
-          }]
-        });
-      }
-
-      const notificationDoc = await Notification.create({
-        recipient: deliveryBoyId,
-        userId: deliveryBoyId,
-        recipientModel: "Delivery",
-        role: "delivery",
-        title: "Delivery Assigned",
-        message: `You have been manually assigned to deliver ${request.requestNumber}`,
-        body: `You have been manually assigned to deliver ${request.requestNumber}`,
-        type: "order",
-        channel: "in_app",
-        provider: "internal",
-        status: "sent",
-        sentAt: new Date(),
-        data: { orderId: request.requestNumber, sourceType: "SELLER_REQUEST" },
-      });
-      
-      // Wake up the delivery app to show the alert and play sound
-      emitToDelivery(deliveryBoyId, {
-        event: "notification:new",
-        payload: {
-          notificationId: notificationDoc._id.toString(),
-          eventType: "DELIVERY_ASSIGNED",
-          role: "delivery",
-          title: "Delivery Assigned",
-          body: notificationDoc.body,
-          data: notificationDoc.data,
-          createdAt: notificationDoc.createdAt.toISOString()
-        }
-      });
-      
-    } catch (err) {
-      console.warn("❌ Failed to notify delivery boy on manual assign", err.message);
-    }
-
+    await notifyRiderOfRequestAssignment(request, deliveryBoyId);
 
     return res.status(200).json({
       success: true,
@@ -968,13 +727,10 @@ export const assignRequestDeliveryBoyController = async (req, res) => {
 
     request.deliveryBoy = deliveryBoyId;
     request.deliveryWorkflowStatus = "DELIVERY_ASSIGNED";
+    request.assignedAt = new Date();
     await request.save();
 
-    emitToDelivery("delivery:assigned", {
-      orderId: request.requestNumber,
-      sourceType: "SELLER_REQUEST",
-      request,
-    });
+    await notifyRiderOfRequestAssignment(request, deliveryBoyId);
 
     return res.status(200).json({
       success: true,

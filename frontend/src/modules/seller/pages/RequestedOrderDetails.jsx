@@ -145,6 +145,14 @@ const RequestedOrderDetails = () => {
                        requestDetails.workflowStatus === 'PICKUP_READY' ||
                        requestDetails.workflowStatus === 'OUT_FOR_DELIVERY';
 
+  const isPaid = requestDetails.paymentStatus === 'PAID';
+  const isDelivered = requestDetails.status === 'DELIVERED' ||
+                      requestDetails.workflowStatus === 'DELIVERED';
+  // Mirrors the backend gate: goods reach the seller's catalogue only once
+  // they have been handed over AND paid for.
+  const stockReleased = isDelivered && isPaid;
+  const payOnDelivery = requestDetails.paymentType === 'PAY_AFTER_DELIVERY';
+
   return (
     <div style={{ padding: "24px", backgroundColor: "#f5f5f5", minHeight: "100vh" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "24px" }}>
@@ -194,6 +202,25 @@ const RequestedOrderDetails = () => {
               <span style={{ color: "#666" }}>Payment Type</span>
               <span>{requestDetails.paymentType}</span>
             </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
+              <span style={{ color: "#666" }}>Payment Status</span>
+              <span style={{ fontWeight: "600", color: isPaid ? "#15803d" : "#b45309" }}>
+                {requestDetails.paymentStatus || "PENDING"}
+              </span>
+            </div>
+            <div style={{
+              marginTop: "8px",
+              padding: "12px",
+              borderRadius: "10px",
+              backgroundColor: stockReleased ? "#f0fdf4" : "#fffbeb",
+              border: `1px solid ${stockReleased ? "#bbf7d0" : "#fde68a"}`,
+              fontSize: "13px",
+              color: stockReleased ? "#166534" : "#92400e"
+            }}>
+              {stockReleased
+                ? "Stock added to your products. These items are now live in Products."
+                : "These items are added to your Products only after the delivery is completed and payment is settled."}
+            </div>
           </Card>
 
           <Card padding="lg">
@@ -239,10 +266,31 @@ const RequestedOrderDetails = () => {
           </Card>
 
           {showTracking && (
-            <DeliveryOtpDisplay 
-              orderId={requestDetails.requestNumber} 
-              tokenKey={STORAGE_KEYS.AUTH_SELLER} 
-            />
+            <Card padding="lg">
+              <h3 style={{ margin: "0 0 6px", fontSize: "18px" }}>Handover PIN</h3>
+              <p style={{ margin: "0 0 16px", fontSize: "13px", color: "#666" }}>
+                {payOnDelivery
+                  ? "Give this 4-digit PIN to the delivery partner only after you have checked the goods and paid the amount due. The PIN closes the delivery and releases the stock into your Products."
+                  : "Give this 4-digit PIN to the delivery partner once you have checked the goods. The PIN closes the delivery and releases the stock into your Products."}
+              </p>
+              {payOnDelivery && !isPaid && (
+                <div style={{
+                  marginBottom: "16px",
+                  padding: "12px",
+                  borderRadius: "10px",
+                  backgroundColor: "#fffbeb",
+                  border: "1px solid #fde68a",
+                  fontSize: "13px",
+                  color: "#92400e"
+                }}>
+                  Amount payable to the delivery partner: <strong>{formatPrice(requestDetails.totalAmount)}</strong>
+                </div>
+              )}
+              <DeliveryOtpDisplay 
+                orderId={requestDetails.requestNumber} 
+                tokenKey={STORAGE_KEYS.AUTH_SELLER} 
+              />
+            </Card>
           )}
 
           {/* Delivery Partner Card */}

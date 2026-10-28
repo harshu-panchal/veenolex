@@ -16,6 +16,10 @@ jest.unstable_mockModule("../app/models/order.js", () => ({
 jest.unstable_mockModule("../app/models/sellerProductRequest.js", () => ({
   default: {
     findOne: mockSellerProductRequestFindOne,
+    // Crediting a seller's catalogue claims the request first; stub the write
+    // side so a delivered-and-paid fixture cannot reach the real collection.
+    findOneAndUpdate: jest.fn().mockResolvedValue(null),
+    updateOne: jest.fn().mockResolvedValue({}),
   },
 }));
 
@@ -34,6 +38,9 @@ jest.unstable_mockModule("../app/models/deliveryWebhookEvent.js", () => ({
 
 jest.unstable_mockModule("../app/services/orderSocketEmitter.js", () => ({
   emitToOrder: jest.fn(),
+  // Pulled in via the seller-request fulfilment service, which the webhook
+  // calls to credit seller stock once a shipment is delivered.
+  emitToDelivery: jest.fn(),
 }));
 
 const { handleShiprocketWebhook } = await import("../app/controller/deliveryWebhookController.js");

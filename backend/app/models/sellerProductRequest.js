@@ -177,8 +177,50 @@ const sellerProductRequestSchema = new mongoose.Schema(
     },
 
     // ─────────────────────────────────
+    // STOCK MOVEMENT MARKERS
+    // ─────────────────────────────────
+    // Set when the carton leaves the admin warehouse (on approval). Used to
+    // keep the warehouse decrement idempotent and to allow a restore if the
+    // request is rejected or cancelled before it reaches the seller.
+    warehouseStockReservedAt: {
+      type: Date,
+      default: null
+    },
+    // Set only once the goods are delivered AND paid for, at the moment the
+    // products are credited to the seller's catalogue. Guards against the
+    // seller being credited twice.
+    stockMaterializedAt: {
+      type: Date,
+      default: null
+    },
+
+    // ─────────────────────────────────
+    // PAYMENT COLLECTED ON DELIVERY
+    // ─────────────────────────────────
+    collectedAmount: {
+      type: Number,
+      default: 0
+    },
+    collectedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Delivery",
+      default: null
+    },
+    collectedAt: {
+      type: Date,
+      default: null
+    },
+
+    // ─────────────────────────────────
     // DELIVERY TRACKING
     // ─────────────────────────────────
+    // Previously written by every assignment path but never declared, so
+    // strict mode dropped it and the request had no record of when a rider
+    // was put on it.
+    assignedAt: {
+      type: Date,
+      default: null
+    },
     deliveryBoy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Delivery",

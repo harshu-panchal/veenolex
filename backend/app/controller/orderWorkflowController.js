@@ -12,6 +12,7 @@ import {
 import { getCachedRoute } from "../services/mapsRouteService.js";
 import { geocodeAddress } from "../services/mapsGeocodeService.js";
 import Order from "../models/order.js";
+import SellerProductRequest from "../models/sellerProductRequest.js";
 import Customer from "../models/customer.js";
 import Transaction from "../models/transaction.js";
 import { orderMatchQueryFromRouteParam } from "../utils/orderLookup.js";
@@ -103,9 +104,46 @@ export const requestDeliveryOtp = async (req, res) => {
   }
 };
 
+/**
+ * Only the party that has to read the PIN out loud may fetch it: the seller
+ * who placed a product request, or the customer the order belongs to. Admins
+ * can read it for support. Without this, any signed-in account could pull
+ * another party's delivery PIN by guessing an order id.
+ */
+async function callerMayReadDeliveryOtp(req, orderId) {
+  const role = String(req.user?.role || "").toLowerCase();
+  if (role === "admin") return true;
+
+  const userId = String(req.user?.id || "");
+  if (!userId) return false;
+
+  if (orderId && orderId.toUpperCase().startsWith("REQ-")) {
+    const request = await SellerProductRequest.findOne({
+      requestNumber: new RegExp(`^${orderId}$`, "i"),
+    })
+      .select("sellerId")
+      .lean();
+    return Boolean(request) && String(request.sellerId) === userId;
+  }
+
+  const orderKey = orderMatchQueryFromRouteParam(orderId);
+  if (!orderKey) return false;
+  const order = await Order.findOne(orderKey).select("customer seller").lean();
+  if (!order) return false;
+  return (
+    String(order.customer || "") === userId ||
+    String(order.seller || "") === userId
+  );
+}
+
 export const getActiveDeliveryOtp = async (req, res) => {
   try {
     const { orderId } = req.params;
+
+    if (!(await callerMayReadDeliveryOtp(req, orderId))) {
+      return handleResponse(res, 403, "Not allowed to view this delivery OTP");
+    }
+
     const OrderOtp = (await import("../models/orderOtp.js")).default;
     const otp = await OrderOtp.findOne({ 
       orderId, 
