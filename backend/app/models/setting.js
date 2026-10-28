@@ -184,6 +184,17 @@ const settingSchema = new mongoose.Schema(
             default: 30,
             min: 0,
         },
+        /**
+         * Minimum shipping fee charged on a courier-shipped (out-of-zone or
+         * admin-warehouse) order. Applies when the products in the order
+         * carry no `zoneOutPrice` of their own, so nationwide orders are
+         * never shipped for ₹0 while the courier bills real money.
+         */
+        warehouseShippingBaseFee: {
+            type: Number,
+            default: 70,
+            min: 0,
+        },
         handlingFeeStrategy: {
             type: String,
             enum: ALL_HANDLING_FEE_STRATEGIES,

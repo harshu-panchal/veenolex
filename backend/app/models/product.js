@@ -28,10 +28,28 @@ const productSchema = new mongoose.Schema(
             required: true,
             min: 0,
         },
+        /**
+         * The discounted price shown and charged when it undercuts `price`.
+         *
+         * A `salePrice` above `price` is nonsense: the storefront displays
+         * `price` in that case while checkout charges the lower of the two,
+         * so the higher figure would never be used anyway. Rejecting it on
+         * save keeps the catalogue honest instead of leaving a field that
+         * silently does nothing.
+         */
         salePrice: {
             type: Number,
             default: 0,
             min: 0,
+            validate: {
+                validator: function validateSalePrice(value) {
+                    const salePrice = Number(value || 0);
+                    const listPrice = Number(this?.price || 0);
+                    if (salePrice <= 0 || listPrice <= 0) return true;
+                    return salePrice <= listPrice;
+                },
+                message: "Sale price cannot be higher than the regular price",
+            },
         },
         stock: {
             type: Number,

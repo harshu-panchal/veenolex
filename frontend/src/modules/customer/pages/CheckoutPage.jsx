@@ -8,8 +8,6 @@ import { useWishlist } from "../context/WishlistContext";
 import { customerApi } from "../services/customerApi";
 import { invalidateCache } from "@core/api/dedupe";
 import { useLocation as useAppLocation } from "../context/LocationContext";
-import useServiceability from "../hooks/useServiceability";
-import ServiceabilityNotice from "../components/shared/ServiceabilityNotice";
 import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
 import { loadRazorpayScript } from "../../../shared/utils/razorpay";
 import {
@@ -157,12 +155,6 @@ const CheckoutPage = () => {
   // Only a location the customer picked or we detected may become the
   // delivery address; the app's placeholder never does.
   const orderLocation = hasRealLocation ? currentLocation : null;
-  // Checkout is where a location stops being optional: this is the point the
-  // customer commits to an address, so it is where we tell them if we cannot
-  // reach it. Browsing the catalogue stays open to everyone.
-  const serviceability = useServiceability(orderLocation);
-  const blockedByServiceability =
-    serviceability.status === "unknown" || serviceability.status === "unserviceable";
   const navigate = useNavigate();
 
   // State management
@@ -284,9 +276,15 @@ const CheckoutPage = () => {
       ]),
   ], [settings?.onlineEnabled, settings?.codEnabled, codAdvanceAmount]);
 
+  // Display only. The authoritative discount is whatever the server returns
+  // in the preview breakdown; this is the optimistic figure from the
+  // validate-coupon response, shown until the next preview lands.
   const discountAmount = selectedCoupon
     ? selectedCoupon.discountAmount || selectedCoupon.discount || 0
     : 0;
+  // `validateCoupon` returns `couponId`; a coupon picked from the list may
+  // only carry `_id`.
+  const appliedCouponId = selectedCoupon?.couponId || selectedCoupon?._id || null;
 
   const RECIPIENT_STORAGE_KEY = STORAGE_KEYS.RECIPIENT_ADDRESS;
 
@@ -336,24 +334,42 @@ const CheckoutPage = () => {
     }
   }, [paymentMethods, selectedPayment]);
 
+  // `grossTotal` is the pre-wallet total, so capping the redemption against
+  // it stays stable as the preview updates. Capping against `grandTotal` —
+  // which is now net of the wallet — would feed back into itself.
+  const previewGrossTotal = Number(
+    pricingPreview?.grossTotal ?? pricingPreview?.grandTotal ?? 0,
+  );
+
   useEffect(() => {
-    if (useWallet && user?.walletBalance && pricingPreview?.grandTotal) {
-      const maxAvailable = Number(user.walletBalance || 0);
-      const totalToPay = Number(pricingPreview.grandTotal || 0);
-      setWalletAmountToUse(Math.min(maxAvailable, totalToPay));
+    if (useWallet && Number(user?.walletBalance || 0) > 0 && previewGrossTotal > 0) {
+      setWalletAmountToUse(
+        Math.min(Number(user.walletBalance || 0), previewGrossTotal),
+      );
     } else {
       setWalletAmountToUse(0);
     }
-  }, [useWallet, user?.walletBalance, pricingPreview?.grandTotal]);
+  }, [useWallet, user?.walletBalance, previewGrossTotal]);
 
-  const estimatedGrandTotal = pricingPreview?.grandTotal ?? Math.max(0, cartTotal + selectedTip - discountAmount);
-  const finalAmountToPay = Math.max(0, estimatedGrandTotal - walletAmountToUse);
+  const estimatedGrandTotal =
+    previewGrossTotal || Math.max(0, cartTotal + selectedTip - discountAmount);
+  // The server deducts the wallet redemption itself and reports the result as
+  // `payableAmount`. Subtracting `walletAmountToUse` from the total again here
+  // is what used to show a discounted figure while the gateway charged (and
+  // the rider collected) the full amount on top of the wallet debit.
+  const finalAmountToPay = pricingPreview
+    ? Math.max(0, Number(pricingPreview.payableAmount ?? pricingPreview.grandTotal ?? 0))
+    : Math.max(0, estimatedGrandTotal - walletAmountToUse);
   // COD with an advance: pay the advance online now, the rest in cash.
   const codAdvanceNow =
     selectedPayment === "cash" && codAdvanceAmount > 0
       ? Math.min(codAdvanceAmount, finalAmountToPay)
       : 0;
   const slideAmount = codAdvanceNow > 0 ? codAdvanceNow : finalAmountToPay;
+  // Without a server preview the only total available is a local estimate
+  // that omits delivery and handling fees, so the slider would advertise less
+  // than the order actually costs. Wait for the authoritative figure.
+  const isAwaitingPricing = !pricingPreview || isPreviewLoading;
   const slideText =
     codAdvanceNow > 0
       ? "SLIDE TO PAY ADVANCE"
@@ -906,8 +922,12 @@ const CheckoutPage = () => {
           image: item.image,
         })),
       address: buildAddressForOrder(),
-      discountTotal: discountAmount,
-      taxTotal: 0,
+      // The coupon identity is what earns a discount: the server recomputes
+      // the amount from the cart it holds and ignores any client-sent total.
+      ...(appliedCouponId ? { couponId: appliedCouponId } : {}),
+      ...(selectedCoupon?.code ? { couponCode: selectedCoupon.code } : {}),
+      // Sent so the preview can report `payableAmount` net of the wallet.
+      walletAmount: walletAmountToUse,
       tipAmount: selectedTip,
       paymentMode: selectedPayment === "online" ? "ONLINE" : "COD",
       timeSlot: selectedTimeSlot,
@@ -931,6 +951,16 @@ const CheckoutPage = () => {
         }
       } catch (error) {
         console.error("Checkout preview failed", error);
+        // The server owns coupon validation now, so it can legitimately
+        // refuse one the user has already exhausted. Drop the coupon and let
+        // the effect re-run, rather than leaving a stale total on screen.
+        if (error?.response?.status === 400 && selectedCoupon) {
+          showToast(
+            error.response?.data?.message || "This coupon is no longer valid",
+            "error",
+          );
+          setSelectedCoupon(null);
+        }
       } finally {
         setIsPreviewLoading(false);
       }
@@ -951,7 +981,8 @@ const CheckoutPage = () => {
     selectedPayment,
     selectedTip,
     selectedTimeSlot,
-    discountAmount,
+    appliedCouponId,
+    walletAmountToUse,
     deliveryType,
     scheduledDate,
   ]);
@@ -1066,27 +1097,19 @@ const CheckoutPage = () => {
   };
 
   const handlePlaceOrder = async () => {
-    // Last line of defence: the CTAs are disabled, but a slide gesture or a
-    // stale render must not push an order into an area we cannot deliver to.
-    if (blockedByServiceability) {
-      showToast(
-        serviceability.status === "unknown"
-          ? "Please set a delivery location first."
-          : "We don't deliver to this address yet. Please choose another.",
-        "error",
-      );
-      setIsAddressModalOpen(true);
-      return;
-    }
-
+    // No serviceability gate here on purpose: an address with no local seller
+    // is still orderable. The backend re-routes those lines to the admin
+    // warehouse and admin chooses how to dispatch, so refusing here would
+    // reject business we can actually fulfil.
     setIsPlacingOrder(true);
     try {
-      const taxAmount = pricingPreview?.taxTotal || 0;
       const orderData = {
         address: buildAddressForOrder(),
         paymentMode: selectedPayment === "online" ? "ONLINE" : "COD",
-        discountTotal: discountAmount,
-        taxTotal: taxAmount,
+        // Coupon identity only — the server recomputes the discount from its
+        // own copy of the cart. A client-sent `discountTotal` is ignored.
+        ...(appliedCouponId ? { couponId: appliedCouponId } : {}),
+        ...(selectedCoupon?.code ? { couponCode: selectedCoupon.code } : {}),
         tipAmount: selectedTip,
         timeSlot: selectedTimeSlot,
         deliveryType,
@@ -1521,13 +1544,6 @@ const CheckoutPage = () => {
               </div>
             </div>
 
-            <ServiceabilityNotice
-              status={serviceability.status}
-              areaName={orderLocation?.city || orderLocation?.name || ""}
-              onChangeLocation={handleOpenAddressModal}
-              className="mb-4"
-            />
-
             {/* Address Section */}
             <CheckoutAddressSection
               currentAddress={currentAddress}
@@ -1578,7 +1594,7 @@ const CheckoutPage = () => {
               <button
                 type="button"
                 onClick={goToPayment}
-                disabled={cart.length === 0 || hasOutOfStockItems || blockedByServiceability}
+                disabled={cart.length === 0 || hasOutOfStockItems}
                 className="w-full flex items-center justify-between gap-3 bg-primary disabled:bg-slate-300 text-white rounded-2xl px-6 py-4 font-black transition-all active:scale-[0.99] shadow-lg shadow-primary/20"
               >
                 <span className="flex flex-col items-start leading-tight">
@@ -1647,8 +1663,8 @@ const CheckoutPage = () => {
                 onSuccess={handlePrePlaceOrderCheck}
                 amount={slideAmount}
                 isLoading={isPlacingOrder}
-                disabled={isPlacingOrder || hasOutOfStockItems || blockedByServiceability}
-                text={slideText}
+                disabled={isPlacingOrder || hasOutOfStockItems || isAwaitingPricing}
+                text={isAwaitingPricing ? "CALCULATING TOTAL…" : slideText}
               />
               <p className="text-center text-[10px] text-slate-400 font-bold mt-4 uppercase tracking-[0.1em]">
                 🔒 SSL encrypted secure checkout
@@ -1666,7 +1682,7 @@ const CheckoutPage = () => {
             <button
               type="button"
               onClick={goToPayment}
-              disabled={cart.length === 0 || hasOutOfStockItems || blockedByServiceability}
+              disabled={cart.length === 0 || hasOutOfStockItems}
               className="w-full flex items-center justify-between gap-3 bg-primary disabled:bg-slate-300 text-white rounded-2xl px-5 py-4 font-black transition-all active:scale-[0.99] shadow-lg shadow-primary/20"
             >
               <span className="flex flex-col items-start leading-tight">
@@ -1685,8 +1701,8 @@ const CheckoutPage = () => {
               onSuccess={handlePrePlaceOrderCheck}
               amount={slideAmount}
               isLoading={isPlacingOrder}
-              disabled={isPlacingOrder || hasOutOfStockItems || blockedByServiceability}
-              text={slideText}
+              disabled={isPlacingOrder || hasOutOfStockItems || isAwaitingPricing}
+              text={isAwaitingPricing ? "CALCULATING TOTAL…" : slideText}
             />
           )}
         </div>

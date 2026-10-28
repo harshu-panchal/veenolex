@@ -303,6 +303,12 @@ const orderSchema = new mongoose.Schema(
       // actually take effect; no code change is needed elsewhere.
       sellerPayoutHeld: { type: Boolean, default: false },
       returnPickupCommissionPaid: { type: Boolean, default: false },
+      // Set by `createPendingRiderPayout` when it declines to queue a payout
+      // because this is a COD order: the rider was already paid out of the
+      // cash they collected (`handleCodOrderFinance` tracks only the net as
+      // remittable). Makes the "no payout row" case explainable in finance
+      // dashboards instead of looking like a missing payout.
+      riderPaidFromCodCash: { type: Boolean, default: false },
       // Audit Phase 3 (C-3): set by `reverseOrderFinanceOnCancellation`
       // inside the same transaction that issues the wallet refund and the
       // gateway debit. Acts as the idempotency guard so that every v2

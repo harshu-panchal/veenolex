@@ -17,6 +17,7 @@
 
 import { PhonePeAdapter } from "./providers/phonepe.adapter.js";
 import { RazorpayAdapter } from "./providers/razorpay.adapter.js";
+import logger from "../logger.js";
 
 let _provider = null;
 let _providerName = null;
@@ -48,6 +49,19 @@ export function getActivePaymentProvider() {
   }
   _provider = buildProvider(desired);
   _providerName = desired;
+
+  // A provider that cannot refund still serves payments perfectly well, so
+  // this is a warning rather than a throw — but it must be visible at boot.
+  // Otherwise the gap only shows up the first time a customer is owed money
+  // back (today: only the COD advance refunds to source; see
+  // `paymentService.refundCodAdvanceToSource`).
+  if (!_provider.supportsRefunds) {
+    logger.warn("[payments] active provider cannot issue refunds to source", {
+      provider: desired,
+      impact: "COD advance refunds will fail with REFUND_NOT_SUPPORTED",
+    });
+  }
+
   return _provider;
 }
 

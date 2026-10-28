@@ -226,6 +226,25 @@ export async function createPendingRiderPayout(order, { session, actorId } = {})
     };
     return null;
   }
+
+  // COD riders are already compensated out of the cash they collect:
+  // `handleCodOrderFinance` only adds (collected − riderPayoutTotal) to their
+  // `cashInHand`, so the rider keeps their commission and tip in hand and
+  // remits the rest. Queueing a payout for the same `riderPayoutTotal` on top
+  // of that paid every COD rider twice. `creditAdminEarning` below skips COD
+  // for the mirror-image reason: admin recognises COD income on remittance.
+  if (order.paymentMode === "COD") {
+    order.settlementStatus = {
+      ...(order.settlementStatus || {}),
+      riderPayout: "NOT_APPLICABLE",
+    };
+    order.financeFlags = {
+      ...(order.financeFlags || {}),
+      riderPaidFromCodCash: true,
+    };
+    return null;
+  }
+
   if (order.financeFlags?.riderPayoutQueued) return null;
 
   const amount = roundCurrency(order.paymentBreakdown?.riderPayoutTotal || 0);
@@ -958,6 +977,18 @@ async function reverseOrderFinanceOnCancellationOnce(
       return order;
     }
 
+    // A captured online payment has to come back to the customer, not just
+    // leave the admin wallet. Before this, the admin was debited and the
+    // order was stamped REFUNDED while the customer received nothing: no
+    // gateway refund (the only `provider.refund()` call in the codebase is
+    // for the COD advance) and no wallet credit either.
+    //
+    // The refund lands in the customer's wallet, which is the same policy the
+    // return flow already uses (`orderReturnService.completeReturnAndRefund`
+    // credits the wallet "even for COD"). Keeping both paths identical means
+    // one refund policy to reason about, and the credit is immediate rather
+    // than waiting on a gateway settlement cycle. Customers withdraw from the
+    // wallet through the existing payout flow.
     if (order.paymentMode === "ONLINE" && order.financeFlags?.onlinePaymentCaptured) {
       const refundAmount = roundCurrency(order.paymentBreakdown?.grandTotal || 0);
       if (refundAmount > 0) {
@@ -983,6 +1014,32 @@ async function reverseOrderFinanceOnCancellationOnce(
             reference: order.orderId,
             balanceBefore: debitResult.before,
             balanceAfter: debitResult.after,
+          },
+          { session },
+        );
+
+        const customerCredit = await creditWallet({
+          ownerType: OWNER_TYPE.CUSTOMER,
+          ownerId: order.customer,
+          amount: refundAmount,
+          bucket: "available",
+          session,
+        });
+
+        await createLedgerEntry(
+          {
+            orderId: order._id,
+            walletId: customerCredit.wallet._id,
+            actorType: OWNER_TYPE.CUSTOMER,
+            actorId: order.customer,
+            type: LEDGER_TRANSACTION_TYPE.REFUND,
+            direction: LEDGER_DIRECTION.CREDIT,
+            amount: refundAmount,
+            paymentMode: "ONLINE",
+            description: `Refund of online payment: ${reason}`,
+            reference: order.orderId,
+            balanceBefore: customerCredit.before,
+            balanceAfter: customerCredit.after,
           },
           { session },
         );

@@ -81,6 +81,53 @@ describe("Shiprocket Webhook and Idempotency handling", () => {
     expect(mockDeliveryWebhookEventCreate).not.toHaveBeenCalled();
   });
 
+  it("accepts the dashboard token sent as x-api-key", async () => {
+    const rawPayload = JSON.stringify({ event_id: "evt_api_key", order_id: "100" });
+
+    // Already-seen event, so the handler stops at the idempotency check: all
+    // this asserts is that the x-api-key credential got past authentication.
+    mockDeliveryWebhookEventFindOne.mockResolvedValueOnce({ eventId: "evt_api_key" });
+
+    mockReq = {
+      headers: {
+        "x-api-key": "test_webhook_secret",
+      },
+      body: Buffer.from(rawPayload),
+    };
+
+    await handleShiprocketWebhook(mockReq, mockRes);
+
+    expect(mockRes.status).not.toHaveBeenCalledWith(401);
+    expect(mockRes.status).toHaveBeenCalledWith(200);
+  });
+
+  it("returns 401 for an x-api-key that does not match the secret", async () => {
+    const rawPayload = JSON.stringify({ event_id: "evt_bad_key", order_id: "100" });
+
+    mockReq = {
+      headers: {
+        "x-api-key": "not_the_secret",
+      },
+      body: Buffer.from(rawPayload),
+    };
+
+    await handleShiprocketWebhook(mockReq, mockRes);
+
+    expect(mockRes.status).toHaveBeenCalledWith(401);
+    expect(mockDeliveryWebhookEventCreate).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 when no credential is sent at all", async () => {
+    const rawPayload = JSON.stringify({ event_id: "evt_no_cred", order_id: "100" });
+
+    mockReq = { headers: {}, body: Buffer.from(rawPayload) };
+
+    await handleShiprocketWebhook(mockReq, mockRes);
+
+    expect(mockRes.status).toHaveBeenCalledWith(401);
+    expect(mockDeliveryWebhookEventCreate).not.toHaveBeenCalled();
+  });
+
   it("handles duplicate webhook event ID as a no-op (idempotency)", async () => {
     const rawPayload = JSON.stringify({ event_id: "evt_123", order_id: "100" });
     

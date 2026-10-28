@@ -26,7 +26,7 @@ export function addMoney(...values) {
 
 export function subtractMoney(minuend, ...subtrahends) {
   const totalPaise = subtrahends.reduce(
-    (sum, value) => sum + toPaise(value),
+    (sum, value) => sum - toPaise(value),
     toPaise(minuend),
   );
   return fromPaise(totalPaise);

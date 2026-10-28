@@ -49,6 +49,24 @@ function makeOrder(overrides = {}) {
       reconciledAt: null,
     },
     save: jest.fn().mockResolvedValue(undefined),
+    // The COD paths write through `Document.prototype.set` with dotted paths
+    // (spreading the mongoose sub-document would drop its stored snapshots),
+    // so the fake order has to understand them too.
+    set(values = {}) {
+      for (const [path, value] of Object.entries(values)) {
+        const segments = path.split(".");
+        const leaf = segments.pop();
+        let target = this;
+        for (const segment of segments) {
+          if (!target[segment] || typeof target[segment] !== "object") {
+            target[segment] = {};
+          }
+          target = target[segment];
+        }
+        target[leaf] = value;
+      }
+      return this;
+    },
     ...overrides,
   };
 }
@@ -258,6 +276,49 @@ describe("finance order flow", () => {
     expect(updated.financeFlags.deliveredSettlementApplied).toBe(true);
     expect(updated.settlementStatus.adminEarningCredited).toBe(true);
     expect(mockCreatePendingPayoutForOrder).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not queue a rider payout on COD — the rider keeps their cut in cash", async () => {
+    currentOrder.paymentMode = "COD";
+    currentOrder.status = "pending";
+    currentOrder.orderStatus = "pending";
+
+    const updated = await settleDeliveredOrder({ _id: "order-1" }, { actorId: "admin-1" });
+
+    // `handleCodOrderFinance` only tracks (collected - riderPayoutTotal) as
+    // remittable, so the rider is already paid. A payout here would pay them
+    // the same amount twice.
+    const payoutTypes = mockCreatePendingPayoutForOrder.mock.calls.map(
+      ([args]) => args.payoutType,
+    );
+    expect(payoutTypes).not.toContain(PAYOUT_TYPE.DELIVERY_PARTNER);
+    expect(payoutTypes).toContain(PAYOUT_TYPE.SELLER);
+    expect(updated.settlementStatus.riderPayout).toBe("NOT_APPLICABLE");
+    expect(updated.financeFlags.riderPaidFromCodCash).toBe(true);
+  });
+
+  it("returns a cancelled online payment to the customer, not just off the admin books", async () => {
+    currentOrder.paymentMode = "ONLINE";
+    currentOrder.financeFlags = { onlinePaymentCaptured: true };
+
+    await reverseOrderFinanceOnCancellation(
+      { _id: "order-1" },
+      { reason: "Seller did not accept" },
+    );
+
+    // Admin debited AND the customer credited. Debiting admin alone left the
+    // order stamped REFUNDED while the customer got nothing back.
+    expect(mockDebitWallet).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerType: "ADMIN", amount: 300 }),
+    );
+    expect(mockCreditWallet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerType: "CUSTOMER",
+        ownerId: currentOrder.customer,
+        amount: 300,
+      }),
+    );
+    expect(currentOrder.paymentStatus).toBe(ORDER_PAYMENT_STATUS.REFUNDED);
   });
 
   it("backfills paymentBreakdown snapshots when missing", async () => {

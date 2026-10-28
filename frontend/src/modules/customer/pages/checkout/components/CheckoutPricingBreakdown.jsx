@@ -33,6 +33,10 @@ const CheckoutPricingBreakdown = React.memo(function CheckoutPricingBreakdown({
   const handlingFee = pricingPreview?.handlingFeeCharged || 0;
   const tipAmount = pricingPreview?.tipTotal || selectedTip || 0;
   const taxAmount = pricingPreview?.taxTotal || 0;
+  // The server decides the discount; `discountAmount` is only the optimistic
+  // figure from applying the coupon. Showing the server's number keeps the
+  // listed lines adding up to the payable total.
+  const appliedDiscount = pricingPreview?.discountTotal ?? discountAmount;
 
   return (
     <>
@@ -103,7 +107,9 @@ const CheckoutPricingBreakdown = React.memo(function CheckoutPricingBreakdown({
                 <Tag size={14} />
                 Coupon Reserved
               </span>
-              <span className="font-black text-primary">-₹{discountAmount}</span>
+              <span className="font-black text-primary">
+                {appliedDiscount > 0 ? `-₹${appliedDiscount}` : "FREE DELIVERY"}
+              </span>
             </motion.div>
           )}
 

@@ -5,6 +5,7 @@ import {
   HANDLING_FEE_STRATEGY,
 } from "../../constants/finance.js";
 import { roundCurrency } from "../../utils/money.js";
+import logger from "../logger.js";
 
 const DEFAULT_FINANCE_SETTINGS = {
   deliveryPricingMode: DELIVERY_PRICING_MODE.DISTANCE_BASED,
@@ -14,6 +15,10 @@ const DEFAULT_FINANCE_SETTINGS = {
   incrementalKmSurcharge: 10,
   deliveryPartnerRatePerKm: 5,
   fixedDeliveryFee: 30,
+  // Floor for a courier-shipped (out-of-zone / warehouse) order when the
+  // products carry no `zoneOutPrice`. Without a floor those orders shipped
+  // anywhere in India for ₹0 while Shiprocket billed real money.
+  warehouseShippingBaseFee: 70,
   handlingFeeStrategy: HANDLING_FEE_STRATEGY.HIGHEST_CATEGORY_FEE,
   codEnabled: true,
   onlineEnabled: true,
@@ -79,6 +84,14 @@ export function normalizeFinanceSettings(raw = {}) {
 
   const platformFee = roundCurrency(raw.platformFee ?? 0);
   const freeDeliveryThreshold = roundCurrency(raw.freeDeliveryThreshold ?? 0);
+  const warehouseShippingBaseFee = roundCurrency(
+    Math.max(
+      Number(
+        raw.warehouseShippingBaseFee ?? DEFAULT_FINANCE_SETTINGS.warehouseShippingBaseFee,
+      ) || 0,
+      0,
+    ),
+  );
 
   return {
     deliveryPricingMode,
@@ -93,6 +106,7 @@ export function normalizeFinanceSettings(raw = {}) {
     deliveryPartnerRatePerKm,
     fleetCommissionRatePerKm: deliveryPartnerRatePerKm,
     fixedDeliveryFee,
+    warehouseShippingBaseFee,
     handlingFeeStrategy,
     platformFee,
     freeDeliveryThreshold,
@@ -107,7 +121,11 @@ export function normalizeFinanceSettings(raw = {}) {
 
 export async function getOrCreateFinanceSettings({ session } = {}) {
   const query = {};
-  const options = session ? { session } : {};
+  // `Setting` is a singleton, but nothing in the schema enforces that. An
+  // unsorted `findOne` would hand back an arbitrary document if a second row
+  // ever appeared, making every price nondeterministic — so always read the
+  // oldest, which is the one `updateDeliveryFinanceSettings` upserts into.
+  const options = { sort: { createdAt: 1, _id: 1 }, ...(session ? { session } : {}) };
   let settings = await Setting.findOne(query, null, options);
 
   if (!settings) {
@@ -136,7 +154,9 @@ export async function getOrCreateFinanceSettings({ session } = {}) {
  */
 export async function updateDeliveryFinanceSettings(payload, { session } = {}) {
   const query = {};
-  const findOptions = session ? { session } : {};
+  // Same singleton ordering as `getOrCreateFinanceSettings`, so a read and a
+  // write always land on the same document.
+  const findOptions = { sort: { createdAt: 1, _id: 1 }, ...(session ? { session } : {}) };
   const current = await Setting.findOne(query, null, findOptions);
   const currentPlain = current?.toObject?.() || current || {};
 
@@ -163,11 +183,25 @@ export async function updateDeliveryFinanceSettings(payload, { session } = {}) {
     throw err;
   }
 
-  const options = { upsert: true, new: true };
+  const options = { upsert: true, new: true, sort: { createdAt: 1, _id: 1 } };
   if (session) options.session = session;
 
   const updated = await Setting.findOneAndUpdate(query, { $set: normalized }, options);
-  return normalizeFinanceSettings(updated.toObject?.() || updated);
+  const result = normalizeFinanceSettings(updated.toObject?.() || updated);
+
+  // `riderBasePayout` falls back to `baseDeliveryCharge`, so an admin who
+  // configures only the customer-facing fee silently ends up paying the rider
+  // everything the customer paid for delivery. Surface it instead of letting
+  // it look like a pricing bug later.
+  if (result.riderBasePayout >= result.customerBaseDeliveryFee) {
+    logger.warn("[financeSettings] rider base payout is not below the customer delivery fee", {
+      riderBasePayout: result.riderBasePayout,
+      customerBaseDeliveryFee: result.customerBaseDeliveryFee,
+      note: "platform logistics margin will be zero or negative on local deliveries",
+    });
+  }
+
+  return result;
 }
 
 const PAYMENT_MODE_DISABLED_MESSAGES = {

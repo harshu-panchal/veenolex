@@ -50,6 +50,11 @@ export class RazorpayAdapter extends PaymentProviderPort {
     return PAYMENT_GATEWAY.RAZORPAY;
   }
 
+  // `refund()` and `getRefundStatus()` below call the Razorpay refunds API.
+  get supportsRefunds() {
+    return true;
+  }
+
   _getAuthHeader() {
     const keyId = String(process.env.RAZORPAY_KEY_ID || "").trim();
     const keySecret = String(process.env.RAZORPAY_KEY_SECRET || "").trim();

@@ -31,21 +31,37 @@ async function refreshOrderDeliveryEta(orderMongoId) {
   return refresh(orderMongoId);
 }
 
+/** Length-safe comparison, so a mismatch cannot be timed character by character. */
+function safeEqual(a, b) {
+  const bufA = Buffer.from(String(a || ""), "utf8");
+  const bufB = Buffer.from(String(b || ""), "utf8");
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 export const handleShiprocketWebhook = async (req, res) => {
   try {
-    const signature = req.headers["x-sha256-signature"] || req.headers["x-api-key"];
+    // Shiprocket sends the token configured in its dashboard as `x-api-key`.
+    // Some setups instead sign the body and send `x-sha256-signature`, so both
+    // are accepted; either one must match SHIPROCKET_WEBHOOK_SECRET.
+    const hmacSignature = req.headers["x-sha256-signature"];
+    const apiKey = req.headers["x-api-key"];
     const secret = process.env.SHIPROCKET_WEBHOOK_SECRET;
     const rawBody = req.body;
     const bodyStr = Buffer.isBuffer(rawBody) ? rawBody.toString("utf8") : rawBody;
 
-    // 1. Signature validation (invalid signature -> 401, no DB write, no queue enqueue)
-    if (secret && signature) {
-      const computedSignature = crypto
-        .createHmac("sha256", secret)
-        .update(bodyStr)
-        .digest("hex");
-      if (computedSignature !== signature) {
-        console.warn("⚠️ Shiprocket webhook signature mismatch!");
+    // 1. Authentication (bad or missing credential -> 401, no DB write, no queue enqueue)
+    if (secret) {
+      const signatureOk =
+        hmacSignature &&
+        safeEqual(
+          crypto.createHmac("sha256", secret).update(bodyStr).digest("hex"),
+          hmacSignature,
+        );
+      const apiKeyOk = apiKey && safeEqual(apiKey, secret);
+
+      if (!signatureOk && !apiKeyOk) {
+        console.warn("⚠️ Shiprocket webhook rejected: no valid x-api-key or x-sha256-signature");
         return res.status(401).send("Unauthorized: Invalid signature");
       }
     }

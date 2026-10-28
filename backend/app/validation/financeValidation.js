@@ -31,8 +31,13 @@ export const checkoutPreviewSchema = Joi.object({
     location: locationSchema.optional(),
   }).unknown().required(),
   distanceKm: Joi.number().min(0).optional(),
-  discountTotal: Joi.number().min(0).default(0),
-  taxTotal: Joi.number().min(0).default(0),
+  // Deprecated and IGNORED by the pricing pipeline. A discount comes only
+  // from `couponCode`/`couponId`, recomputed server-side; tax is derived
+  // server-side (today: 0, prices are GST-inclusive). Both keys are still
+  // accepted so existing clients don't 400, and both are stripped here so
+  // nothing downstream can read them by accident.
+  discountTotal: Joi.any().strip(),
+  taxTotal: Joi.any().strip(),
   tipAmount: Joi.number().min(0).default(0),
   walletAmount: Joi.number().min(0).default(0),
   paymentMode: Joi.string().valid("ONLINE", "COD").default("COD"),

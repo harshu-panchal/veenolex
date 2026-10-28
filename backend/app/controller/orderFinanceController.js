@@ -35,17 +35,15 @@ export const previewCheckoutFinance = async (req, res) => {
       orderItems: payload.items,
       address: payload.address,
       tipAmount: payload.tipAmount,
-      discountTotal: payload.discountTotal || 0,
-      // Audit Phase 4 (C-1): forward walletAmount so the preview's
-      // aggregate breakdown exposes a `payableAmount` (post-wallet) the
-      // frontend can render directly. No-op when client sends 0 or omits.
+      // Forward walletAmount so the preview's aggregate breakdown exposes a
+      // `payableAmount` (post-wallet) the frontend can render directly.
+      // No-op when the client sends 0 or omits it.
       walletAmount: payload.walletAmount || 0,
-      // Audit Phase 5 (C-2 + H-6): forward couponCode/couponId so the
-      // preview returns the server-validated discount (and `freeDelivery`
-      // rebate) without trusting any client-supplied `discountTotal`.
-      // The `customerId` is read from auth so per-user limits are
-      // enforced consistently between preview and place-order — and
-      // the preview can refuse a coupon the user has already exhausted.
+      // `couponCode`/`couponId` are what produce a discount: the preview
+      // returns the server-validated amount (and any `freeDelivery` rebate),
+      // never a client-supplied `discountTotal`. `customerId` comes from auth
+      // so per-user limits are enforced identically in preview and
+      // place-order — the preview can refuse a coupon already exhausted.
       couponCode: payload.couponCode || null,
       couponId: payload.couponId || null,
       customerId: req.user?.id || null,

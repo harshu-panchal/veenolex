@@ -556,9 +556,9 @@ export const getProducts = async (req, res) => {
         if (shouldApplyLocationFilter && p.sellerId) {
           isInZone = nearbySet.has(String(p.sellerId));
           if (!isInZone && p.zoneOutDeliveryEnabled) {
-            deliveryMethod = "SHIPROCKET";
+            deliveryMethod = "WAREHOUSE_SHIPPING";
             estimatedDeliveryTime = "2-3 days";
-            deliveryBadge = "Standard Delivery";
+            deliveryBadge = "Delivered by Veenolex";
           }
         }
 
@@ -1303,18 +1303,18 @@ export const getProductById = async (req, res) => {
       isInZone = nearbySellerSet ? nearbySellerSet.has(sellerIdForProduct) : false;
       if (!isInZone) {
         if (product.zoneOutDeliveryEnabled) {
-          deliveryMethod = "SHIPROCKET";
+          deliveryMethod = "WAREHOUSE_SHIPPING";
           estimatedDeliveryTime = "2-3 days";
-          deliveryBadge = "Standard Delivery";
+          deliveryBadge = "Delivered by Veenolex";
           shippingCost = product.zoneOutPrice || 0;
         } else if (enforceRadius) {
           return handleResponse(res, 404, "Product not available in your area");
         }
       }
     } else if (product.zoneOutDeliveryEnabled) {
-      deliveryMethod = "SHIPROCKET";
+      deliveryMethod = "WAREHOUSE_SHIPPING";
       estimatedDeliveryTime = "2-3 days";
-      deliveryBadge = "Standard Delivery";
+      deliveryBadge = "Delivered by Veenolex";
       shippingCost = product.zoneOutPrice || 0;
     }
 

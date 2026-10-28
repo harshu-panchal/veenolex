@@ -4,15 +4,12 @@ import CheckoutGroup from "../models/checkoutGroup.js";
 import Order from "../models/order.js";
 import User from "../models/customer.js";
 import Transaction from "../models/transaction.js";
-import Coupon from "../models/coupon.js";
 import { WORKFLOW_STATUS, DEFAULT_SELLER_TIMEOUT_MS } from "../constants/orderWorkflow.js";
 import {
   COD_ADVANCE_STATUS,
   LEDGER_TRANSACTION_TYPE,
   ORDER_PAYMENT_STATUS,
   OWNER_TYPE,
-  isWalletRedemptionReducesPayableEnabled,
-  isServerSideCouponEngineEnabled,
 } from "../constants/finance.js";
 import { incrementCouponUsage } from "./finance/couponService.js";
 import { freezeFinancialSnapshot } from "./finance/orderFinanceService.js";
@@ -406,24 +403,18 @@ export async function placeOrderAtomic({
       session,
     });
 
-    // Audit Phase 4 (C-1): when WALLET_REDEMPTION_REDUCES_PAYABLE is on,
-    // pass walletAmount through to the snapshot so the per-seller
-    // grandTotal is reduced proportionately. When the flag is off the
-    // snapshot ignores it (`grandTotal` stays at the pre-wallet value)
-    // and the legacy direct-debit path below preserves bit-for-bit
-    // current behaviour.
+    // `walletAmount` is passed through so each seller's `grandTotal` is
+    // reduced proportionately — the amount the gateway charges and the rider
+    // collects is already net of the wallet.
     //
-    // Audit Phase 5 (C-2 + H-6 + H-7): when SERVER_SIDE_COUPON_ENGINE is
-    // on, pass couponCode/couponId/customerId so the snapshot ignores
-    // the client-supplied `discountTotal` and recomputes the discount
-    // from the server-hydrated cart, applying free-delivery rebates
-    // server-side. When the flag is off, only `discountTotal` flows
-    // through — preserving legacy bit-for-bit behaviour.
+    // `couponCode`/`couponId`/`customerId` are what produce a discount: the
+    // snapshot recomputes it from the server-hydrated cart and applies any
+    // free-delivery rebate. A client-supplied `discountTotal` is ignored, so
+    // it is not forwarded at all.
     const pricingSnapshot = await buildCheckoutPricingSnapshot({
       orderItems: orderItemsInput,
       address: normalizedAddress,
       tipAmount,
-      discountTotal: Math.max(0, Number(normalizedPayload.discountTotal || 0)),
       walletAmount,
       couponCode: normalizedPayload.couponCode || null,
       couponId: normalizedPayload.couponId || null,
@@ -614,43 +605,34 @@ export async function placeOrderAtomic({
 
     // Deduct wallet balance if used.
     //
-    // Audit Phase 4 (C-1 + H-5):
-    //   - When the flag is on, the wallet debit routes through
-    //     `walletService.debitWallet`. That helper writes a `LedgerEntry`
-    //     (type: WALLET_PAYMENT) inside the same session, debits the
-    //     canonical `Wallet({ownerType:"CUSTOMER"})` row, and mirrors the
-    //     delta into `User.walletBalance` via `$inc`. The legacy
-    //     `Transaction({type:"Wallet Payment"})` row is still written for
-    //     backward-compat with admin dashboards that still consume the
-    //     legacy collection (the collection deprecation is a later phase).
-    //   - For legacy customers whose `Wallet.availableBalance` is below
-    //     `User.walletBalance` (their wallet was credited only on the User
-    //     side before Phase 4 P4-3 dual-write landed), we lazy-seed the
-    //     canonical Wallet up to the User value inside the same session
-    //     using an idempotent ledger key (`WLT-SEED-<userId>`). The seed
-    //     does NOT touch User.walletBalance (the User row is already
-    //     correct) and is a no-op for fresh customers.
-    //   - When the flag is OFF the legacy code path is preserved bit-for-bit
-    //     so rollback is an env flip.
+    // The debit routes through `walletService.debitWallet`. That helper
+    // writes a `LedgerEntry` (type: WALLET_PAYMENT) inside the same session,
+    // debits the canonical `Wallet({ownerType:"CUSTOMER"})` row, and mirrors
+    // the delta into `User.walletBalance` via `$inc`. The legacy
+    // `Transaction({type:"Wallet Payment"})` row is still written for
+    // backward-compat with admin dashboards that still consume the legacy
+    // collection (the collection deprecation is a later phase).
+    //
+    // For legacy customers whose `Wallet.availableBalance` is below
+    // `User.walletBalance` (their wallet was credited only on the User side
+    // before the dual-write landed), we lazy-seed the canonical Wallet up to
+    // the User value inside the same session using an idempotent ledger key
+    // (`WLT-SEED-<userId>`). The seed does NOT touch `User.walletBalance`
+    // (that row is already correct) and is a no-op for fresh customers.
     if (walletAmount > 0) {
-      if (isWalletRedemptionReducesPayableEnabled()) {
-        await seedCanonicalCustomerWalletFromUser({ customerId, user, session });
-        await debitWallet({
-          ownerType: OWNER_TYPE.CUSTOMER,
-          ownerId: customerId,
-          amount: walletAmount,
-          bucket: "available",
-          session,
-          ledgerType: LEDGER_TRANSACTION_TYPE.WALLET_PAYMENT,
-          ledgerReference: `WLT-CHOUT-${checkoutGroupId}`,
-          ledgerDescription: "Wallet redeemed at checkout",
-          idempotencyKey: `WLT-CHOUT-${checkoutGroupId}`,
-          metadata: { checkoutGroupId },
-        });
-      } else {
-        user.walletBalance -= walletAmount;
-        await user.save({ session });
-      }
+      await seedCanonicalCustomerWalletFromUser({ customerId, user, session });
+      await debitWallet({
+        ownerType: OWNER_TYPE.CUSTOMER,
+        ownerId: customerId,
+        amount: walletAmount,
+        bucket: "available",
+        session,
+        ledgerType: LEDGER_TRANSACTION_TYPE.WALLET_PAYMENT,
+        ledgerReference: `WLT-CHOUT-${checkoutGroupId}`,
+        ledgerDescription: "Wallet redeemed at checkout",
+        idempotencyKey: `WLT-CHOUT-${checkoutGroupId}`,
+        metadata: { checkoutGroupId },
+      });
 
       // Legacy `Transaction` row: kept under both code paths so existing
       // admin dashboards and the `walletLedgerVerifierJob` baseline view
@@ -691,22 +673,15 @@ export async function placeOrderAtomic({
       cartDocument,
     });
 
-    // Audit Phase 5 (M-3): atomic, usage-limit-aware coupon increment
-    // INSIDE the transaction. When SERVER_SIDE_COUPON_ENGINE is on, the
-    // server is the authority on whether a coupon applies (we already
-    // re-validated it inside `buildCheckoutPricingSnapshot`), so the
-    // increment is now part of the same atomic write set as the order
-    // documents. The increment is conditional — if `usageLimit` is set
-    // and already reached, the document is left untouched. The order
-    // proceeds regardless (legacy semantics) so a race-condition winner
-    // doesn't lock out the loser at checkout; accounting is honest at
-    // the coupon level. When the flag is OFF, this block is a no-op
-    // and the legacy post-commit fire-and-forget block (below) runs
-    // instead.
-    if (
-      isServerSideCouponEngineEnabled() &&
-      pricingSnapshot.couponSnapshot?.couponId
-    ) {
+    // Atomic, usage-limit-aware coupon increment INSIDE the transaction.
+    // The server is the authority on whether a coupon applies (it was
+    // re-validated in `buildCheckoutPricingSnapshot`), so the increment
+    // belongs in the same write set as the order documents. The increment
+    // is conditional: if `usageLimit` is already reached the document is
+    // left untouched. The order still proceeds, so a race-condition winner
+    // doesn't lock out the loser at checkout, and accounting stays honest
+    // at the coupon level.
+    if (pricingSnapshot.couponSnapshot?.couponId) {
       await incrementCouponUsage({
         couponId: pricingSnapshot.couponSnapshot.couponId,
         session,
@@ -715,52 +690,6 @@ export async function placeOrderAtomic({
 
     await session.commitTransaction();
 
-    // Phase 2 P2-7: atomic, usage-limit-aware coupon increment.
-    //
-    // The previous unconditional `$inc: { usedCount: 1 }` could push
-    // `usedCount` past `usageLimit` under concurrent checkouts (two carts
-    // both pass the read-time check at line ~95 of couponController.js
-    // before either increments). The aggregation-pipeline update below
-    // performs a conditional increment: if `usageLimit` is set and would
-    // be exceeded, the document is left untouched. The order itself was
-    // already placed (the check at validation time is best-effort), but
-    // accounting now stays honest.
-    //
-    // Audit Phase 5 (M-3): when SERVER_SIDE_COUPON_ENGINE is on, the
-    // increment is already performed transactionally above so this
-    // post-commit fire-and-forget path becomes a no-op. When the flag
-    // is OFF (legacy behaviour), we keep the post-commit increment so
-    // the wire-level semantics of the legacy code path are preserved
-    // bit-for-bit.
-    const couponId = normalizedPayload.couponId;
-    if (couponId && !isServerSideCouponEngineEnabled()) {
-      Coupon.updateOne(
-        { _id: couponId },
-        [
-          {
-            $set: {
-              usedCount: {
-                $cond: [
-                  {
-                    $or: [
-                      { $not: ["$usageLimit"] },
-                      {
-                        $lt: [
-                          { $ifNull: ["$usedCount", 0] },
-                          "$usageLimit",
-                        ],
-                      },
-                    ],
-                  },
-                  { $add: [{ $ifNull: ["$usedCount", 0] }, 1] },
-                  { $ifNull: ["$usedCount", 0] },
-                ],
-              },
-            },
-          },
-        ],
-      ).catch(() => {});
-    }
 
     const resultPayload = buildResultPayload({
       checkoutGroup,

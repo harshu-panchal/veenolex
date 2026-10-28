@@ -110,9 +110,15 @@ export const getPickupLocation = async (token) => {
 let cachedPickupLocation = null;
 
 const isShiprocketUnconfigured = () =>
-  process.env.NODE_ENV === "development" ||
   !process.env.SHIPROCKET_EMAIL ||
-  process.env.SHIPROCKET_EMAIL === "your_shiprocket_email";
+  process.env.SHIPROCKET_EMAIL === "your_shiprocket_email" ||
+  !process.env.SHIPROCKET_PASSWORD ||
+  process.env.SHIPROCKET_PASSWORD === "your_shiprocket_password";
+
+// Fake shipments are opt-in only. They used to be produced automatically
+// whenever credentials were missing or NODE_ENV was "development", which
+// made a broken integration look like a working one.
+const allowMockShipments = () => process.env.SHIPROCKET_USE_MOCK === "true";
 
 function buildMockShipment() {
   return {
@@ -269,9 +275,16 @@ export const createShipRocketOrder = async (order, user, userAddress, seller, it
     const token = await getShiprocketToken();
 
     if (!token) {
-      if (isShiprocketUnconfigured()) {
-        console.warn("Falling back to Mock ShipRocket order details (No valid ShipRocket credentials)");
+      if (allowMockShipments()) {
+        console.warn(
+          "SHIPROCKET_USE_MOCK is on: saving a fake shipment. Nothing was sent to Shiprocket.",
+        );
         return saveDetails(buildMockShipment());
+      }
+      if (isShiprocketUnconfigured()) {
+        throw new Error(
+          "ShipRocket credentials are not configured. Set real SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD in backend/.env so orders reach app.shiprocket.in.",
+        );
       }
       throw new Error("ShipRocket authentication failed. Please check SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD.");
     }
@@ -398,8 +411,8 @@ export const createShipRocketOrder = async (order, user, userAddress, seller, it
     return saveDetails(details);
   } catch (error) {
     console.error("Error in createShipRocketOrder:", error.message);
-    if (isShiprocketUnconfigured()) {
-      console.warn("Falling back to Mock ShipRocket order details due to error in development");
+    if (allowMockShipments()) {
+      console.warn("SHIPROCKET_USE_MOCK is on: saving a fake shipment after an error.");
       return saveDetails(buildMockShipment());
     }
     await saveDetails({

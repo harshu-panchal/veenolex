@@ -1,14 +1,17 @@
 import React from "react";
-import { MapPin, AlertTriangle } from "lucide-react";
+import { MapPin, Truck } from "lucide-react";
 
 /**
- * Tells the customer we cannot deliver to the place they have chosen — or
- * that they have not chosen one yet.
+ * Sets delivery expectations for the chosen address.
+ *
+ * An address with no local seller is still orderable: the order is routed to
+ * the admin warehouse and dispatched from there, so this never refuses an
+ * order — it only explains that delivery takes longer. The one case that
+ * genuinely blocks is having no address at all.
  *
  * Browsing the catalogue never needs a location, so this is shown only where
  * the answer changes what happens next: checkout, and the address picker in
- * the profile. It is a notice, not a wall: the customer keeps their cart and
- * can pick a different address.
+ * the profile.
  */
 const ServiceabilityNotice = ({
   status,
@@ -22,13 +25,13 @@ const ServiceabilityNotice = ({
 
   const title = needsLocation
     ? "Set your delivery location"
-    : "We don't deliver here yet";
+    : "Delivery takes a little longer here";
 
   const message = needsLocation
     ? "We need a delivery address before you can place this order."
-    : `Ah! We haven't reached ${areaName ? areaName : "your neighborhood"} yet. Try a different address.`;
+    : `We don't have a local store in ${areaName || "your area"} yet, so this order ships from our warehouse. You can still place it — delivery charges are shown in the bill below.`;
 
-  const Icon = needsLocation ? MapPin : AlertTriangle;
+  const Icon = needsLocation ? MapPin : Truck;
   const tone = needsLocation
     ? { box: "bg-blue-50 border-blue-200", icon: "text-blue-600", head: "text-blue-900", body: "text-blue-800" }
     : { box: "bg-amber-50 border-amber-200", icon: "text-amber-600", head: "text-amber-900", body: "text-amber-800" };
@@ -48,7 +51,7 @@ const ServiceabilityNotice = ({
               onClick={onChangeLocation}
               className="mt-3 px-4 py-2 bg-white border border-current/20 rounded-xl text-xs font-bold uppercase tracking-wide text-slate-800 hover:bg-slate-50 transition-colors active:scale-[0.98]"
             >
-              {needsLocation ? "Set location" : "Change location"}
+              {needsLocation ? "Set location" : "Use a different address"}
             </button>
           )}
         </div>

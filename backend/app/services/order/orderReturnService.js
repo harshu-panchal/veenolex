@@ -46,6 +46,99 @@ function err(message, statusCode) {
   return error;
 }
 
+/**
+ * What a return actually owes each party, derived from the order's frozen
+ * `paymentBreakdown` rather than from raw list prices.
+ *
+ * Two things were wrong with `Σ item.price × quantity`:
+ *
+ *   - **The customer was over-refunded.** `item.price` is the pre-discount
+ *     line price, so a ₹500 cart bought for ₹400 with a coupon refunded the
+ *     full ₹500 on a complete return. Each returned line now gives back its
+ *     subtotal minus its proportional share of the order discount.
+ *   - **The seller was over-debited.** The seller only ever received
+ *     `sellerPayout` (line subtotal minus the admin commission), so
+ *     recovering the gross line price took the commission off them a second
+ *     time. Recovery is now the returned lines' `sellerPayout` share.
+ *
+ * The gap between the two (the admin commission given back, less the
+ * discount the platform recovers) is the platform's share of the return. It
+ * is reported in the ledger metadata rather than debited from the admin
+ * wallet: COD orders never credit admin earnings at delivery, so debiting
+ * here could drive the admin float negative and abort a legitimate return.
+ *
+ * Falls back to list prices when an order carries no frozen line items
+ * (pre-snapshot orders), which reproduces the old numbers for that data.
+ *
+ * @returns {{customerRefund: number, sellerRecovery: number,
+ *   adminCommissionReversal: number, discountRecovered: number,
+ *   platformShare: number}}
+ */
+export function computeReturnSettlement(order) {
+  const round = (value) => Number((Number(value) || 0).toFixed(2));
+
+  const returnItems = Array.isArray(order?.returnItems) ? order.returnItems : [];
+  const breakdown = order?.paymentBreakdown || {};
+  const frozenLines = Array.isArray(breakdown.lineItems) ? breakdown.lineItems : [];
+  const productSubtotal = Number(breakdown.productSubtotal || 0);
+  const discountTotal = Number(breakdown.discountTotal || 0);
+
+  const frozenByProduct = new Map(
+    frozenLines.map((line) => [String(line?.productId || ""), line]),
+  );
+
+  let returnedSubtotal = 0;
+  let sellerRecovery = 0;
+  let adminCommissionReversal = 0;
+
+  for (const returnItem of returnItems) {
+    const returnedQty = Math.max(Number(returnItem?.quantity || 0), 0);
+    if (returnedQty <= 0) continue;
+
+    const frozen = frozenByProduct.get(String(returnItem?.product || ""));
+    const frozenQty = Math.max(Number(frozen?.quantity || 0), 0);
+    const unitPrice = Number(frozen?.unitPrice || returnItem?.price || 0);
+    const lineSubtotal = round(unitPrice * returnedQty);
+    returnedSubtotal = round(returnedSubtotal + lineSubtotal);
+
+    if (frozen && frozenQty > 0) {
+      const unitSellerPayout = Number(frozen.sellerPayout || 0) / frozenQty;
+      const unitCommission = Number(frozen.adminProductCommission || 0) / frozenQty;
+      sellerRecovery = round(sellerRecovery + unitSellerPayout * returnedQty);
+      adminCommissionReversal = round(
+        adminCommissionReversal + unitCommission * returnedQty,
+      );
+    } else {
+      // No frozen line to apportion: the seller carries the whole line, which
+      // is what the pre-snapshot behaviour did.
+      sellerRecovery = round(sellerRecovery + lineSubtotal);
+    }
+  }
+
+  const discountRecovered =
+    productSubtotal > 0 && discountTotal > 0
+      ? round(discountTotal * Math.min(returnedSubtotal / productSubtotal, 1))
+      : 0;
+
+  // Never refund more than the customer actually parted with: the gateway /
+  // cash amount plus whatever came out of their wallet.
+  const collected = round(
+    Number(breakdown.grossTotal || 0) ||
+      Number(breakdown.grandTotal || order?.pricing?.total || 0) +
+        Number(breakdown.walletAmount || order?.pricing?.walletAmount || 0),
+  );
+  let customerRefund = round(Math.max(returnedSubtotal - discountRecovered, 0));
+  if (collected > 0) customerRefund = Math.min(customerRefund, collected);
+
+  return {
+    customerRefund,
+    sellerRecovery: round(sellerRecovery),
+    adminCommissionReversal,
+    discountRecovered,
+    platformShare: round(customerRefund - sellerRecovery),
+  };
+}
+
 export class OrderReturnService {
   /**
    * Creates a new return request on a delivered order.
@@ -281,10 +374,7 @@ export class OrderReturnService {
       throw err("No return items found for this order.", 400);
     }
 
-    const refundAmount = order.returnItems.reduce(
-      (sum, item) => sum + (item.price || 0) * (item.quantity || 0),
-      0,
-    );
+    const { customerRefund: refundAmount } = computeReturnSettlement(order);
 
     const settings = await Setting.findOne({});
     const returnCommission = settings?.returnDeliveryCommission ?? 0;
@@ -463,14 +553,11 @@ export class OrderReturnService {
             return;
           }
 
-          const refundAmount =
-            order.returnRefundAmount ||
-            (Array.isArray(order.returnItems)
-              ? order.returnItems.reduce(
-                  (sum, item) => sum + (item.price || 0) * (item.quantity || 0),
-                  0,
-                )
-              : 0);
+          // Recomputed here rather than trusting `returnRefundAmount`: the
+          // stored value may predate this math, and the seller recovery is
+          // derived from the same pass.
+          const settlement = computeReturnSettlement(order);
+          const refundAmount = settlement.customerRefund;
           const commission = order.returnDeliveryCommission || 0;
           const walletRefundTotal = refundAmount;
 
@@ -554,7 +641,10 @@ export class OrderReturnService {
                 throw error;
               }
             } else {
-              const adjustment = Math.max(0, refundAmount + commission);
+              // Recover what the seller was actually paid for the returned
+              // lines, not the gross line price — the admin commission was
+              // never theirs to give back.
+              const adjustment = Math.max(0, settlement.sellerRecovery + commission);
               if (adjustment > 0) {
                 try {
                   await walletService.debitWallet({
@@ -566,11 +656,18 @@ export class OrderReturnService {
                     ledgerType: LEDGER_TRANSACTION_TYPE.REFUND,
                     ledgerReference: `REF-SELL-${order.orderId}`,
                     ledgerDescription:
-                      "Seller wallet debited to recover refund + return commission",
+                      "Seller wallet debited to recover payout + return commission",
                     orderId: order._id,
                     idempotencyKey: `RET-SELL-DEBIT-${order._id}`,
                     correlationId,
-                    metadata: { refundAmount, commission },
+                    metadata: {
+                      customerRefund: refundAmount,
+                      sellerRecovery: settlement.sellerRecovery,
+                      adminCommissionReversal: settlement.adminCommissionReversal,
+                      discountRecovered: settlement.discountRecovered,
+                      platformShare: settlement.platformShare,
+                      commission,
+                    },
                   });
                 } catch (error) {
                   // Insufficient balance is a legitimate business
@@ -586,7 +683,7 @@ export class OrderReturnService {
               }
             }
 
-            const adjustment = Math.max(0, refundAmount + commission);
+            const adjustment = Math.max(0, settlement.sellerRecovery + commission);
             await Transaction.create(
               [
                 {
@@ -662,6 +759,10 @@ export class OrderReturnService {
           }
 
           order.returnStatus = "refund_completed";
+          // Record what was actually refunded, which may differ from the
+          // figure stored at approval time if the breakdown has since been
+          // re-frozen.
+          order.returnRefundAmount = refundAmount;
           if (order.payment) {
             order.payment.status = "refunded";
           }

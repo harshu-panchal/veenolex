@@ -4,8 +4,6 @@ import { distanceMeters } from "../utils/geoUtils.js";
 import {
   COD_ADVANCE_SCOPE,
   HANDLING_FEE_STRATEGY,
-  isWalletRedemptionReducesPayableEnabled,
-  isServerSideCouponEngineEnabled,
 } from "../constants/finance.js";
 import {
   calculateHandlingFee,
@@ -16,6 +14,7 @@ import { computeOrderDiscount } from "./finance/couponService.js";
 import { getOrCreateFinanceSettings } from "./finance/financeSettingsService.js";
 import {
   ADMIN_FULFILLER,
+  ROUTED_REASON,
   getFulfillmentWarehouse,
 } from "./fulfillmentRoutingService.js";
 
@@ -85,16 +84,98 @@ async function computeDistanceKmForSeller({ sellerId, addressLocation, items = [
   
   const radius = Number(seller.serviceRadius || 5) + 5; // Configured radius + 5km buffer
   if (distanceKm > radius) {
-    const hasOutZoneEnabled = items.length > 0 && items.every(item => item.zoneOutDeliveryEnabled);
-    if (hasOutZoneEnabled) {
-      return { distanceKm, isOutOfZone: true };
-    }
-    const err = new Error(`${seller.shopName || "Store"} does not deliver to your current location (Distance: ${distanceKm}km, Service Radius: ${radius - 5}km + 5km buffer)`);
-    err.statusCode = 400;
-    throw err;
+    // A seller who cannot reach the address never fails the order. Items are
+    // re-routed to the admin warehouse upstream
+    // (see reassignUnreachableSellerItemsToAdmin), and admin chooses how to
+    // dispatch. This branch is the safety net for any path that still prices
+    // a far seller directly: treat it as out of zone, never throw.
+    return { distanceKm, isOutOfZone: true };
   }
 
   return { distanceKm, isOutOfZone: false };
+}
+
+/**
+ * Can this seller deliver to the address at all?
+ *
+ * Mirrors the radius rule in computeDistanceKmForSeller without throwing, so
+ * callers can decide to re-route instead of failing the checkout.
+ */
+async function sellerCanReachAddress(sellerId, addressLocation, session = null) {
+  const normalizedLocation = normalizeLocation(addressLocation);
+  if (!normalizedLocation) return true;
+  if (sellerId === ADMIN_FULFILLER) return true;
+
+  const query = Seller.findById(sellerId).select("location serviceRadius").lean();
+  if (session) query.session(session);
+  const seller = await query;
+  if (!seller) return true;
+
+  const coords = seller?.location?.coordinates;
+  if (!Array.isArray(coords) || coords.length < 2) return true;
+
+  const [sellerLng, sellerLat] = coords;
+  const distanceKm =
+    distanceMeters(
+      normalizedLocation.lat,
+      normalizedLocation.lng,
+      Number(sellerLat),
+      Number(sellerLng),
+    ) / 1000;
+
+  return distanceKm <= Number(seller.serviceRadius || 5) + 5;
+}
+
+/**
+ * Move every line whose seller cannot reach the delivery address onto the
+ * admin warehouse.
+ *
+ * This is what lets a customer anywhere in India order: if a local seller
+ * covers the address the order goes to that seller as usual, and if none can,
+ * the order becomes an admin-fulfilled order instead of being refused. Admin
+ * then picks the dispatch method from the existing options.
+ *
+ * Mutates nothing: returns a new array.
+ */
+export async function reassignUnreachableSellerItemsToAdmin(
+  hydratedItems = [],
+  addressLocation = null,
+  session = null,
+) {
+  if (!normalizeLocation(addressLocation)) return hydratedItems;
+
+  const sellerIds = [
+    ...new Set(
+      hydratedItems
+        .map((item) => String(item?.sellerId || ""))
+        .filter((id) => id && id !== ADMIN_FULFILLER),
+    ),
+  ];
+  if (!sellerIds.length) return hydratedItems;
+
+  const reachability = await Promise.all(
+    sellerIds.map(async (sellerId) => [
+      sellerId,
+      await sellerCanReachAddress(sellerId, addressLocation, session),
+    ]),
+  );
+  const unreachable = new Set(
+    reachability.filter(([, canReach]) => !canReach).map(([sellerId]) => sellerId),
+  );
+  if (!unreachable.size) return hydratedItems;
+
+  return hydratedItems.map((item) => {
+    const sellerId = String(item?.sellerId || "");
+    if (!unreachable.has(sellerId)) return item;
+    return {
+      ...item,
+      sellerId: ADMIN_FULFILLER,
+      fulfilledBy: ADMIN_FULFILLER,
+      routedReason: ROUTED_REASON.NO_LOCAL_SELLER,
+      // Keep the original so admin can see who would normally have shipped it.
+      originalSellerId: sellerId,
+    };
+  });
 }
 
 function sumField(rows, field) {
@@ -105,6 +186,32 @@ function sumField(rows, field) {
 
 function round2(value) {
   return Number((Number(value || 0)).toFixed(2));
+}
+
+/**
+ * Split `total` across `weights` so the parts always sum back to `total`.
+ *
+ * Rounding each share independently loses or gains a paise per recipient,
+ * which is why the last one takes the remainder — the same rule the tip,
+ * wallet and COD-advance allocators use.
+ */
+function allocateProportionally(total, weights = []) {
+  const normalizedTotal = round2(total);
+  if (weights.length === 0 || normalizedTotal <= 0) return weights.map(() => 0);
+
+  const weightSum = weights.reduce((sum, weight) => sum + Math.max(Number(weight) || 0, 0), 0);
+  let allocatedSoFar = 0;
+
+  return weights.map((weight, index) => {
+    if (index === weights.length - 1) {
+      return round2(normalizedTotal - allocatedSoFar);
+    }
+    const share = weightSum > 0
+      ? round2((Math.max(Number(weight) || 0, 0) / weightSum) * normalizedTotal)
+      : round2(normalizedTotal / weights.length);
+    allocatedSoFar = round2(allocatedSoFar + share);
+    return share;
+  });
 }
 
 function buildAggregateBreakdown(sellerBreakdowns = []) {
@@ -274,33 +381,104 @@ function applyGlobalHandlingFeeToSellerBreakdowns(
       ? globalHandling.handlingCategoryUsed || {}
       : {};
 
-    const productSubtotal = Number(breakdown.productSubtotal || 0);
-    const deliveryFeeCharged = Number(breakdown.deliveryFeeCharged || 0);
-    const discountTotal = Number(breakdown.discountTotal || 0);
-    const taxTotal = Number(breakdown.taxTotal || 0);
-    const riderPayoutTotal = Number(breakdown.riderPayoutTotal || 0);
-    const adminProductCommissionTotal = Number(breakdown.adminProductCommissionTotal || 0);
-
-    // Audit Phase 4 (C-1): handling-fee re-compute resets grandTotal to the
-    // pre-tip, pre-wallet value. Wallet allocation is applied later (after
-    // `allocateCheckoutTipToSellerBreakdowns`) by
-    // `applyWalletAllocationToSellerBreakdowns` so it can clamp against the
+    // The handling-fee re-compute resets grandTotal to the pre-tip,
+    // pre-wallet value. Tip is added by
+    // `allocateCheckoutTipToSellerBreakdowns` and wallet last of all by
+    // `applyWalletAllocationToSellerBreakdowns`, so it can clamp against the
     // full payable (gross + tip), matching the frontend's clamp.
-    const grossTotal = round2(
-      productSubtotal + deliveryFeeCharged + handlingFeeCharged - discountTotal + taxTotal,
-    );
-
-    breakdown.grossTotal = grossTotal;
-    breakdown.grandTotal = grossTotal;
-    breakdown.payableAmount = grossTotal;
-    breakdown.walletAmount = 0;
-    breakdown.platformLogisticsMargin = round2(
-      deliveryFeeCharged + handlingFeeCharged - riderPayoutTotal,
-    );
-    breakdown.platformTotalEarning = round2(
-      adminProductCommissionTotal + breakdown.platformLogisticsMargin,
-    );
+    recomputeBreakdownTotals(breakdown);
   }
+}
+
+/**
+ * Price a courier-shipped (out-of-zone / warehouse) order line-up.
+ *
+ * These orders leave the rider network entirely — admin ships them through
+ * Shiprocket — so two things have to change versus a local delivery:
+ *
+ *   1. The customer-facing fee is the per-unit `zoneOutPrice` of each line
+ *      times its quantity, floored at the admin-configured
+ *      `warehouseShippingBaseFee`. Previously it was the bare sum of
+ *      `zoneOutPrice` (quantity ignored) and `zoneOutPrice` defaults to
+ *      null, so shipping anywhere in India was free.
+ *   2. Every rider payout component is zeroed. The distance-based figures
+ *      were computed from the real (possibly 1000 km) distance; no rider is
+ *      ever assigned, but on COD that phantom payout was subtracted from the
+ *      cash the platform expects to receive.
+ *
+ * The tip is left untouched: `allocateCheckoutTipToSellerBreakdowns` runs
+ * later and adds it back onto `riderPayoutTotal`. A courier order has no
+ * rider to tip, and the checkout only offers a tip for local delivery.
+ */
+function applyWarehouseShippingToBreakdown(breakdown, items = [], financeSettings = {}) {
+  if (!breakdown) return;
+
+  const perUnitTotal = items.reduce(
+    (sum, item) =>
+      sum + Number(item?.zoneOutPrice || 0) * Math.max(Number(item?.quantity || 0), 0),
+    0,
+  );
+  const baseFee = Number(financeSettings?.warehouseShippingBaseFee || 0);
+  const shippingFee = round2(Math.max(perUnitTotal, baseFee));
+
+  breakdown.deliveryFeeCharged = shippingFee;
+  breakdown.riderPayoutBase = 0;
+  breakdown.riderPayoutDistance = 0;
+  breakdown.riderPayoutBonus = 0;
+  breakdown.riderTipAmount = 0;
+  breakdown.riderPayoutTotal = 0;
+
+  recomputeBreakdownTotals(breakdown);
+
+  breakdown.snapshots = breakdown.snapshots && typeof breakdown.snapshots === "object"
+    ? breakdown.snapshots
+    : {};
+  breakdown.snapshots.warehouseShipping = {
+    zoneOutPriceTotal: round2(perUnitTotal),
+    baseFeeApplied: perUnitTotal < baseFee,
+    shippingFee,
+  };
+}
+
+/**
+ * Recompute the derived totals of a breakdown after a fee component changed.
+ *
+ * `grossTotal` is rebuilt pre-tip and pre-wallet: tip is added afterwards by
+ * `allocateCheckoutTipToSellerBreakdowns` and wallet last of all by
+ * `applyWalletAllocationToSellerBreakdowns`, so neither may be baked in here.
+ * `platformTotalEarning` subtracts the discount because the seller keeps
+ * their full payout — the platform funds every discounted rupee.
+ */
+function recomputeBreakdownTotals(breakdown) {
+  const productSubtotal = Number(breakdown.productSubtotal || 0);
+  const deliveryFeeCharged = Number(breakdown.deliveryFeeCharged || 0);
+  const handlingFeeCharged = Number(breakdown.handlingFeeCharged || 0);
+  const discountTotal = Number(breakdown.discountTotal || 0);
+  const taxTotal = Number(breakdown.taxTotal || 0);
+  const adminProductCommissionTotal = Number(breakdown.adminProductCommissionTotal || 0);
+  const riderPayoutExcludingTip = round2(
+    Number(breakdown.riderPayoutBase || 0) +
+      Number(breakdown.riderPayoutDistance || 0) +
+      Number(breakdown.riderPayoutBonus || 0),
+  );
+
+  const chargeableBeforeDiscount = round2(
+    productSubtotal + deliveryFeeCharged + handlingFeeCharged + taxTotal,
+  );
+  const appliedDiscount = Math.max(0, Math.min(discountTotal, chargeableBeforeDiscount));
+  const grossTotal = round2(chargeableBeforeDiscount - appliedDiscount);
+
+  breakdown.discountTotal = appliedDiscount;
+  breakdown.grossTotal = grossTotal;
+  breakdown.grandTotal = grossTotal;
+  breakdown.payableAmount = grossTotal;
+  breakdown.walletAmount = 0;
+  breakdown.platformLogisticsMargin = round2(
+    deliveryFeeCharged + handlingFeeCharged - riderPayoutExcludingTip,
+  );
+  breakdown.platformTotalEarning = round2(
+    adminProductCommissionTotal + breakdown.platformLogisticsMargin - appliedDiscount,
+  );
 }
 
 // Audit Phase 5 (H-6): when the server-side coupon engine returns
@@ -325,19 +503,10 @@ function applyFreeDeliveryToSellerBreakdowns(sellerBreakdownEntries = []) {
       continue;
     }
     breakdown.deliveryFeeCharged = 0;
-    breakdown.grossTotal = round2(Number(breakdown.grossTotal || 0) - oldDeliveryFee);
-    breakdown.grandTotal = round2(Number(breakdown.grandTotal || 0) - oldDeliveryFee);
-    breakdown.payableAmount = breakdown.grandTotal;
-    const handlingFeeCharged = Number(breakdown.handlingFeeCharged || 0);
-    const riderPayoutTotal = Number(breakdown.riderPayoutTotal || 0);
-    const adminProductCommissionTotal = Number(breakdown.adminProductCommissionTotal || 0);
     // Platform now collects only the handling fee against the rider
     // payout — typically a loss, which is the campaign cost we want to
     // attribute to the free-delivery coupon for finance reconciliation.
-    breakdown.platformLogisticsMargin = round2(handlingFeeCharged - riderPayoutTotal);
-    breakdown.platformTotalEarning = round2(
-      adminProductCommissionTotal + breakdown.platformLogisticsMargin,
-    );
+    recomputeBreakdownTotals(breakdown);
     breakdown.snapshots = breakdown.snapshots && typeof breakdown.snapshots === "object"
       ? breakdown.snapshots
       : {};
@@ -345,19 +514,14 @@ function applyFreeDeliveryToSellerBreakdowns(sellerBreakdownEntries = []) {
   }
 }
 
-// Audit Phase 4 (C-1): allocate the checkout-group-level walletAmount
-// across sellers proportionately by their post-tip grandTotal, then
-// subtract it from each seller's grandTotal. Runs AFTER tip allocation
-// so the clamp ceiling matches the frontend's clamp.
-//
-// When the flag is off, this is a no-op — `breakdown.walletAmount` stays
-// at 0 and `grandTotal` is the legacy pre-wallet amount.
+// Allocate the checkout-group-level walletAmount across sellers
+// proportionately by their post-tip grandTotal, then subtract it from each
+// seller's grandTotal. Runs AFTER tip allocation so the clamp ceiling
+// matches the frontend's clamp.
 function applyWalletAllocationToSellerBreakdowns(
   sellerBreakdownEntries = [],
   totalWalletAmount = 0,
 ) {
-  if (!isWalletRedemptionReducesPayableEnabled()) return;
-
   const normalizedWallet = round2(totalWalletAmount);
   if (!Number.isFinite(normalizedWallet) || normalizedWallet <= 0 || sellerBreakdownEntries.length === 0) {
     return;
@@ -444,23 +608,16 @@ export async function buildCheckoutPricingSnapshot({
   orderItems = [],
   address = {},
   tipAmount = 0,
-  discountTotal = 0,
-  // Audit Phase 4 (C-1): checkout-group-level wallet redemption. Split
-  // proportionately to each seller using the subtotal ratio (same rule
-  // already used for discount distribution above). Passed through to
-  // `generateOrderPaymentBreakdown` which subtracts it from grandTotal
-  // when `WALLET_REDEMPTION_REDUCES_PAYABLE` is on. Defaults to 0 so the
-  // preview path (which doesn't know walletAmount yet) and existing
-  // callers are unaffected.
+  // Checkout-group-level wallet redemption. Split proportionately across
+  // sellers and subtracted from each `grandTotal`. Defaults to 0 for
+  // callers (such as a coupon pre-check) that don't redeem a wallet.
   walletAmount = 0,
-  // Audit Phase 5 (C-2, H-6, H-7): when `SERVER_SIDE_COUPON_ENGINE` is
-  // on and a coupon code/id is provided here, the discount is recomputed
-  // server-side from the hydrated cart (the `discountTotal` argument is
-  // IGNORED to prevent client tampering). `freeDelivery` coupons zero
-  // out each seller's `deliveryFeeCharged`. The `couponSnapshot`
-  // produced by `computeOrderDiscount` is returned alongside the
-  // aggregate breakdown so the placement service can persist it on
-  // every Order document for audit and per-user usage counting.
+  // A coupon code or id is the ONLY way to get a discount. The discount is
+  // recomputed from the hydrated cart by `computeOrderDiscount`, and a
+  // `freeDelivery` coupon zeroes each seller's `deliveryFeeCharged`. The
+  // `couponSnapshot` is returned alongside the aggregate breakdown so the
+  // placement service can persist it on every Order document for audit and
+  // per-user usage counting.
   couponCode = null,
   couponId = null,
   customerId = null,
@@ -481,17 +638,15 @@ export async function buildCheckoutPricingSnapshot({
     throw err;
   }
 
-  // Audit Phase 5 (C-2): when the flag is ON, route discount through
-  // the centralized engine. The client-supplied `discountTotal` is
-  // discarded in favour of the server-computed amount so customers
-  // cannot self-credit themselves a discount by editing the payload.
-  // When the flag is OFF, the legacy client-trust path is preserved
-  // bit-for-bit so rollback is an env flip.
-  let effectiveDiscount = round2(discountTotal);
+  // Every discount comes from the centralized coupon engine, computed from
+  // the server-hydrated cart. A client-supplied `discountTotal` is ignored
+  // entirely: trusting it let a customer set any discount they liked on a
+  // `POST /orders` and walk away with a free (or negative) order.
+  let effectiveDiscount = 0;
   let resolvedCouponSnapshot = null;
   let resolvedCoupon = null;
   let applyFreeDelivery = false;
-  if (isServerSideCouponEngineEnabled() && (couponCode || couponId)) {
+  if (couponCode || couponId) {
     const couponResult = await computeOrderDiscount({
       couponCode,
       couponId,
@@ -507,10 +662,19 @@ export async function buildCheckoutPricingSnapshot({
     }
   }
 
-  const itemsBySeller = groupHydratedItemsBySeller(hydratedItems);
+  // Any line whose seller cannot reach this address becomes an admin
+  // warehouse line, so the order is accepted and lands in the admin queue
+  // instead of being refused at checkout.
+  const routedItems = await reassignUnreachableSellerItemsToAdmin(
+    hydratedItems,
+    address?.location,
+    session,
+  );
+
+  const itemsBySeller = groupHydratedItemsBySeller(routedItems);
   const sellerIds = Array.from(itemsBySeller.keys()).sort((a, b) => a.localeCompare(b));
   const financeSettings = await getOrCreateFinanceSettings({ session });
-  const globalHandling = await computeGlobalHandlingFeeForCheckout(hydratedItems, {
+  const globalHandling = await computeGlobalHandlingFeeForCheckout(routedItems, {
     session,
     financeSettings,
   });
@@ -531,8 +695,17 @@ export async function buildCheckoutPricingSnapshot({
     applyFreeDelivery = true;
   }
 
+  // Discount shares are allocated up front so they sum back to the checkout
+  // discount exactly. `computeOrderDiscount` already caps the discount at the
+  // cart subtotal, so a seller's share can never exceed their own subtotal
+  // (and `generateOrderPaymentBreakdown` clamps it again as a backstop).
+  const discountAllocations = allocateProportionally(
+    effectiveDiscount,
+    sellerIds.map((sellerId) => sellerSubtotals.get(sellerId) || 0),
+  );
+
   const sellerBreakdownEntries = [];
-  for (const sellerId of sellerIds) {
+  for (const [sellerIndex, sellerId] of sellerIds.entries()) {
     const sellerItems = itemsBySeller.get(sellerId) || [];
     const { distanceKm, isOutOfZone } = await computeDistanceKmForSeller({
       sellerId,
@@ -540,9 +713,17 @@ export async function buildCheckoutPricingSnapshot({
       items: sellerItems,
       session,
     });
-    // Distribute discount proportionally by seller subtotal
-    const sellerRatio = totalSubtotal > 0 ? (sellerSubtotals.get(sellerId) || 0) / totalSubtotal : 1 / sellerIds.length;
-    const sellerDiscount = round2(effectiveDiscount * sellerRatio);
+    const sellerDiscount = discountAllocations[sellerIndex] || 0;
+    // Deliberate: a multi-seller checkout is charged ONE delivery fee per
+    // seller, because each seller's items are a separate pickup by a separate
+    // rider — and each of those riders is paid. The handling fee, by
+    // contrast, is cart-wide and charged exactly once
+    // (`applyGlobalHandlingFeeToSellerBreakdowns`). A free-delivery coupon or
+    // the free-delivery threshold waives every one of the per-seller fees.
+    //
+    // Tax is derived server-side and is 0 today: catalogue prices are
+    // GST-inclusive, so there is no tax line to add on top. Any
+    // `taxTotal` in the request is stripped by the validation schema.
     // Per-seller wallet allocation is applied LAST (after tip) by
     // `applyWalletAllocationToSellerBreakdowns` so it can clamp against
     // the post-tip grandTotal — matching the customer-facing clamp on the
@@ -556,20 +737,7 @@ export async function buildCheckoutPricingSnapshot({
     });
 
     if (isOutOfZone) {
-      const zoneOutPriceTotal = sellerItems.reduce((sum, item) => sum + (item.zoneOutPrice || 0), 0);
-      breakdown.deliveryFeeCharged = zoneOutPriceTotal;
-      
-      // Re-calculate grossTotal and grandTotal/payableAmount
-      const productSubtotal = Number(breakdown.productSubtotal || 0);
-      const handlingFeeCharged = Number(breakdown.handlingFeeCharged || 0);
-      const discountTotal = Number(breakdown.discountTotal || 0);
-      const taxTotal = Number(breakdown.taxTotal || 0);
-      const grossTotal = round2(
-        productSubtotal + breakdown.deliveryFeeCharged + handlingFeeCharged - discountTotal + taxTotal
-      );
-      breakdown.grossTotal = grossTotal;
-      breakdown.grandTotal = grossTotal;
-      breakdown.payableAmount = grossTotal;
+      applyWarehouseShippingToBreakdown(breakdown, sellerItems, financeSettings);
     }
 
     sellerBreakdownEntries.push({
@@ -629,11 +797,11 @@ export async function buildCheckoutPricingSnapshot({
   aggregateBreakdown.isOutOfZone = sellerBreakdownEntries.some((entry) => entry.isOutOfZone);
 
   return {
-    hydratedItems,
+    hydratedItems: routedItems,
     sellerBreakdownEntries,
     aggregateBreakdown,
     sellerCount: sellerBreakdownEntries.length,
-    itemCount: hydratedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+    itemCount: routedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
     // Audit Phase 5 (C-2 + H-6): `null` when the flag is off OR no
     // coupon was supplied. When present, callers persist this on every
     // Order document so per-user usage counts and audits replay

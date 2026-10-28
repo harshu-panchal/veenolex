@@ -45,6 +45,17 @@ export class PaymentProviderPort {
     throw new Error("providerName must be implemented");
   }
 
+  /**
+   * Whether `refund()` / `getRefundStatus()` actually reach the gateway.
+   *
+   * Declared as a capability so the registry can warn at boot instead of
+   * letting the gap surface as a failed refund in production. An adapter
+   * that implements both methods must override this to `true`.
+   */
+  get supportsRefunds() {
+    return false;
+  }
+
   async initiatePayment(_args) {
     throw new Error("initiatePayment must be implemented");
   }

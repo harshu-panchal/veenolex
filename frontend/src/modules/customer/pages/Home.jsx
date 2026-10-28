@@ -447,7 +447,7 @@ const Home = () => {
       // way and let the backend decide whether to apply zone filtering. Short
       // circuiting to an empty list here was what made the storefront show
       // "Service Unavailable" to anyone who had not granted location.
-      const [catRes, prodRes, expRes, sectionsRes, tbpRes] = await Promise.all([
+      let [catRes, prodRes, expRes, sectionsRes, tbpRes] = await Promise.all([
         customerApi.getCategories(),
         customerApi.getProducts(productParams).catch(() => ({ data: { success: true, result: { items: [] } } })),
         customerApi.getExperienceSections({ pageType: "home" }).catch(() => null),
@@ -495,6 +495,17 @@ const Home = () => {
           };
         });
       }
+      // Nothing in the customer's zone is not a reason to show them an empty
+      // store: fall back to the full catalogue and let checkout — the one
+      // place location matters — tell them if we cannot deliver there.
+      const zoneItems = prodRes?.data?.results || prodRes?.data?.result?.items || prodRes?.data?.result || [];
+      if (hasValidLocation && Array.isArray(zoneItems) && zoneItems.length === 0) {
+        const { lat, lng, ...unzoned } = productParams;
+        prodRes = await customerApi
+          .getProducts(unzoned)
+          .catch(() => prodRes);
+      }
+
       if (prodRes.data.success) {
         const rawResult = prodRes.data.result;
         const dbProds = Array.isArray(prodRes.data.results) ? prodRes.data.results : Array.isArray(rawResult?.items) ? rawResult.items : Array.isArray(rawResult) ? rawResult : [];
@@ -600,13 +611,6 @@ const Home = () => {
     });
   }, [products, activeCategory]);
 
-  // "Nothing near you" is only a meaningful statement once we know where the
-  // customer is. Without a location an empty catalogue just means an empty
-  // catalogue, so the unserviceable-area screen stays hidden.
-  const hasLocation =
-    Number.isFinite(currentLocation?.latitude) &&
-    Number.isFinite(currentLocation?.longitude);
-
   const sectionsForRenderer = headerSections.length ? headerSections : experienceSections;
   const isMobile = useMemo(() => isMobileOrWebView(), []);
   const opacity = useTransform(scrollY, (heroVisible && !isMobile) ? [0, 300] : [0, 0], [1, 0.6]);
@@ -631,11 +635,11 @@ const Home = () => {
         <MainLocationHeader categories={categories} activeCategory={activeCategory} onCategorySelect={setActiveCategory} hideSearchBar={true} isLoading={isLoading} />
       </div>
 
-      {products.length === 0 && !isLoading && hasLocation ? (
+      {products.length === 0 && !isLoading ? (
         <div className="flex flex-col items-center justify-center pt-6 pb-12">
           <div className="w-64 h-64 md:w-96 md:h-96 mb-6">{noServiceData && <Lottie animationData={noServiceData} loop={true} />}</div>
-          <h3 className="text-2xl md:text-5xl font-black text-slate-800 text-center uppercase">Service <span className="text-primary">Unavailable</span></h3>
-          <p className="text-slate-500 font-bold max-w-md text-center px-8 text-xs md:text-lg opacity-80">Ah! We haven't reached your neighborhood yet.</p>
+          <h3 className="text-2xl md:text-5xl font-black text-slate-800 text-center uppercase">Coming <span className="text-primary">Soon</span></h3>
+          <p className="text-slate-500 font-bold max-w-md text-center px-8 text-xs md:text-lg opacity-80">New products are on their way. Check back shortly.</p>
           <button onClick={() => window.location.reload()} className="mt-8 px-8 py-3 bg-primary text-white font-black rounded-[24px] uppercase text-[11px] tracking-widest transition-all active:scale-95">Check Again</button>
         </div>
       ) : (

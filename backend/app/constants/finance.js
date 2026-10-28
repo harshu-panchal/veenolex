@@ -174,37 +174,24 @@ export const FINANCE_AUDIT_ACTION = {
   COD_ADVANCE_DECIDED: "COD_ADVANCE_DECIDED",
 };
 
-// Audit Phase 4 (C-1 + H-5): when this flag is on, `grandTotal` is
-// computed as (subtotal + delivery + handling + tip + tax - discount -
-// walletAmount) and the wallet redemption is routed through
-// `walletService.debitWallet` so a `LedgerEntry` row is written inside
-// the same transaction as the order documents.
+// Audit Phase 4 (C-1 + H-5) and Phase 5 (C-2 + C-4 + H-2 + H-6 + H-7) used
+// to be gated behind the `WALLET_REDEMPTION_REDUCES_PAYABLE` and
+// `SERVER_SIDE_COUPON_ENGINE` env flags. Both flags were never set in any
+// deployed environment, so the buggy legacy branches were the ones running:
+// the customer was charged the full `grandTotal` *and* had their wallet
+// debited, and a client-supplied `discountTotal` was trusted without any
+// coupon re-validation or lower bound.
 //
-// When the flag is off, the legacy buggy behaviour is preserved bit-for-bit
-// to make rollback trivial (env flip back). Default is OFF for production
-// safety — flip to "true" only after backfilling historical over-charges
-// (see audit PHASE 5 rollout plan).
-export function isWalletRedemptionReducesPayableEnabled() {
-  return String(process.env.WALLET_REDEMPTION_REDUCES_PAYABLE || "").toLowerCase() === "true";
-}
-
-// Audit Phase 5 (C-2 + C-4 + H-2 + H-6 + H-7): when this flag is on, the
-// checkout pricing pipeline IGNORES any client-supplied `discountTotal`
-// and instead routes coupon discount and free-delivery decisions through
-// `services/finance/couponService.computeOrderDiscount` using the
-// server-hydrated cart items. The order document also persists
-// `coupon` (ObjectId ref) and `couponSnapshot` (frozen rule + applied
-// amount) so per-user usage counts can be enforced from real data
-// instead of the hard-coded `userUsageCount = 0` in couponController.
+// The flags and their legacy branches are now removed. The correct
+// behaviour is unconditional:
+//   - `grandTotal` = subtotal + delivery + handling + tax + tip − discount
+//     − walletAmount, clamped at 0.
+//   - Wallet redemption goes through `walletService.debitWallet`, so a
+//     `LedgerEntry` row is written in the same transaction as the orders.
+//   - Coupon discount and free delivery are computed by
+//     `services/finance/couponService.computeOrderDiscount` from the
+//     server-hydrated cart. Any client-supplied `discountTotal` is ignored.
 //
-// When the flag is OFF, the legacy buggy behaviour (client trust on
-// `discountTotal`, hard-coded user usage count, free-delivery silently
-// ignored at place-order) is preserved bit-for-bit so rollback is an
-// env flip. Default is OFF for production safety.
-export function isServerSideCouponEngineEnabled() {
-  return String(process.env.SERVER_SIDE_COUPON_ENGINE || "").toLowerCase() === "true";
-}
-
 export const ALL_PAYMENT_MODES = Object.values(PAYMENT_MODE);
 export const ALL_ORDER_PAYMENT_STATUSES = Object.values(ORDER_PAYMENT_STATUS);
 export const ALL_ORDER_SETTLEMENT_STATUSES = Object.values(ORDER_SETTLEMENT_STATUS);

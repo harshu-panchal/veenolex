@@ -10,7 +10,6 @@ import {
   DELIVERY_PRICING_MODE,
   HANDLING_FEE_STRATEGY,
   HANDLING_FEE_TYPE,
-  isWalletRedemptionReducesPayableEnabled,
 } from "../../constants/finance.js";
 import {
   addMoney,
@@ -42,6 +41,28 @@ function normalizeLineQuantity(quantity) {
 function normalizeLinePrice(value) {
   const amount = Number(value || 0);
   return Number.isFinite(amount) ? clampMoney(amount, 0) : 0;
+}
+
+/**
+ * The unit price a customer is charged: the lower of `salePrice` and `price`,
+ * ignoring a zero/absent `salePrice`.
+ *
+ * The storefront already displays `salePrice` only when it undercuts `price`
+ * (see `CartContext.cartTotal`). Taking `salePrice || price` here instead
+ * meant a product saved with `salePrice > price` was charged above the
+ * displayed price, so the two rules are now the same rule.
+ *
+ * `fallback` lets a variant inherit the parent product's pricing when the
+ * variant itself carries neither field.
+ */
+function resolveEffectiveUnitPrice(source, fallback = null) {
+  const listPrice = normalizeLinePrice(source?.price);
+  const salePrice = normalizeLinePrice(source?.salePrice);
+
+  if (salePrice > 0 && listPrice > 0) return Math.min(salePrice, listPrice);
+  if (salePrice > 0) return salePrice;
+  if (listPrice > 0) return listPrice;
+  return fallback ? resolveEffectiveUnitPrice(fallback) : 0;
 }
 
 function resolveCommissionConfig(category) {
@@ -403,11 +424,9 @@ export async function hydrateOrderItems(
     }
 
     const quantity = normalizeLineQuantity(item.quantity);
-    const serverUnitPrice = normalizeLinePrice(
-      resolvedVariant
-        ? resolvedVariant.salePrice || resolvedVariant.price || pricingProduct.salePrice || pricingProduct.price
-        : pricingProduct.salePrice || pricingProduct.price,
-    );
+    const serverUnitPrice = resolvedVariant
+      ? resolveEffectiveUnitPrice(resolvedVariant, pricingProduct)
+      : resolveEffectiveUnitPrice(pricingProduct);
     const inferredUnitPrice = enforceServerPricing
       ? serverUnitPrice
       : normalizeLinePrice(item.price) || serverUnitPrice;
@@ -597,23 +616,23 @@ export async function generateOrderPaymentBreakdown({
   const normalizedTip = roundCurrency(tipTotal || 0);
   const normalizedWallet = roundCurrency(walletAmount || 0);
 
-  const grossTotal = roundCurrency(
+  // The chargeable total before any discount. Clamping the discount to this
+  // ceiling is what keeps `grossTotal` from going negative: a discount can
+  // take an order to ₹0 but never below it, whatever the caller passes in.
+  const chargeableBeforeDiscount = roundCurrency(
     productSubtotal +
       delivery.deliveryFeeCharged +
-      effectiveHandlingFeeCharged -
-      normalizedDiscount +
+      effectiveHandlingFeeCharged +
       normalizedTax +
       normalizedTip,
   );
+  const appliedDiscount = clampMoney(normalizedDiscount, 0, chargeableBeforeDiscount);
+  const grossTotal = roundCurrency(chargeableBeforeDiscount - appliedDiscount);
 
-  // Audit Phase 4 (C-1): subtract wallet redemption only when the flag is on.
-  // The wallet amount is clamped to [0, grossTotal] so a malformed input
-  // cannot drive grandTotal negative. We keep `grossTotal` for the new
-  // `payableAmount` field below — clients that want the pre-wallet number
-  // can still read `grossTotal` while migrating UIs.
-  const walletAllocation = isWalletRedemptionReducesPayableEnabled()
-    ? Math.min(normalizedWallet, grossTotal)
-    : 0;
+  // Wallet redemption always reduces what the customer is asked to pay.
+  // Clamped to [0, grossTotal] so a malformed input cannot drive the total
+  // negative. `grossTotal` stays available as the pre-wallet figure.
+  const walletAllocation = clampMoney(normalizedWallet, 0, grossTotal);
   const grandTotal = roundCurrency(grossTotal - walletAllocation);
 
   const riderTipAmount = normalizedTip;
@@ -629,8 +648,12 @@ export async function generateOrderPaymentBreakdown({
       effectiveHandlingFeeCharged -
       (rider.riderPayoutBase + rider.riderPayoutDistance + rider.riderPayoutBonus),
   );
+  // The seller is paid their full `sellerPayout` regardless of any coupon, so
+  // every discounted rupee is funded by the platform. Subtracting it here is
+  // what keeps admin earnings honest — before this, a ₹250 coupon left
+  // `platformTotalEarning` untouched and the promotion cost appeared nowhere.
   const platformTotalEarning = roundCurrency(
-    adminProductCommissionTotal + platformLogisticsMargin,
+    adminProductCommissionTotal + platformLogisticsMargin - appliedDiscount,
   );
 
   const snapshots = {
@@ -661,18 +684,17 @@ export async function generateOrderPaymentBreakdown({
     deliveryFeeCharged: delivery.deliveryFeeCharged,
     handlingFeeCharged: effectiveHandlingFeeCharged,
     tipTotal: normalizedTip,
-    discountTotal: normalizedDiscount,
+    // The clamped value, not the requested one, so the breakdown always
+    // satisfies grossTotal === chargeable − discountTotal.
+    discountTotal: appliedDiscount,
     taxTotal: normalizedTax,
-    // Audit Phase 4 (C-1):
-    //   - `grossTotal`: pre-wallet customer-payable amount. New field —
-    //     legacy callers ignore it.
-    //   - `grandTotal`: post-wallet amount when the flag is on (the actual
-    //     amount PhonePe charges / rider collects); equals `grossTotal`
-    //     when the flag is off (legacy behaviour preserved).
+    //   - `grossTotal`: pre-wallet customer-payable amount.
+    //   - `grandTotal`: post-wallet amount — the actual amount the gateway
+    //     charges and the rider collects.
     //   - `walletAmount`: per-seller proportionate wallet redemption.
-    //   - `payableAmount`: alias of `grandTotal` for the post-C-1 world,
-    //     surfaced separately so the frontend can stop subtracting
-    //     `walletAmount` from `grandTotal` once the flag is on.
+    //   - `payableAmount`: alias of `grandTotal`. Clients must read this (or
+    //     `grandTotal`) and must NOT subtract `walletAmount` themselves —
+    //     it is already deducted.
     grossTotal,
     grandTotal,
     walletAmount: walletAllocation,

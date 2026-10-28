@@ -290,7 +290,9 @@ describe("finance pricing flow", () => {
 
     // Final totals
     expect(breakdown.grandTotal).toBe(260); // 200 + 50 + 20 - 15 + 5
-    expect(breakdown.platformTotalEarning).toBe(50); // 20 + 30
+    // Commission + logistics margin, less the discount: the seller keeps the
+    // full payout, so the platform funds every discounted rupee.
+    expect(breakdown.platformTotalEarning).toBe(35); // 20 + 30 - 15
     expect(breakdown.snapshots.deliverySettings.deliveryPricingMode).toBe(
       "distance_based",
     );

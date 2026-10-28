@@ -11,29 +11,29 @@ import { getApprovedOrLegacyFilter } from "../services/productModerationService.
 export const getPublicOfferSections = async (req, res) => {
   try {
     const coords = parseCustomerCoordinates(req.query || {});
-    if (!coords.valid) {
-      return handleResponse(
-        res,
-        400,
-        "lat and lng are required for customer offer visibility",
-      );
-    }
+    // Browsing without a location is allowed, same as the product catalogue:
+    // a visitor who has not granted location sees every active section
+    // unfiltered rather than none at all. Zone narrowing only kicks in once
+    // we actually know where the customer is.
+    const hasLocation = coords.valid;
 
-    // Round coordinates to 3 decimals for cache bucket
+    // Round coordinates to 3 decimals for cache bucket; no-location requests
+    // share one bucket.
     const cacheKey = buildKey(
       "offersections",
       "public",
-      `${coords.lat.toFixed(3)}:${coords.lng.toFixed(3)}`,
+      hasLocation ? `${coords.lat.toFixed(3)}:${coords.lng.toFixed(3)}` : "no-location",
     );
 
     const filteredSections = await getOrSet(
       cacheKey,
       async () => {
-        const nearbySellerIds = await getNearbySellerIdsForCustomer(
-          coords.lat,
-          coords.lng,
-        );
-        const nearbySellerSet = new Set(nearbySellerIds.map(String));
+        const nearbySellerIds = hasLocation
+          ? await getNearbySellerIdsForCustomer(coords.lat, coords.lng)
+          : null;
+        const nearbySellerSet = nearbySellerIds
+          ? new Set(nearbySellerIds.map(String))
+          : null;
 
         const sections = await OfferSection.find({ status: "active" })
           .sort({ order: 1, createdAt: 1 })
@@ -52,15 +52,26 @@ export const getPublicOfferSections = async (req, res) => {
 
         const results = [];
         for (const section of sections) {
+          // With no location, every configured seller/product for the
+          // section is shown as-is — there is no "nearby" to narrow to yet.
           const sellerIds = Array.isArray(section.sellerIds)
-            ? section.sellerIds.filter((seller) => {
-                const sid = String(seller?._id || seller || "");
-                return sid && nearbySellerSet.has(sid);
-              })
+            ? (nearbySellerSet
+                ? section.sellerIds.filter((seller) => {
+                    const sid = String(seller?._id || seller || "");
+                    return sid && nearbySellerSet.has(sid);
+                  })
+                : section.sellerIds)
             : [];
 
           if (section.isAutomatic) {
-            // For automatic sections, fetch top-selling products dynamically
+            // For automatic sections, fetch top-selling products dynamically.
+            // Without a location there is no seller radius to draw from, so
+            // the section is skipped rather than querying every seller in
+            // the system.
+            if (!hasLocation) {
+              results.push({ ...section, sellerIds, productIds: [] });
+              continue;
+            }
             const sellerFilter = sellerIds.length
               ? sellerIds.map((s) => s._id || s)
               : nearbySellerIds;
@@ -81,10 +92,12 @@ export const getPublicOfferSections = async (req, res) => {
             });
           } else {
             const productIds = Array.isArray(section.productIds)
-              ? section.productIds.filter((product) => {
-                  const sid = String(product?.sellerId?._id || product?.sellerId || "");
-                  return sid && nearbySellerSet.has(sid);
-                })
+              ? (nearbySellerSet
+                  ? section.productIds.filter((product) => {
+                      const sid = String(product?.sellerId?._id || product?.sellerId || "");
+                      return sid && nearbySellerSet.has(sid);
+                    })
+                  : section.productIds)
               : [];
 
             results.push({
