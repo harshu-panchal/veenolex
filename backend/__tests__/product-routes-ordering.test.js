@@ -9,10 +9,14 @@ const mockGetProductById = jest.fn((req, res) =>
 const mockGetSellerProducts = jest.fn((req, res) =>
   res.status(200).json({ route: "seller-me" }),
 );
+const mockGetServiceability = jest.fn((req, res) =>
+  res.status(200).json({ route: "serviceability" }),
+);
 
 jest.unstable_mockModule("../app/controller/productController.js", () => ({
   getProducts: mockGetProducts,
   getSellerProducts: mockGetSellerProducts,
+  getServiceability: mockGetServiceability,
   createProduct: jest.fn((req, res) => res.status(201).json({})),
   updateProduct: jest.fn((req, res) => res.status(200).json({})),
   deleteProduct: jest.fn((req, res) => res.status(200).json({})),
@@ -55,6 +59,19 @@ describe("product routes ordering", () => {
     expect(response.statusCode).toBe(200);
     expect(response.body.route).toBe("seller-me");
     expect(mockGetSellerProducts).toHaveBeenCalledTimes(1);
+    expect(mockGetProductById).not.toHaveBeenCalled();
+  });
+
+  test("GET /serviceability is not shadowed by dynamic /:id route", async () => {
+    const app = express();
+    app.use("/products", productRoutes);
+
+    const response = await request(app).get(
+      "/products/serviceability?lat=22.7&lng=75.8",
+    );
+    expect(response.statusCode).toBe(200);
+    expect(response.body.route).toBe("serviceability");
+    expect(mockGetServiceability).toHaveBeenCalledTimes(1);
     expect(mockGetProductById).not.toHaveBeenCalled();
   });
 

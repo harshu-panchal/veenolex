@@ -20,3 +20,4 @@ export {
   useOrderIdentifiers,
   resolveOrderIdentifiers,
 } from './useOrderIdentifiers';
+export { default as useServiceability } from './useServiceability';

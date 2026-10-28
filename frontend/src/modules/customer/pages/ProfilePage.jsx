@@ -10,6 +10,8 @@ import { useSettings } from '@core/context/SettingsContext';
 import { customerApi } from '../services/customerApi';
 import { useLocation } from '../context/LocationContext';
 import { toast } from 'sonner';
+import useServiceability from '../hooks/useServiceability';
+import ServiceabilityNotice from '../components/shared/ServiceabilityNotice';
 import {
     describePushSupport,
     ensureFcmTokenRegistered,
@@ -62,6 +64,11 @@ const ProfilePage = () => {
     // Location States
     const [showLocationModal, setShowLocationModal] = React.useState(false);
     const [locationLoading, setLocationLoading] = React.useState(false);
+
+    // Checked here, not on every page, because this is where the customer
+    // actually changes their delivery address. Browsing elsewhere in the app
+    // stays open with no location at all.
+    const serviceability = useServiceability(hasRealLocation ? currentLocation : null);
 
     // Opened straight from the "Enter manually" prompt elsewhere in the app.
     React.useEffect(() => {
@@ -208,6 +215,21 @@ const ProfilePage = () => {
         } catch {
             // The location is already live in the app; saving it is best-effort.
         }
+        try {
+            const check = await customerApi.checkServiceability({
+                lat: live.latitude,
+                lng: live.longitude,
+            });
+            if (check?.data?.result?.serviceable === false) {
+                toast.warning(
+                    "Location saved, but we don't deliver there yet. Browsing stays open — ordering will be blocked at checkout.",
+                );
+                return;
+            }
+        } catch {
+            // Serviceability is a courtesy heads-up here; checkout still
+            // enforces it server-side if this check fails.
+        }
         toast.success("Location enabled");
     };
 
@@ -254,7 +276,21 @@ const ProfilePage = () => {
             });
             window.dispatchEvent(event);
             console.log("📍 Location changed event dispatched:", locWithTime);
-            
+
+            try {
+                const check = await customerApi.checkServiceability({
+                    lat: locWithTime.latitude,
+                    lng: locWithTime.longitude,
+                });
+                if (check?.data?.result?.serviceable === false) {
+                    toast.warning(
+                        "This address is saved, but we don't deliver there yet. Browsing stays open — ordering will be blocked at checkout.",
+                    );
+                }
+            } catch {
+                // Courtesy heads-up only; checkout still enforces this server-side.
+            }
+
         } catch (error) {
             toast.error("Failed to update location. Try again.");
         } finally {
@@ -377,6 +413,15 @@ const ProfilePage = () => {
                             <MapPin size={12} /> Change Location
                         </button>
                     </div>
+                )}
+
+                {hasRealLocation && serviceability.status === "unserviceable" && (
+                    <ServiceabilityNotice
+                        status="unserviceable"
+                        areaName={currentLocation?.city || currentLocation?.name || ""}
+                        onChangeLocation={() => setShowLocationModal(true)}
+                        className="mt-3"
+                    />
                 )}
 
                 {/* Menu Sections */}

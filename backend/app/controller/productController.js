@@ -44,6 +44,7 @@ import { buildKey, getOrSet, getTTL, invalidate } from "../services/cacheService
 import { uploadToCloudinary } from "../services/mediaService.js";
 import { broadcastProductStock } from "../services/stockService.js";
 import logger from "../services/logger.js";
+import { distanceMeters } from "../utils/geoUtils.js";
 import { resolveCategoryName, resolveSellerName } from "../services/entityNameCache.js";
 import {
   PRODUCT_APPROVAL_STATUS,
@@ -303,6 +304,51 @@ function buildAdminRejectedModerationUpdate(adminId, note = "") {
 /* ===============================
    GET ALL PRODUCTS (Public/Admin)
 ================================ */
+/**
+ * Is a given point somewhere we can actually deliver to?
+ *
+ * Mirrors the real fulfilment chain: a local seller takes the order first,
+ * and the admin warehouse covers anything inside its own service radius.
+ * The storefront stays browsable everywhere, so this is what checkout and the
+ * address picker use to tell the customer before they commit to an order.
+ */
+export const getServiceability = async (req, res) => {
+  try {
+    const coords = parseCustomerCoordinates(req.query || {});
+    if (!coords.valid) {
+      return handleResponse(res, 400, "lat and lng are required");
+    }
+
+    const [nearbySellerIds, warehouse] = await Promise.all([
+      getNearbySellerIdsForCustomer(coords.lat, coords.lng),
+      getFulfillmentWarehouse(),
+    ]);
+
+    const sellerCount = Array.isArray(nearbySellerIds) ? nearbySellerIds.length : 0;
+
+    let warehouseServiceable = false;
+    if (warehouse?.hasLocation) {
+      const radiusM = (Number(warehouse.serviceRadiusKm) || 0) * 1000;
+      const distance = distanceMeters(
+        coords.lat,
+        coords.lng,
+        warehouse.lat,
+        warehouse.lng,
+      );
+      warehouseServiceable = radiusM > 0 && distance <= radiusM;
+    }
+
+    return handleResponse(res, 200, "Serviceability checked", {
+      serviceable: sellerCount > 0 || warehouseServiceable,
+      nearbySellerCount: sellerCount,
+      warehouseServiceable,
+    });
+  } catch (error) {
+    logger.error("Error checking serviceability", { error: error.message });
+    return handleResponse(res, 500, error.message);
+  }
+};
+
 export const getProducts = async (req, res) => {
   try {
     const {
@@ -351,16 +397,14 @@ export const getProducts = async (req, res) => {
 
     const requestedSellerIds = parseSellerIdFilters({ sellerId, sellerIds });
     const coords = parseCustomerCoordinates({ lat, lng });
-    const shouldApplyLocationFilter = enforceRadius || coords.valid;
+    // Browsing without a location is allowed: a visitor who has not granted
+    // location (or has not set an address yet) sees the full catalogue rather
+    // than an empty store. Zone filtering is applied only once we actually
+    // know where they are; serviceability is confirmed at checkout, where it
+    // can be acted on. Customer-facing status/approval filtering below is
+    // unaffected and still applies.
+    const shouldApplyLocationFilter = coords.valid;
     let nearbySet = new Set();
-
-    if (enforceRadius && !coords.valid) {
-      return handleResponse(
-        res,
-        400,
-        "lat and lng are required for customer product visibility",
-      );
-    }
     
     if (shouldApplyLocationFilter) {
       const nearbySellerIds = await getNearbySellerIdsForCustomer(
@@ -549,6 +593,9 @@ export const getProducts = async (req, res) => {
         limit,
         total,
         totalPages: Math.ceil(total / limit) || 1,
+        // false when no coordinates were supplied, so the storefront can tell
+        // "nothing near you" apart from "you haven't told us where you are".
+        locationFiltered: shouldApplyLocationFilter,
       };
     };
 

@@ -443,11 +443,15 @@ const Home = () => {
         productParams.lat = currentLocation.latitude;
         productParams.lng = currentLocation.longitude;
       }
+      // Browsing without a location is supported: fetch the catalogue either
+      // way and let the backend decide whether to apply zone filtering. Short
+      // circuiting to an empty list here was what made the storefront show
+      // "Service Unavailable" to anyone who had not granted location.
       const [catRes, prodRes, expRes, sectionsRes, tbpRes] = await Promise.all([
         customerApi.getCategories(),
-        hasValidLocation ? customerApi.getProducts(productParams) : Promise.resolve({ data: { success: true, result: { items: [] } } }),
+        customerApi.getProducts(productParams).catch(() => ({ data: { success: true, result: { items: [] } } })),
         customerApi.getExperienceSections({ pageType: "home" }).catch(() => null),
-        hasValidLocation ? customerApi.getOfferSections({ lat: currentLocation.latitude, lng: currentLocation.longitude }).catch(() => ({ data: {} })) : Promise.resolve({ data: { results: [] } }),
+        customerApi.getOfferSections(hasValidLocation ? { lat: currentLocation.latitude, lng: currentLocation.longitude } : {}).catch(() => ({ data: {} })),
         customerApi.getTodayBestPrices().catch(() => null),
       ]);
       const nextHomeData = {
@@ -596,6 +600,13 @@ const Home = () => {
     });
   }, [products, activeCategory]);
 
+  // "Nothing near you" is only a meaningful statement once we know where the
+  // customer is. Without a location an empty catalogue just means an empty
+  // catalogue, so the unserviceable-area screen stays hidden.
+  const hasLocation =
+    Number.isFinite(currentLocation?.latitude) &&
+    Number.isFinite(currentLocation?.longitude);
+
   const sectionsForRenderer = headerSections.length ? headerSections : experienceSections;
   const isMobile = useMemo(() => isMobileOrWebView(), []);
   const opacity = useTransform(scrollY, (heroVisible && !isMobile) ? [0, 300] : [0, 0], [1, 0.6]);
@@ -620,7 +631,7 @@ const Home = () => {
         <MainLocationHeader categories={categories} activeCategory={activeCategory} onCategorySelect={setActiveCategory} hideSearchBar={true} isLoading={isLoading} />
       </div>
 
-      {products.length === 0 && !isLoading ? (
+      {products.length === 0 && !isLoading && hasLocation ? (
         <div className="flex flex-col items-center justify-center pt-6 pb-12">
           <div className="w-64 h-64 md:w-96 md:h-96 mb-6">{noServiceData && <Lottie animationData={noServiceData} loop={true} />}</div>
           <h3 className="text-2xl md:text-5xl font-black text-slate-800 text-center uppercase">Service <span className="text-primary">Unavailable</span></h3>

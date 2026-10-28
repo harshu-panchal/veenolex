@@ -8,6 +8,8 @@ import { useWishlist } from "../context/WishlistContext";
 import { customerApi } from "../services/customerApi";
 import { invalidateCache } from "@core/api/dedupe";
 import { useLocation as useAppLocation } from "../context/LocationContext";
+import useServiceability from "../hooks/useServiceability";
+import ServiceabilityNotice from "../components/shared/ServiceabilityNotice";
 import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
 import { loadRazorpayScript } from "../../../shared/utils/razorpay";
 import {
@@ -155,6 +157,12 @@ const CheckoutPage = () => {
   // Only a location the customer picked or we detected may become the
   // delivery address; the app's placeholder never does.
   const orderLocation = hasRealLocation ? currentLocation : null;
+  // Checkout is where a location stops being optional: this is the point the
+  // customer commits to an address, so it is where we tell them if we cannot
+  // reach it. Browsing the catalogue stays open to everyone.
+  const serviceability = useServiceability(orderLocation);
+  const blockedByServiceability =
+    serviceability.status === "unknown" || serviceability.status === "unserviceable";
   const navigate = useNavigate();
 
   // State management
@@ -1058,6 +1066,19 @@ const CheckoutPage = () => {
   };
 
   const handlePlaceOrder = async () => {
+    // Last line of defence: the CTAs are disabled, but a slide gesture or a
+    // stale render must not push an order into an area we cannot deliver to.
+    if (blockedByServiceability) {
+      showToast(
+        serviceability.status === "unknown"
+          ? "Please set a delivery location first."
+          : "We don't deliver to this address yet. Please choose another.",
+        "error",
+      );
+      setIsAddressModalOpen(true);
+      return;
+    }
+
     setIsPlacingOrder(true);
     try {
       const taxAmount = pricingPreview?.taxTotal || 0;
@@ -1500,6 +1521,13 @@ const CheckoutPage = () => {
               </div>
             </div>
 
+            <ServiceabilityNotice
+              status={serviceability.status}
+              areaName={orderLocation?.city || orderLocation?.name || ""}
+              onChangeLocation={handleOpenAddressModal}
+              className="mb-4"
+            />
+
             {/* Address Section */}
             <CheckoutAddressSection
               currentAddress={currentAddress}
@@ -1550,7 +1578,7 @@ const CheckoutPage = () => {
               <button
                 type="button"
                 onClick={goToPayment}
-                disabled={cart.length === 0 || hasOutOfStockItems}
+                disabled={cart.length === 0 || hasOutOfStockItems || blockedByServiceability}
                 className="w-full flex items-center justify-between gap-3 bg-primary disabled:bg-slate-300 text-white rounded-2xl px-6 py-4 font-black transition-all active:scale-[0.99] shadow-lg shadow-primary/20"
               >
                 <span className="flex flex-col items-start leading-tight">
@@ -1619,7 +1647,7 @@ const CheckoutPage = () => {
                 onSuccess={handlePrePlaceOrderCheck}
                 amount={slideAmount}
                 isLoading={isPlacingOrder}
-                disabled={isPlacingOrder || hasOutOfStockItems}
+                disabled={isPlacingOrder || hasOutOfStockItems || blockedByServiceability}
                 text={slideText}
               />
               <p className="text-center text-[10px] text-slate-400 font-bold mt-4 uppercase tracking-[0.1em]">
@@ -1638,7 +1666,7 @@ const CheckoutPage = () => {
             <button
               type="button"
               onClick={goToPayment}
-              disabled={cart.length === 0 || hasOutOfStockItems}
+              disabled={cart.length === 0 || hasOutOfStockItems || blockedByServiceability}
               className="w-full flex items-center justify-between gap-3 bg-primary disabled:bg-slate-300 text-white rounded-2xl px-5 py-4 font-black transition-all active:scale-[0.99] shadow-lg shadow-primary/20"
             >
               <span className="flex flex-col items-start leading-tight">
@@ -1657,7 +1685,7 @@ const CheckoutPage = () => {
               onSuccess={handlePrePlaceOrderCheck}
               amount={slideAmount}
               isLoading={isPlacingOrder}
-              disabled={isPlacingOrder || hasOutOfStockItems}
+              disabled={isPlacingOrder || hasOutOfStockItems || blockedByServiceability}
               text={slideText}
             />
           )}

@@ -18,6 +18,10 @@ export const customerApi = {
 
   // Sellers & Location
   getNearbySellers: (params) => getWithDedupe("/seller/nearby", params),
+  // Can we deliver to this point? The catalogue is browsable everywhere, so
+  // this is what checkout and the address picker ask before committing.
+  checkServiceability: (params) =>
+    getWithDedupe("/products/serviceability", params, { ttl: 60 * 1000 }),
 
   // Cart
   getCart: () => getWithDedupe("/cart", {}, { ttl: 2000 }), // Very short cache for cart

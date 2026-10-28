@@ -1,6 +1,7 @@
 import express from "express";
 import {
     getProducts,
+  getServiceability,
     getSellerProducts,
     createProduct,
     updateProduct,
@@ -29,6 +30,9 @@ const router = express.Router();
 
 // Public routes with optional auth (to detect admin/seller vs customer)
 router.get("/", optionalVerifyToken, getProducts);
+
+// Serviceability for a point — used by checkout and the address picker.
+router.get("/serviceability", getServiceability);
 
 // Barcode verification & generation
 router.get("/barcode/check", optionalVerifyToken, checkBarcodeUnique);
