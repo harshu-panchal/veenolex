@@ -34,6 +34,7 @@ const BillingCharges = () => {
         extraPerKm: 10,
         deliveryPartnerRatePerKm: 5,
         fixedCharge: 30,
+        warehouseShippingBaseFee: 70,
         handlingFeeStrategy: "highest_category_fee",
         codEnabled: true,
         onlineEnabled: true,
@@ -73,6 +74,7 @@ const BillingCharges = () => {
                         extraPerKm: s.incrementalKmSurcharge ?? prev.extraPerKm,
                         deliveryPartnerRatePerKm: s.deliveryPartnerRatePerKm ?? s.fleetCommissionRatePerKm ?? prev.deliveryPartnerRatePerKm,
                         fixedCharge: s.fixedDeliveryFee ?? s.customerBaseDeliveryFee ?? prev.fixedCharge,
+                        warehouseShippingBaseFee: s.warehouseShippingBaseFee ?? prev.warehouseShippingBaseFee,
                         handlingFeeStrategy: s.handlingFeeStrategy ?? prev.handlingFeeStrategy,
                         codEnabled: s.codEnabled ?? prev.codEnabled,
                         onlineEnabled: s.onlineEnabled ?? prev.onlineEnabled,
@@ -120,6 +122,7 @@ const BillingCharges = () => {
                 deliveryPartnerRatePerKm: config.deliveryPartnerRatePerKm,
                 fleetCommissionRatePerKm: config.deliveryPartnerRatePerKm,
                 fixedDeliveryFee: config.fixedCharge,
+                warehouseShippingBaseFee: config.warehouseShippingBaseFee,
                 handlingFeeStrategy: config.handlingFeeStrategy,
                 codEnabled: config.codEnabled,
                 onlineEnabled: config.onlineEnabled,
@@ -513,6 +516,32 @@ const BillingCharges = () => {
                                     </div>
                                 </div>
                             )}
+
+                            {/* Applies to both pricing modes: out-of-zone orders leave the
+                                rider network and ship by courier instead. */}
+                            <div className="mt-8 pt-6 border-t border-dashed border-slate-100">
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                        Courier Shipping Minimum (₹)
+                                    </label>
+                                    <div className="relative group max-w-md">
+                                        <span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-slate-300 group-focus-within:text-slate-900 transition-colors">₹</span>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={config.warehouseShippingBaseFee}
+                                            onChange={(e) => handleInputChange('warehouseShippingBaseFee', e.target.value)}
+                                            className="w-full pl-10 pr-5 py-4 bg-slate-50 border-none rounded-2xl text-sm font-black text-slate-900 outline-none focus:ring-2 focus:ring-brand-500/10 transition-all"
+                                        />
+                                    </div>
+                                    <p className="text-[10px] font-bold text-slate-400 italic">
+                                        Charged when an order is outside the delivery zone and ships by courier
+                                        instead of a rider. The customer pays whichever is higher: the products&apos;
+                                        own out-of-zone prices, or this minimum. Set 0 to charge nothing &mdash; the
+                                        courier still bills you.
+                                    </p>
+                                </div>
+                            </div>
 
                             <div className="mt-8 bg-slate-50 border border-slate-100 rounded-2xl p-4 flex gap-4">
                                 <Truck className="h-5 w-5 text-slate-400 shrink-0 mt-0.5" />

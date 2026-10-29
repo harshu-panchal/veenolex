@@ -47,6 +47,7 @@ const ALLOWED_KEYS = [
   "deliveryPartnerRatePerKm",
   "fleetCommissionRatePerKm",
   "fixedDeliveryFee",
+  "warehouseShippingBaseFee",
   "handlingFeeStrategy",
   "codEnabled",
   "onlineEnabled",
@@ -124,6 +125,7 @@ const updateSettingsSchema = Joi.object({
   deliveryPartnerRatePerKm: Joi.number().min(0),
   fleetCommissionRatePerKm: Joi.number().min(0),
   fixedDeliveryFee: Joi.number().min(0),
+  warehouseShippingBaseFee: Joi.number().min(0),
   handlingFeeStrategy: Joi.string().valid(
     "highest_category_fee",
     "sum_of_category_fees",
