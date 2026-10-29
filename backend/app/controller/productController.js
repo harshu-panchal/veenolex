@@ -443,6 +443,17 @@ export const getProducts = async (req, res) => {
           { zoneOutDeliveryEnabled: true, sellerId: { $ne: null }, adminProductId: null },
         ];
       }
+    } else if (enforceRadius && requestedSellerIds.length === 0) {
+      // Same main-catalog shape, minus the "nearby" narrowing we cannot do
+      // without coordinates. Collapsing clones is not a location decision:
+      // skipping this entirely (the case for any visitor who has not granted
+      // location, e.g. a fresh/incognito session) returned every seller's
+      // clone of an admin master as its own card, each labelled with that
+      // seller's shop name, instead of one card per product.
+      query.$or = [
+        { sellerId: null },
+        { sellerId: { $ne: null }, adminProductId: null },
+      ];
     }
 
     if (categoryIds && typeof categoryIds === "string") {
@@ -1205,7 +1216,22 @@ export const deleteProduct = async (req, res) => {
     if (!product) {
       return handleResponse(res, 404, "Product not found or unauthorized");
     }
-    
+
+    // Deleting an admin master product orphans every seller's clone of it
+    // (Product.adminProductId -> this id): the clone keeps selling with no
+    // master behind it, which is exactly what "Delete" was meant to stop.
+    // Only admin deletes can have clones at all, but the query is harmless
+    // for a seller's own product since nothing ever references it that way.
+    const clones = await Product.find({ adminProductId: id }).select("_id").lean();
+    if (clones.length) {
+      const cloneIds = clones.map((c) => c._id);
+      await Product.deleteMany({ _id: { $in: cloneIds } });
+      await Promise.all(cloneIds.map((cloneId) => enqueueProductRemoval(cloneId)));
+      await Promise.all(
+        cloneIds.map((cloneId) => invalidate(`cache:catalog:product:${cloneId}`)),
+      );
+    }
+
     // Enqueue search index removal asynchronously
     await enqueueProductRemoval(id);
     await invalidate(`cache:catalog:product:${id}`);
@@ -1220,7 +1246,13 @@ export const deleteProduct = async (req, res) => {
       });
     }
 
-    return handleResponse(res, 200, "Product deleted successfully");
+    return handleResponse(
+      res,
+      200,
+      clones.length
+        ? `Product deleted successfully (${clones.length} seller clone${clones.length === 1 ? "" : "s"} removed with it)`
+        : "Product deleted successfully",
+    );
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }

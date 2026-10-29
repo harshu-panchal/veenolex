@@ -126,7 +126,8 @@ const OrdersList = () => {
                     id: o.orderId || 'UNSET',
                     _id: o._id,
                     customer: o.customer?.name || 'Unknown',
-                    seller: o.seller?.shopName || 'Unknown',
+                    // Warehouse orders have no seller — admin fulfils them directly.
+                    seller: o.seller?.shopName || (o.fulfilledBy === 'ADMIN' ? 'Admin' : 'Unknown'),
                     items: o.items?.length || 0,
                     amount: o.pricing?.total || 0,
                     status: getLegacyStatusFromOrder(o),
