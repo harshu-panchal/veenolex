@@ -137,7 +137,10 @@ export const customerApi = {
   // Public offers
   getOffers: () => getWithDedupe("/offers"),
   // Offer sections (category → products, banner + side image)
-  getOfferSections: (params) => getWithDedupe("/offer-sections", params),
+  getOfferSections: (params) => getWithDedupe("/offer-sections", params, { ttl: 2000 }),
+
+  // Coming soon section (products + config)
+  getComingSoonSection: () => getWithDedupe("/products/coming-soon-section", {}, { ttl: 2000 }),
 
   // Coupons
   validateCoupon: (data) => axiosInstance.post("/coupons/validate", data),
@@ -161,4 +164,7 @@ export const customerApi = {
 
   // Today's Best Prices
   getTodayBestPrices: (params) => getWithDedupe("/today-best-prices", params),
+
+  // Checkout Recommendations ("You might also like")
+  getCheckoutRecommendations: (params) => getWithDedupe("/checkout-recommendations", params),
 };

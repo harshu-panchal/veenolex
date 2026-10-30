@@ -19,7 +19,8 @@ import {
     HiOutlineInboxStack,
     HiOutlineMapPin,
     HiOutlinePhone,
-    HiOutlineCalendarDays
+    HiOutlineCalendarDays,
+    HiOutlineTrash
 } from 'react-icons/hi2';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -83,6 +84,8 @@ const Orders = () => {
     const [assignTargetOrder, setAssignTargetOrder] = useState(null);
     const [deliveryPartners, setDeliveryPartners] = useState([]);
     const [selectedDriverId, setSelectedDriverId] = useState('');
+    const [orderToDelete, setOrderToDelete] = useState(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const fetchDrivers = async () => {
         try {
@@ -124,6 +127,27 @@ const Orders = () => {
             fetchOrders();
         } catch (error) {
             showToast(error?.response?.data?.message || "Failed to assign delivery partner", "error");
+        }
+    };
+
+    const handleDeleteOrder = async () => {
+        if (!orderToDelete) return;
+        setIsDeleting(true);
+        try {
+            const targetId = orderToDelete.id || orderToDelete._id;
+            await sellerApi.deleteOrder(targetId);
+            showToast(`Order #${orderToDelete.id} deleted successfully`, "success");
+            setOrderToDelete(null);
+            if (selectedOrder && (selectedOrder.id === orderToDelete.id || selectedOrder._id === orderToDelete._id)) {
+                setIsDetailsModalOpen(false);
+                setSelectedOrder(null);
+            }
+            fetchOrders(page);
+        } catch (error) {
+            console.error("Delete order error:", error);
+            showToast(error.response?.data?.message || "Failed to delete order", "error");
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -610,12 +634,25 @@ const Orders = () => {
                                                         <option value="delivered">Delivered</option>
                                                         <option value="cancelled">Cancelled</option>
                                                     </select>
-                                                    <button
-                                                        onClick={() => handleViewDetails(order)}
-                                                        className="p-2 hover:bg-slate-100 rounded-lg text-slate-600"
-                                                    >
-                                                        <HiOutlineEye className="h-4 w-4" />
-                                                    </button>
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            onClick={() => handleViewDetails(order)}
+                                                            className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors"
+                                                            title="View Details"
+                                                        >
+                                                            <HiOutlineEye className="h-4 w-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setOrderToDelete(order);
+                                                            }}
+                                                            className="p-2 hover:bg-rose-50 hover:text-rose-600 rounded-lg text-slate-400 transition-colors"
+                                                            title="Delete Order"
+                                                        >
+                                                            <HiOutlineTrash className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </motion.div>
@@ -736,6 +773,16 @@ const Orders = () => {
                                                                      <span>Assign</span>
                                                                  </button>
                                                              )}
+                                                             <button
+                                                                 onClick={(e) => {
+                                                                     e.stopPropagation();
+                                                                     setOrderToDelete(order);
+                                                                 }}
+                                                                 className="p-1.5 hover:bg-rose-50 hover:text-rose-600 rounded-lg transition-all text-slate-400 shadow-sm ring-1 ring-slate-100"
+                                                                 title="Delete Order"
+                                                             >
+                                                                 <HiOutlineTrash className="h-4 w-4" />
+                                                             </button>
                                                          </div>
                                                      </td>
                                                 </motion.tr>
@@ -1031,13 +1078,21 @@ const Orders = () => {
 
                                     {/* Modal Footer */}
                                     <div className="px-4 py-3 sm:px-6 sm:py-4 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row gap-3 sm:gap-0 sm:items-center justify-between">
-                                        <div>
+                                        <div className="flex items-center gap-2">
                                             <button 
                                                 onClick={() => generateDeliveryInvoice(selectedOrder)} 
                                                 className="px-4 py-2.5 rounded-xl text-sm font-bold text-brand-600 bg-brand-50 hover:bg-brand-100 transition-all flex items-center gap-2"
                                             >
                                                 <HiOutlinePrinter className="h-4 w-4" />
                                                 Delivery Invoice
+                                            </button>
+                                            <button 
+                                                onClick={() => setOrderToDelete(selectedOrder)} 
+                                                className="px-3.5 py-2.5 rounded-xl text-sm font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 transition-all flex items-center gap-1.5"
+                                                title="Delete Order"
+                                            >
+                                                <HiOutlineTrash className="h-4 w-4" />
+                                                Delete
                                             </button>
                                         </div>
                                         <div className="flex gap-2 items-center">
@@ -1163,6 +1218,87 @@ const Orders = () => {
                                             >
                                                 ASSIGN DRIVER
                                             </Button>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            </div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* Delete Order Confirmation Modal */}
+                    <AnimatePresence>
+                        {orderToDelete && (
+                            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"
+                                    onClick={() => !isDeleting && setOrderToDelete(null)}
+                                />
+                                <motion.div
+                                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                                    className="w-full max-w-md relative z-10 bg-white rounded-3xl shadow-2xl p-6 overflow-hidden"
+                                >
+                                    <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="h-10 w-10 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center font-bold">
+                                                <HiOutlineTrash className="h-5 w-5" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-base font-black text-slate-900">Delete Order</h3>
+                                                <p className="text-xs text-slate-500 font-bold uppercase">Order #{orderToDelete.id}</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            disabled={isDeleting}
+                                            onClick={() => setOrderToDelete(null)}
+                                            className="p-1.5 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"
+                                        >
+                                            <HiOutlineXMark className="h-5 w-5" />
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <div className="p-3.5 bg-rose-50/70 border border-rose-100 rounded-2xl">
+                                            <p className="text-xs font-bold text-rose-950">
+                                                Permanently delete order #{orderToDelete.id}?
+                                            </p>
+                                            <p className="text-[11px] font-semibold text-rose-700/80 mt-1">
+                                                Customer: {orderToDelete.customer?.name} • Total: ₹{orderToDelete.total?.toLocaleString()}
+                                            </p>
+                                        </div>
+
+                                        <p className="text-xs font-medium text-slate-600 leading-relaxed">
+                                            Are you sure you want to delete this order? This action permanently removes the order record from the system and cannot be undone.
+                                        </p>
+
+                                        <div className="flex gap-3 pt-2">
+                                            <button
+                                                type="button"
+                                                disabled={isDeleting}
+                                                onClick={() => setOrderToDelete(null)}
+                                                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={isDeleting}
+                                                onClick={handleDeleteOrder}
+                                                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 shadow-md shadow-rose-200 flex items-center justify-center gap-1.5"
+                                            >
+                                                {isDeleting ? (
+                                                    <>
+                                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                        <span>Deleting...</span>
+                                                    </>
+                                                ) : (
+                                                    <span>Delete Order</span>
+                                                )}
+                                            </button>
                                         </div>
                                     </div>
                                 </motion.div>

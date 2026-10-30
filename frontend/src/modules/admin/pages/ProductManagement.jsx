@@ -682,21 +682,23 @@ const ProductManagement = () => {
                         </select>
                         <button
                             onClick={() => {
-                                const nextStatus = filterStatus === 'all' ? 'active' : filterStatus === 'active' ? 'inactive' : 'all';
+                                const nextStatus = filterStatus === 'all' ? 'active' : filterStatus === 'active' ? 'coming_soon' : filterStatus === 'coming_soon' ? 'inactive' : 'all';
                                 setFilterStatus(nextStatus);
                             }}
                             className={cn(
                                 "flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap",
                                 filterStatus === 'active' ? "bg-brand-500 text-primary-foreground shadow-md shadow-brand-100" :
-                                    filterStatus === 'inactive' ? "bg-amber-500 text-white shadow-md shadow-amber-100" :
-                                        "bg-white ring-1 ring-slate-200 text-slate-600 hover:bg-slate-50"
+                                    filterStatus === 'coming_soon' ? "bg-purple-600 text-white shadow-md shadow-purple-100" :
+                                        filterStatus === 'inactive' ? "bg-amber-500 text-white shadow-md shadow-amber-100" :
+                                            "bg-white ring-1 ring-slate-200 text-slate-600 hover:bg-slate-50"
                             )}
                             >
                             <HiOutlineFunnel className="h-4 w-4" />
                             <span>
                                 {filterStatus === 'active' ? 'ONLY LIVE' :
-                                    filterStatus === 'inactive' ? 'ONLY DRAFT' :
-                                        'SHOW ALL'}
+                                    filterStatus === 'coming_soon' ? 'COMING SOON' :
+                                        filterStatus === 'inactive' ? 'ONLY DRAFT' :
+                                            'SHOW ALL'}
                             </span>
                         </button>
                         <select

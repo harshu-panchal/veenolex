@@ -17,10 +17,12 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@shared/components/ui/Toast';
+import { useSettings } from '@core/context/SettingsContext';
 import { adminApi } from '../services/adminApi';
 
 const BillingCharges = () => {
     const { showToast } = useToast();
+    const { refetch } = useSettings();
     const [isSaving, setIsSaving] = useState(false);
     const [deliveryMode, setDeliveryMode] = useState('distance'); // 'fixed' or 'distance'
     const [returnDeliveryCommission, setReturnDeliveryCommission] = useState(0);
@@ -28,6 +30,7 @@ const BillingCharges = () => {
     const [config, setConfig] = useState({
         platformFee: 0,
         freeDeliveryThreshold: 0,
+        returnPolicyDays: 7,
         baseCharge: 30,
         riderBasePayout: 30,
         baseDistance: 0.5,
@@ -60,6 +63,8 @@ const BillingCharges = () => {
                         platformFee: p.platformFee ?? prev.platformFee,
                         freeDeliveryThreshold:
                             p.freeDeliveryThreshold ?? prev.freeDeliveryThreshold,
+                        returnPolicyDays:
+                            p.returnPolicyDays ?? prev.returnPolicyDays ?? 7,
                     }));
                 }
 
@@ -110,6 +115,7 @@ const BillingCharges = () => {
                 returnDeliveryCommission,
                 platformFee: config.platformFee,
                 freeDeliveryThreshold: config.freeDeliveryThreshold,
+                returnPolicyDays: config.returnPolicyDays,
             });
 
             await adminApi.updateDeliveryFinanceSettings({
@@ -133,6 +139,7 @@ const BillingCharges = () => {
             });
 
             showToast('Fees & charges updated', 'success');
+            refetch?.({ forceRefresh: true });
         } catch (error) {
             console.error('Failed to update platform settings', error);
             showToast(error?.response?.data?.message || 'Failed to update fees settings', 'error');
@@ -224,38 +231,102 @@ const BillingCharges = () => {
                                 Main Charges
                             </h3>
                         </div>
-                        <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div className="space-y-3">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                    Platform/Handling Fee (₹)
-                                    <Info className="h-3 w-3 opacity-50" />
-                                </label>
-                                <div className="relative group">
-                                    <span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-slate-300 group-focus-within:text-red-500 transition-colors">₹</span>
-                                    <input
-                                        type="number"
-                                        value={config.platformFee}
-                                        onChange={(e) => handleInputChange('platformFee', e.target.value)}
-                                        className="w-full pl-10 pr-5 py-4 bg-slate-50 border-none rounded-2xl text-base font-black text-slate-900 outline-none focus:ring-2 focus:ring-red-500/10 transition-all"
-                                    />
+                        <div className="p-8">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        Platform/Handling Fee (₹)
+                                        <Info className="h-3 w-3 opacity-50" />
+                                    </label>
+                                    <div className="relative group">
+                                        <span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-slate-300 group-focus-within:text-red-500 transition-colors">₹</span>
+                                        <input
+                                            type="number"
+                                            value={config.platformFee}
+                                            onChange={(e) => handleInputChange('platformFee', e.target.value)}
+                                            className="w-full pl-10 pr-5 py-4 bg-slate-50 border-none rounded-2xl text-base font-black text-slate-900 outline-none focus:ring-2 focus:ring-red-500/10 transition-all"
+                                        />
+                                    </div>
+                                    <p className="text-[10px] font-bold text-slate-400 italic">Fee added to every order.</p>
                                 </div>
-                                <p className="text-[10px] font-bold text-slate-400 italic">Fee added to every order.</p>
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        Free Delivery Minimum (₹)
+                                        <Zap className="h-3 w-3 text-amber-500" />
+                                    </label>
+                                    <div className="relative group">
+                                        <span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-slate-300 group-focus-within:text-red-500 transition-colors">₹</span>
+                                        <input
+                                            type="number"
+                                            value={config.freeDeliveryThreshold}
+                                            onChange={(e) => handleInputChange('freeDeliveryThreshold', e.target.value)}
+                                            className="w-full pl-10 pr-5 py-4 bg-slate-50 border-none rounded-2xl text-base font-black text-slate-900 outline-none focus:ring-2 focus:ring-red-500/10 transition-all"
+                                        />
+                                    </div>
+                                    <p className="text-[10px] font-bold text-slate-400 italic">Orders above this amount will have free delivery.</p>
+                                </div>
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        Return Window (Days)
+                                        <RotateCcw className="h-3 w-3 text-red-500" />
+                                    </label>
+                                    <div className="relative group">
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={config.returnPolicyDays}
+                                            onChange={(e) => handleInputChange('returnPolicyDays', e.target.value)}
+                                            className="w-full pl-5 pr-14 py-4 bg-slate-50 border-none rounded-2xl text-base font-black text-slate-900 outline-none focus:ring-2 focus:ring-red-500/10 transition-all"
+                                        />
+                                        <span className="absolute right-5 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400 uppercase">Days</span>
+                                    </div>
+                                    <p className="text-[10px] font-bold text-slate-400 italic">Return policy window shown on product details.</p>
+                                </div>
                             </div>
-                            <div className="space-y-3">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                    Free Delivery Minimum (₹)
-                                    <Zap className="h-3 w-3 text-amber-500" />
-                                </label>
-                                <div className="relative group">
-                                    <span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-slate-300 group-focus-within:text-red-500 transition-colors">₹</span>
-                                    <input
-                                        type="number"
-                                        value={config.freeDeliveryThreshold}
-                                        onChange={(e) => handleInputChange('freeDeliveryThreshold', e.target.value)}
-                                        className="w-full pl-10 pr-5 py-4 bg-slate-50 border-none rounded-2xl text-base font-black text-slate-900 outline-none focus:ring-2 focus:ring-red-500/10 transition-all"
-                                    />
+
+                            {/* Live Storefront Badges Preview */}
+                            <div className="mt-8 pt-6 border-t border-slate-100 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        <Info className="h-3.5 w-3.5 text-brand-500" />
+                                        Storefront Product Page Badges Preview
+                                    </label>
+                                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                                        Dynamic Real-time Preview
+                                    </span>
                                 </div>
-                                <p className="text-[10px] font-bold text-slate-400 italic">Orders above this amount will have free delivery.</p>
+                                <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 max-w-lg">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-white border border-slate-200/70 shadow-sm flex items-center justify-center text-slate-600 shrink-0">
+                                                <RotateCcw size={14} />
+                                            </div>
+                                            <div className="leading-tight">
+                                                <div className="text-[10px] font-bold text-slate-800">
+                                                    {Number(config.returnPolicyDays) > 0
+                                                        ? `${config.returnPolicyDays} ${Number(config.returnPolicyDays) === 1 ? 'day' : 'days'}`
+                                                        : "No Return"}
+                                                </div>
+                                                <div className="text-[8px] text-slate-400 font-semibold">
+                                                    {Number(config.returnPolicyDays) > 0 ? "return and refund" : "non-returnable"}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-white border border-slate-200/70 shadow-sm flex items-center justify-center text-slate-600 shrink-0">
+                                                <Truck size={14} />
+                                            </div>
+                                            <div className="leading-tight">
+                                                <div className="text-[10px] font-bold text-slate-800">FREE Shipping</div>
+                                                <div className="text-[8px] text-slate-400 font-semibold">
+                                                    {Number(config.freeDeliveryThreshold) > 0
+                                                        ? `on orders above ₹${config.freeDeliveryThreshold}`
+                                                        : "on all orders"}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </Card>

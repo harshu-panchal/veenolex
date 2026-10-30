@@ -12,7 +12,9 @@ import {
   Printer,
   X,
   CheckCircle,
-  Box
+  Box,
+  Edit2,
+  Check
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
@@ -62,6 +64,10 @@ export default function SellerPOSOrders() {
   const [lastCreatedOrder, setLastCreatedOrder] = useState(null);
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
   const [billSettings, setBillSettings] = useState({});
+
+  // Cart Item Price Editing
+  const [editingLineId, setEditingLineId] = useState(null);
+  const [tempPrice, setTempPrice] = useState("");
 
   const activeBill = bills.find((b) => b.id === activeTab) || bills[0];
   const cart = activeBill.cart;
@@ -252,6 +258,7 @@ export default function SellerPOSOrders() {
             ),
           };
         }
+        const unitPrice = product.salePrice || product.price;
         return {
           ...b,
           cart: [
@@ -260,7 +267,8 @@ export default function SellerPOSOrders() {
               productId: product.productId,
               variantId: product.variantId,
               name: product.displayName || product.productName,
-              price: product.salePrice || product.price,
+              price: unitPrice,
+              originalPrice: unitPrice,
               quantity: 1,
               stock: product.stock,
               gst: product.gst || 0,
@@ -295,6 +303,29 @@ export default function SellerPOSOrders() {
         };
       })
     );
+  };
+
+  const updateCartItemPrice = (lineId, newPrice) => {
+    const parsedPrice = parseFloat(newPrice);
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
+      toast.error("Please enter a valid price");
+      return;
+    }
+    setBills((prevBills) =>
+      prevBills.map((b) => {
+        if (b.id !== activeTab) return b;
+        return {
+          ...b,
+          cart: b.cart.map((item) => {
+            if (getCartLineId(item.productId, item.variantId) !== lineId) return item;
+            return { ...item, price: parsedPrice };
+          }),
+        };
+      })
+    );
+    setEditingLineId(null);
+    setTempPrice("");
+    toast.success("Price updated");
   };
 
   const removeCartItem = (lineId) => {
@@ -632,9 +663,71 @@ export default function SellerPOSOrders() {
               <div key={lineId} className="flex gap-2.5 bg-slate-50/50 border border-slate-100 rounded-xl p-3 relative hover:border-slate-200 transition-colors">
                 <div className="flex-1 min-w-0">
                   <h5 className="text-xs font-bold text-slate-700 truncate">{item.name}</h5>
-                  <p className="text-[10px] text-slate-400">Rate: ₹{item.price}</p>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-xs font-bold text-emerald-600">₹{item.price * item.quantity}</span>
+                  <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                    <span>Rate: ₹{item.price}</span>
+                    {item.originalPrice && item.originalPrice !== item.price && (
+                      <span className="line-through text-slate-300">₹{item.originalPrice}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between gap-2 mt-1">
+                    {editingLineId === lineId ? (
+                      <div className="flex items-center gap-1 bg-white border border-emerald-400 rounded-lg px-1.5 py-0.5 shadow-sm">
+                        <span className="text-xs text-slate-500 font-bold">₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          autoFocus
+                          value={tempPrice}
+                          onChange={(e) => setTempPrice(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              updateCartItemPrice(lineId, tempPrice);
+                            } else if (e.key === "Escape") {
+                              setEditingLineId(null);
+                              setTempPrice("");
+                            }
+                          }}
+                          className="w-16 px-1 py-0.5 text-xs font-bold text-slate-800 focus:outline-none"
+                          placeholder="Price"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => updateCartItemPrice(lineId, tempPrice)}
+                          className="p-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                          title="Save price"
+                        >
+                          <Check className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingLineId(null);
+                            setTempPrice("");
+                          }}
+                          className="p-1 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+                          title="Cancel"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 group/price">
+                        <span className="text-xs font-bold text-emerald-600">₹{item.price * item.quantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingLineId(lineId);
+                            setTempPrice(String(item.price));
+                          }}
+                          className="p-1 rounded text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                          title="Edit unit price"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 border border-slate-200 bg-white rounded-lg px-2 py-0.5">
                       <button onClick={() => updateCartItemQty(lineId, -1)} className="text-slate-400 hover:text-slate-650">
                         <Minus className="w-3 h-3" />
@@ -739,8 +832,8 @@ export default function SellerPOSOrders() {
 
       {/* Checkout Payment Modal */}
       {showPaymentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="w-full max-w-sm bg-white border border-slate-200/80 rounded-3xl p-6 text-slate-800 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-sm bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-6 text-slate-800 shadow-2xl relative max-h-[92vh] flex flex-col my-auto">
             <X onClick={() => setShowPaymentModal(false)} className="absolute top-4 right-4 w-5 h-5 text-slate-400 hover:text-slate-650 cursor-pointer" />
             <h3 className="text-base font-bold text-slate-900 mb-4">Select Payment Mode</h3>
 

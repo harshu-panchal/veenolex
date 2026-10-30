@@ -11,6 +11,7 @@ export const adminPosApi = {
   updateOrderItems: (id, data) => axiosInstance.patch(`/admin/orders/${id}/items`, data),
   exchangeItems: (data) => axiosInstance.post("/admin/pos/exchange", data),
   deleteOrder: (id) => axiosInstance.delete(`/admin/orders/pos/${id}`),
+  deletePosOrder: (id) => axiosInstance.delete(`/admin/orders/pos/${id}`),
   getInvoiceReport: (params) => axiosInstance.get("/admin/orders/pos-report", { params }),
 
   // Catalog

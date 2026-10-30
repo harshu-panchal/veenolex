@@ -993,29 +993,72 @@ const CheckoutPage = () => {
       setRecommendedProducts([]);
       return;
     }
-    const rawCat = cart[0]?.categoryId?._id || cart[0]?.categoryId || cart[0]?.category?._id || cart[0]?.category;
-    const categoryId = typeof rawCat === 'string' && /^[0-9a-fA-F]{24}$/.test(rawCat)
-      ? rawCat
-      : (typeof rawCat === 'object' && rawCat?._id && /^[0-9a-fA-F]{24}$/.test(String(rawCat._id)) ? String(rawCat._id) : null);
-
-    if (!categoryId) return;
-
-    const lat = addressLat;
-    const lng = addressLng;
-    if (!lat || !lng) return;
 
     const cartIds = new Set(cart.map((i) => i.id || i._id));
+
+    // Check for admin-configured checkout recommendations first
     customerApi
-      .getProducts({ categoryId, limit: 10, lat, lng })
+      .getCheckoutRecommendations()
       .then((res) => {
-        if (res.data?.success) {
-          const items = (res.data.result?.items || [])
-            .map((p) => ({ ...p, id: p._id }))
-            .filter((p) => !cartIds.has(p.id));
-          setRecommendedProducts(items.slice(0, 8));
+        const configured = res.data?.result || res.data?.results || res.data || [];
+        const filteredConfigured = (Array.isArray(configured) ? configured : [])
+          .map((p) => ({ ...p, id: p._id || p.id }))
+          .filter((p) => !cartIds.has(p.id));
+
+        if (filteredConfigured.length > 0) {
+          setRecommendedProducts(filteredConfigured.slice(0, 8));
+          return;
         }
+
+        // Fallback to category-based products if no admin recommendations are configured
+        const rawCat = cart[0]?.categoryId?._id || cart[0]?.categoryId || cart[0]?.category?._id || cart[0]?.category;
+        const categoryId = typeof rawCat === 'string' && /^[0-9a-fA-F]{24}$/.test(rawCat)
+          ? rawCat
+          : (typeof rawCat === 'object' && rawCat?._id && /^[0-9a-fA-F]{24}$/.test(String(rawCat._id)) ? String(rawCat._id) : null);
+
+        if (!categoryId) return;
+
+        const lat = addressLat;
+        const lng = addressLng;
+        if (!lat || !lng) return;
+
+        customerApi
+          .getProducts({ categoryId, limit: 10, lat, lng })
+          .then((pRes) => {
+            if (pRes.data?.success) {
+              const items = (pRes.data.result?.items || [])
+                .map((p) => ({ ...p, id: p._id }))
+                .filter((p) => !cartIds.has(p.id));
+              setRecommendedProducts(items.slice(0, 8));
+            }
+          })
+          .catch(() => { });
       })
-      .catch(() => { });
+      .catch(() => {
+        // Fallback to category-based products on error
+        const rawCat = cart[0]?.categoryId?._id || cart[0]?.categoryId || cart[0]?.category?._id || cart[0]?.category;
+        const categoryId = typeof rawCat === 'string' && /^[0-9a-fA-F]{24}$/.test(rawCat)
+          ? rawCat
+          : (typeof rawCat === 'object' && rawCat?._id && /^[0-9a-fA-F]{24}$/.test(String(rawCat._id)) ? String(rawCat._id) : null);
+
+        if (!categoryId) return;
+
+        const lat = addressLat;
+        const lng = addressLng;
+        if (!lat || !lng) return;
+
+        customerApi
+          .getProducts({ categoryId, limit: 10, lat, lng })
+          .then((pRes) => {
+            if (pRes.data?.success) {
+              const items = (pRes.data.result?.items || [])
+                .map((p) => ({ ...p, id: p._id }))
+                .filter((p) => !cartIds.has(p.id));
+              setRecommendedProducts(items.slice(0, 8));
+            }
+          })
+          .catch(() => { });
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cartProductIdKey, addressLat, addressLng]);
 

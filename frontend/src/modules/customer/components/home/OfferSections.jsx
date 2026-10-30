@@ -22,16 +22,24 @@ const OfferSectionItem = ({ section, noServiceData }) => {
   const bgColor = getBackgroundColorByValue(section.backgroundColor);
   const sectionProducts = (section.productIds || [])
     .filter((p) => typeof p === "object" && p !== null)
-    .map((p) => ({
-      id: p._id,
-      _id: p._id,
-      name: p.name,
-      image: p.mainImage || p.image || "",
-      price: p.salePrice ?? p.price,
-      originalPrice: p.price ?? p.salePrice,
-      weight: p.weight,
-      deliveryTime: p.deliveryTime,
-    }));
+    .map((p) => {
+      const offerPrice = Number(p.offerPrice || 0);
+      const salePrice = Number(p.salePrice || 0);
+      const regularPrice = Number(p.price || 0);
+      const activePrice = offerPrice > 0 ? offerPrice : (salePrice > 0 ? salePrice : regularPrice);
+      const originalPrice = regularPrice > 0 ? regularPrice : (salePrice > 0 ? salePrice : activePrice);
+
+      return {
+        id: p._id,
+        _id: p._id,
+        name: p.name,
+        image: p.mainImage || p.image || "",
+        price: activePrice,
+        originalPrice: originalPrice,
+        weight: p.weight,
+        deliveryTime: p.deliveryTime,
+      };
+    });
 
   return (
     <motion.div
@@ -161,13 +169,17 @@ const OfferSectionItem = ({ section, noServiceData }) => {
 const OfferSections = ({ sections, noServiceData }) => {
   if (!sections || sections.length === 0) return null;
 
+  const validSections = [...sections]
+    .filter((s) => Array.isArray(s.productIds) && s.productIds.length > 0)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  if (validSections.length === 0) return null;
+
   return (
     <div className="w-full px-0 pt-0 pb-2 md:pb-4">
-      {[...sections]
-        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-        .map((section) => (
-          <OfferSectionItem key={section._id} section={section} noServiceData={noServiceData} />
-        ))}
+      {validSections.map((section) => (
+        <OfferSectionItem key={section._id} section={section} noServiceData={noServiceData} />
+      ))}
     </div>
   );
 };

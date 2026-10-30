@@ -29,7 +29,7 @@ const getTrackingNumber = (order) => {
     }
     
     let hash = 0;
-    const str = order.id || '';
+    const str = String(order.orderId || order.id || order._id || '');
     for (let i = 0; i < str.length; i++) {
         hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
     }
@@ -39,12 +39,14 @@ const getTrackingNumber = (order) => {
 
 // Helper: Get a dynamic routing code based on destination pincode and order ID hash
 const getRoutingCode = (order) => {
-    const address = order.address || '';
+    const address = typeof order.address === 'string'
+        ? order.address
+        : (order.deliveryAddress || order.address?.text || order.address?.fullAddress || [order.address?.street, order.address?.city, order.address?.state, order.address?.pincode].filter(Boolean).join(', ') || '');
     const pinMatch = address.match(/\b\d{6}\b/);
     const pin = pinMatch ? pinMatch[0] : '';
     
     let hash = 0;
-    const str = order.id || '';
+    const str = String(order.orderId || order.id || order._id || '');
     for (let i = 0; i < str.length; i++) {
         hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
     }
@@ -55,6 +57,8 @@ const getRoutingCode = (order) => {
 };
 
 export const generateDeliveryInvoice = async (order) => {
+    const orderId = String(order.orderId || order.id || order._id || '');
+
     // Load logo first
     let logoBase64;
     try {
@@ -98,17 +102,24 @@ export const generateDeliveryInvoice = async (order) => {
     doc.setFont("helvetica", "bold");
     doc.text("Ship To", margin + 2, margin + 4);
     
+    const customer = order.customer || {};
+    const customerName = customer.name || order.customerName || order.shippingAddress?.name || 'Unknown';
+    const customerPhone = customer.phone || order.phone || order.shippingAddress?.phone || order.address?.phone || 'N/A';
+    const addressStr = typeof order.address === 'string'
+        ? order.address
+        : (order.deliveryAddress || order.address?.text || order.address?.fullAddress || [order.address?.street, order.address?.city, order.address?.state, order.address?.pincode].filter(Boolean).join(', ') || 'Address not provided');
+
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
-    doc.text(sanitizeText((order.customer.name || 'Unknown').toUpperCase()), margin + 2, margin + 9);
+    doc.text(sanitizeText(customerName.toUpperCase()), margin + 2, margin + 9);
     
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    const addressLines = doc.splitTextToSize(sanitizeText(order.address || 'Address not provided'), 55);
+    const addressLines = doc.splitTextToSize(sanitizeText(addressStr), 55);
     doc.text(addressLines, margin + 2, margin + 14);
     
     doc.setFont("helvetica", "italic");
-    doc.text(`Phone No.: ${order.customer.phone || 'N/A'}`, margin + 2, margin + 14 + (addressLines.length * 3.5) + 2);
+    doc.text(`Phone No.: ${customerPhone}`, margin + 2, margin + 14 + (addressLines.length * 3.5) + 2);
 
     // Veenolex Logo on right
     if (logoBase64) {
@@ -139,13 +150,19 @@ export const generateDeliveryInvoice = async (order) => {
     
     doc.text("Payment:", statsX, currentY);
     doc.setFont("helvetica", "bold");
-    doc.text(order.payment === 'Cash on Delivery' ? 'COD' : 'PREPAID', statsValX, currentY);
+    const isCod = order.payment === 'Cash on Delivery' || 
+                  order.payment?.method === 'cod' || 
+                  order.payment?.method === 'cash' ||
+                  order.paymentMethod === 'cod' ||
+                  order.paymentMethod === 'cash';
+    doc.text(isCod ? 'COD' : 'PREPAID', statsValX, currentY);
     doc.setFont("helvetica", "normal");
     currentY += 4.5;
     
     doc.text("ORDER TOTAL:", statsX, currentY);
     doc.setFont("helvetica", "bold");
-    doc.text(`${order.total} INR`, statsValX, currentY);
+    const totalAmount = order.total ?? order.pricing?.total ?? order.amount ?? 0;
+    doc.text(`${totalAmount} INR`, statsValX, currentY);
     doc.setFont("helvetica", "normal");
     currentY += 4.5;
     
@@ -193,7 +210,7 @@ export const generateDeliveryInvoice = async (order) => {
     doc.setFont("helvetica", "italic");
     doc.text("Veenolex Retail", margin + 2, mid2Y + 8);
     doc.setFont("helvetica", "normal");
-    const sellerAddress = doc.splitTextToSize("123 Veenolex Hub, Main Market Road, Bhubaneswar, Odisha 751001", 45);
+    const sellerAddress = doc.splitTextToSize("RIICO Industrial Area, Sagwara, Dungarpur, Rajasthan - 314025", 45);
     doc.text(sellerAddress, margin + 2, mid2Y + 12);
     
     const sellerY = mid2Y + 12 + (sellerAddress.length * 3.5);
@@ -203,15 +220,15 @@ export const generateDeliveryInvoice = async (order) => {
     // Order Barcode & details
     doc.setFontSize(6);
     // Split long order IDs into two lines to prevent overlapping
-    if (order.id.length > 20) {
-        doc.text(`Order #: ${order.id.substring(0, Math.floor(order.id.length / 2))}`, pageWidth - margin - 2, mid2Y + 4, { align: "right" });
-        doc.text(`${order.id.substring(Math.floor(order.id.length / 2))}`, pageWidth - margin - 2, mid2Y + 6.5, { align: "right" });
+    if (orderId.length > 20) {
+        doc.text(`Order #: ${orderId.substring(0, Math.floor(orderId.length / 2))}`, pageWidth - margin - 2, mid2Y + 4, { align: "right" });
+        doc.text(`${orderId.substring(Math.floor(orderId.length / 2))}`, pageWidth - margin - 2, mid2Y + 6.5, { align: "right" });
     } else {
-        doc.text(`Order #: ${order.id}`, pageWidth - margin - 2, mid2Y + 6, { align: "right" });
+        doc.text(`Order #: ${orderId}`, pageWidth - margin - 2, mid2Y + 6, { align: "right" });
     }
     
     try {
-        JsBarcode(canvas, order.id.substring(0, 15), {
+        JsBarcode(canvas, orderId.substring(0, 15), {
             format: "CODE128",
             displayValue: false,
             margin: 0,
@@ -224,21 +241,32 @@ export const generateDeliveryInvoice = async (order) => {
     }
     
     doc.setFontSize(7.5);
-    doc.text(`Invoice No.: Retail${order.id.slice(-6) || '000'}`, pageWidth - margin - 2, mid2Y + 24, { align: "right" });
-    doc.text(`Invoice Date: ${order.date || new Date().toLocaleDateString()}`, pageWidth - margin - 2, mid2Y + 28, { align: "right" });
+    doc.text(`Invoice No.: Retail${orderId.slice(-6) || '000'}`, pageWidth - margin - 2, mid2Y + 24, { align: "right" });
+    const invoiceDate = order.date || (order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }));
+    doc.text(`Invoice Date: ${invoiceDate}`, pageWidth - margin - 2, mid2Y + 28, { align: "right" });
 
     // Table Section
     const tableStartY = mid2Y + mid2Height + 2;
     
-    const tableData = (order.items || []).map(item => [
-        `${item.name}\nSKU: VNLX-${item.name.substring(0,4).toUpperCase()}`,
-        '123456', 
-        item.qty.toString(),
-        item.price.toFixed(2),
-        (item.price * item.qty).toFixed(2),
-        '0.00',
-        (item.price * item.qty).toFixed(2)
-    ]);
+    const tableData = (order.items || []).map(item => {
+        const qty = Number(item.qty ?? item.quantity ?? 1);
+        const price = Number(item.price || item.unitPrice || 0);
+        const taxable = (price * qty).toFixed(2);
+        const skuPrefix = (item.name || 'ITEM').replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase();
+        const sku = item.sku || `VNLX-${skuPrefix}`;
+        const hsn = item.hsn || item.hsnCode || '123456';
+        const igst = Number(item.igst || 0).toFixed(2);
+        const total = (Number(taxable) + Number(igst)).toFixed(2);
+        return [
+            `${item.name}\nSKU: ${sku}`,
+            hsn, 
+            qty.toString(),
+            price.toFixed(2),
+            taxable,
+            igst,
+            total
+        ];
+    });
     
     autoTable(doc, {
         startY: tableStartY,
@@ -254,7 +282,9 @@ export const generateDeliveryInvoice = async (order) => {
         },
         headStyles: {
             fontStyle: 'bold',
-            halign: 'center'
+            halign: 'center',
+            fillColor: [32, 201, 151],
+            textColor: [0, 0, 0]
         },
         columnStyles: {
             0: { cellWidth: 34 },
@@ -296,5 +326,5 @@ export const generateDeliveryInvoice = async (order) => {
     doc.text("1/1", pageWidth/2, pageHeight - margin + 2, { align: "center" });
 
     // Save PDF
-    doc.save(`invoice_${order.id || 'order'}.pdf`);
+    doc.save(`invoice_${orderId || 'order'}.pdf`);
 };

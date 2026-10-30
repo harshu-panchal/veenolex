@@ -24,6 +24,7 @@ export const sellerApi = {
     // Others
     getStats: (range, dates) => axiosInstance.get('/seller/stats', { params: { range, ...dates } }),
     getOrders: (params) => axiosInstance.get('/orders/seller-orders', { params }),
+    deleteOrder: (orderId) => axiosInstance.delete(`/orders/${orderId}`),
     updateOrderStatus: (orderId, data) => axiosInstance.put(`/orders/status/${orderId}`, data),
     getDeliveryPartners: () => axiosInstance.get('/orders/delivery-partners'),
     assignDeliveryBoy: (orderId, deliveryBoyId) => axiosInstance.post(`/orders/${orderId}/assign-delivery-boy`, { deliveryBoyId }),

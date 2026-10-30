@@ -23,6 +23,8 @@ import {
   getDeliveryPartnersForSeller,
   assignDeliveryBoyToOrder,
   broadcastDeliveryForOrder,
+  deleteOrder,
+  deleteOrdersBulk,
 } from "../controller/orderController.js";
 import {
   createOrderWithFinancialSnapshot,
@@ -142,6 +144,20 @@ router.put(
   allowRoles("admin", "seller"),
   requireApprovedSeller,
   updateOrderStatus,
+);
+router.delete(
+  "/bulk/delete",
+  verifyToken,
+  allowRoles("admin", "seller"),
+  requireApprovedSeller,
+  deleteOrdersBulk,
+);
+router.delete(
+  "/:orderId",
+  verifyToken,
+  allowRoles("admin", "seller"),
+  requireApprovedSeller,
+  deleteOrder,
 );
 router.get(
   "/seller-returns",

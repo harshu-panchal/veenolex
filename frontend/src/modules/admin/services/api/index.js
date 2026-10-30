@@ -48,12 +48,15 @@ export const adminApi = {
     ...adminSettingsApi,
     ...adminFinanceApi,
     ...adminCatalogApi,
-    ...adminOrdersApi,
     ...adminSupportApi,
     ...adminDeliveryApi,
     ...adminContentApi,
     ...adminPosApi,
     ...adminFulfillmentApi,
+    ...adminOrdersApi,
+    deletePosOrder: adminPosApi.deletePosOrder || adminPosApi.deleteOrder,
+    deleteOrder: adminOrdersApi.deleteOrder,
+    deleteOrdersBulk: adminOrdersApi.deleteOrdersBulk,
 };
 
 export default adminApi;

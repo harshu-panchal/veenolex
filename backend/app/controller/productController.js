@@ -1,4 +1,5 @@
 import Product from "../models/product.js";
+import Setting from "../models/setting.js";
 import SellerInventory from "../models/sellerInventory.js";
 import { handleResponse } from "../utils/helper.js";
 import { slugify } from "../utils/slugify.js";
@@ -484,7 +485,11 @@ export const getProducts = async (req, res) => {
 
     let finalQuery = { ...query };
     if (enforceRadius) {
-      finalQuery.status = { $in: ["active", "coming_soon"] };
+      if (status === "coming_soon") {
+        finalQuery.status = "coming_soon";
+      } else {
+        finalQuery.status = "active";
+      }
       finalQuery = { $and: [finalQuery, getApprovedOrLegacyFilter()] };
     } else {
       if (status && status !== "all") {
@@ -1735,6 +1740,42 @@ export const generateUniqueBarcode = async (req, res) => {
       return handleResponse(res, 500, "Failed to generate unique barcode after multiple attempts");
     }
     return handleResponse(res, 200, "Unique barcode generated successfully", { barcode });
+  } catch (error) {
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+export const getComingSoonSection = async (req, res) => {
+  try {
+    const setting = await Setting.findOne().select("comingSoonSection").lean();
+    const config = setting?.comingSoonSection || {
+      enabled: true,
+      title: "Coming Soon",
+      subtitle: "Exclusive preview of upcoming arrivals",
+      backgroundColor: "#C084FC",
+      sideImageKey: "beauty",
+    };
+
+    if (config.enabled === false) {
+      return handleResponse(res, 200, "Coming soon section fetched", {
+        config,
+        products: [],
+      });
+    }
+
+    const products = await Product.find({
+      status: "coming_soon",
+      ...getApprovedOrLegacyFilter(),
+    })
+      .sort({ createdAt: -1 })
+      .limit(30)
+      .select("name slug price salePrice mainImage stock unit sellerId status approvalStatus")
+      .lean();
+
+    return handleResponse(res, 200, "Coming soon section fetched", {
+      config,
+      products,
+    });
   } catch (error) {
     return handleResponse(res, 500, error.message);
   }

@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Order from "../models/order.js";
 import Cart from "../models/cart.js";
 import Product from "../models/product.js";
@@ -1673,6 +1674,117 @@ export const broadcastDeliveryForOrder = async (req, res) => {
     return handleResponse(res, 200, "Delivery search broadcast triggered successfully", updated);
   } catch (error) {
     return handleResponse(res, error.statusCode || 500, error.message);
+  }
+};
+
+/* ===============================
+   DELETE ORDER (Admin & Seller)
+================================ */
+export const deleteOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const orderKey = orderMatchQueryFromRouteParam(orderId);
+    if (!orderKey) {
+      return handleResponse(res, 400, "Invalid order ID");
+    }
+
+    const order = await Order.findOne(orderKey);
+    if (!order) {
+      return handleResponse(res, 404, "Order not found");
+    }
+
+    // Role check: Seller can only delete their own order
+    if (req.user && req.user.role === "seller") {
+      const sellerIdStr = order.seller ? String(order.seller._id || order.seller) : "";
+      if (sellerIdStr !== String(req.user.id)) {
+        return handleResponse(res, 403, "Access denied: cannot delete orders belonging to another seller");
+      }
+    }
+
+    // Clean up related order OTPs if any
+    try {
+      await OrderOtp.deleteMany({ orderId: order.orderId });
+    } catch (e) {
+      logger.warn("Failed to clean up OrderOtp on delete", { scope: "deleteOrder", error: e.message });
+    }
+
+    await Order.deleteOne({ _id: order._id });
+
+    // Cache invalidation
+    try {
+      await invalidate(buildKey("orders", "*"));
+      if (order.customer) {
+        await invalidate(buildKey("orders", "customer", `${order.customer}:*`));
+      }
+    } catch (e) {
+      logger.warn("Failed to invalidate order caches", { scope: "deleteOrder", error: e.message });
+    }
+
+    return handleResponse(res, 200, "Order deleted successfully", {
+      orderId: order.orderId,
+      _id: order._id,
+    });
+  } catch (error) {
+    logger.error("Failed to delete order", { scope: "deleteOrder", error });
+    return handleResponse(res, 500, error.message);
+  }
+};
+
+/* ===============================
+   BULK DELETE ORDERS (Admin & Seller)
+================================ */
+export const deleteOrdersBulk = async (req, res) => {
+  try {
+    const { orderIds } = req.body;
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+      return handleResponse(res, 400, "orderIds array is required");
+    }
+
+    const objectIds = orderIds
+      .filter((id) => typeof id === "string" && id.length === 24 && mongoose.Types.ObjectId.isValid(id))
+      .map((id) => new mongoose.Types.ObjectId(id));
+    const stringIds = orderIds.map((id) => String(id).trim()).filter(Boolean);
+
+    const baseOr = [
+      ...(objectIds.length > 0 ? [{ _id: { $in: objectIds } }] : []),
+      { orderId: { $in: stringIds } },
+    ];
+
+    const query = req.user && req.user.role === "seller"
+      ? { $and: [{ $or: baseOr }, { seller: req.user.id }] }
+      : { $or: baseOr };
+
+    const ordersToDelete = await Order.find(query).select("_id orderId customer").lean();
+    if (ordersToDelete.length === 0) {
+      return handleResponse(res, 404, "No matching orders found to delete");
+    }
+
+    const humanOrderIds = ordersToDelete.map((o) => o.orderId).filter(Boolean);
+    const docIds = ordersToDelete.map((o) => o._id);
+
+    try {
+      if (humanOrderIds.length > 0) {
+        await OrderOtp.deleteMany({ orderId: { $in: humanOrderIds } });
+      }
+    } catch (e) {
+      logger.warn("Failed to clean up OrderOtps on bulk delete", { scope: "deleteOrdersBulk", error: e.message });
+    }
+
+    const result = await Order.deleteMany({ _id: { $in: docIds } });
+
+    try {
+      await invalidate(buildKey("orders", "*"));
+    } catch (e) {
+      logger.warn("Failed to invalidate order caches on bulk delete", { scope: "deleteOrdersBulk", error: e.message });
+    }
+
+    return handleResponse(res, 200, `${result.deletedCount} orders deleted successfully`, {
+      deletedCount: result.deletedCount,
+      deletedOrderIds: humanOrderIds,
+    });
+  } catch (error) {
+    logger.error("Failed to bulk delete orders", { scope: "deleteOrdersBulk", error });
+    return handleResponse(res, 500, error.message);
   }
 };
 

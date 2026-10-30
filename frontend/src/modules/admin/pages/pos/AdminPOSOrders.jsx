@@ -18,7 +18,9 @@ import {
   RefreshCw,
   Printer,
   ChevronRight,
-  Box
+  Box,
+  Edit2,
+  Check
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
@@ -72,6 +74,10 @@ export default function AdminPOSOrders() {
   // Success screen
   const [lastCreatedOrder, setLastCreatedOrder] = useState(null);
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
+
+  // Cart Item Price Editing
+  const [editingLineId, setEditingLineId] = useState(null);
+  const [tempPrice, setTempPrice] = useState("");
 
   // Active bill settings
   const billSettings = getAdminPOSBillSettings();
@@ -239,11 +245,13 @@ export default function AdminPOSOrders() {
         }
 
         // Fresh cart item
+        const unitPrice = product.salePrice || product.price;
         const newItem = {
           productId: product.productId,
           variantId: product.variantId,
           name: product.displayName || product.productName,
-          price: product.salePrice || product.price,
+          price: unitPrice,
+          originalPrice: unitPrice,
           quantity: 1,
           stock: product.stock,
           gst: product.gst || 0,
@@ -280,6 +288,29 @@ export default function AdminPOSOrders() {
         };
       })
     );
+  };
+
+  const updateCartItemPrice = (lineId, newPrice) => {
+    const parsedPrice = parseFloat(newPrice);
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
+      toast.error("Please enter a valid price");
+      return;
+    }
+    setBills((prevBills) =>
+      prevBills.map((b) => {
+        if (b.id !== activeTab) return b;
+        return {
+          ...b,
+          cart: b.cart.map((item) => {
+            if (getCartLineId(item.productId, item.variantId) !== lineId) return item;
+            return { ...item, price: parsedPrice };
+          }),
+        };
+      })
+    );
+    setEditingLineId(null);
+    setTempPrice("");
+    toast.success("Price updated");
   };
 
   const removeCartItem = (lineId) => {
@@ -762,11 +793,77 @@ export default function AdminPOSOrders() {
                   <div className="flex-1 min-w-0">
                     <h5 className="text-xs font-bold text-slate-700 truncate">{item.name}</h5>
                     <p className="text-[10px] text-slate-400 mb-1.5">GST: {item.gst}% | HSN: {item.hsnCode || "N/A"}</p>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-emerald-600">₹{item.price * item.quantity}</span>
+                    <div className="flex items-center justify-between gap-2 mt-1">
+                      {editingLineId === lineId ? (
+                        <div className="flex items-center gap-1 bg-white border border-emerald-400 rounded-lg px-1.5 py-0.5 shadow-sm">
+                          <span className="text-xs text-slate-500 font-bold">₹</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            autoFocus
+                            value={tempPrice}
+                            onChange={(e) => setTempPrice(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                updateCartItemPrice(lineId, tempPrice);
+                              } else if (e.key === "Escape") {
+                                setEditingLineId(null);
+                                setTempPrice("");
+                              }
+                            }}
+                            className="w-16 px-1 py-0.5 text-xs font-bold text-slate-800 focus:outline-none"
+                            placeholder="Price"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => updateCartItemPrice(lineId, tempPrice)}
+                            className="p-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                            title="Save price"
+                          >
+                            <Check className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingLineId(null);
+                              setTempPrice("");
+                            }}
+                            className="p-1 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+                            title="Cancel"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 group/price">
+                          <span className="text-xs font-bold text-emerald-600">
+                            ₹{item.price * item.quantity}
+                            {item.quantity > 1 && (
+                              <span className="text-[10px] text-slate-400 font-normal ml-1">
+                                (₹{item.price}/ea)
+                              </span>
+                            )}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingLineId(lineId);
+                              setTempPrice(String(item.price));
+                            }}
+                            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                            title="Edit unit price"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+
                       {/* Quantity tools */}
-                      <div className="flex items-center gap-2 border border-slate-200 bg-white rounded-lg px-2 py-0.5">
+                      <div className="flex items-center gap-2 border border-slate-200 bg-white rounded-lg px-2 py-0.5 flex-shrink-0">
                         <button
+                          type="button"
                           onClick={() => updateCartItemQty(lineId, -1)}
                           className="text-slate-400 hover:text-slate-650"
                         >
@@ -774,6 +871,7 @@ export default function AdminPOSOrders() {
                         </button>
                         <span className="text-xs font-semibold text-slate-700">{item.quantity}</span>
                         <button
+                          type="button"
                           onClick={() => updateCartItemQty(lineId, 1)}
                           className="text-slate-400 hover:text-slate-650"
                         >
@@ -841,10 +939,10 @@ export default function AdminPOSOrders() {
 
       {/* ── ADD CUSTOMER MODAL ───────────────────────────────────────── */}
       {showAddCustomerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
           <form
             onSubmit={handleCreateCustomer}
-            className="w-full max-w-sm bg-white border border-slate-200/80 rounded-3xl p-6 text-slate-800 shadow-2xl"
+            className="w-full max-w-sm bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-6 text-slate-800 shadow-2xl max-h-[92vh] overflow-y-auto my-auto"
           >
             <div className="flex justify-between items-center mb-4">
               <h4 className="text-base font-bold text-slate-900">Add New Customer</h4>
@@ -896,115 +994,104 @@ export default function AdminPOSOrders() {
 
       {/* ── PAYMENT CHECKOUT MODAL ──────────────────────────────────── */}
       {showPaymentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white border border-slate-200/80 rounded-3xl p-6 text-slate-800 shadow-2xl relative">
-            <X
-              onClick={() => setShowPaymentModal(false)}
-              className="absolute top-4 right-4 w-5 h-5 text-slate-400 hover:text-slate-650 cursor-pointer"
-            />
-            <h3 className="text-lg font-bold text-slate-900 mb-4">Complete Payment</h3>
-
-            {/* Total display */}
-            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-center mb-6">
-              <span className="text-xs text-slate-400 block mb-1">Amount Due</span>
-              <span className="text-2xl font-bold text-emerald-650">₹{total}</span>
-            </div>
-
-            {/* Payment Method Selector */}
-            <div className="mb-6">
-              <label className="block text-xs text-slate-500 mb-2">Payment Method</label>
-              <div className="grid grid-cols-3 gap-2">
-                {["Cash", "Credit", "Online"].map((method) => (
-                  <button
-                    key={method}
-                    onClick={() => {
-                      setPaymentMethod(method);
-                      if (method === "Credit") setPaymentStatus("Pending");
-                    }}
-                    className={`py-3 rounded-xl border text-xs font-bold transition-all ${
-                      paymentMethod === method
-                        ? "bg-emerald-50 border-emerald-500 text-emerald-700"
-                        : "bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-100"
-                    }`}
-                  >
-                    {method}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Cash details */}
-            {paymentMethod === "Cash" && (
-              <div className="space-y-4 mb-6">
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Cash Received</label>
-                  <input
-                    type="number"
-                    value={amountReceived}
-                    onChange={(e) => setAmountReceived(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-800 focus:bg-white focus:outline-none"
-                  />
-                </div>
-                {Number(amountReceived) >= total && (
-                  <div className="flex justify-between items-center text-xs text-slate-400">
-                    <span>Return Change:</span>
-                    <span className="font-bold text-slate-800 text-sm">₹{(Number(amountReceived) - total).toFixed(2)}</span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Credit Warning */}
-            {paymentMethod === "Credit" && (
-              <div className="bg-red-50 border border-red-100 text-red-655 text-xs p-3.5 rounded-xl mb-6 flex flex-col gap-1">
-                <span className="font-bold">Udhaar (Credit) Transaction</span>
-                <span>Outstanding will increase for <b>{currentCustomer.name}</b> by ₹{total}.</span>
-              </div>
-            )}
-
-            {/* Online payment QR loader */}
-            {paymentMethod === "Online" && (
-              <div className="bg-emerald-50 border border-emerald-100 text-emerald-750 text-xs p-3.5 rounded-xl mb-6">
-                {paymentRedirectUrl ? (
-                  <div className="flex flex-col gap-3 items-center text-center">
-                    <p className="font-bold">Scan QR or Complete PhonePe checkout session</p>
-                    <a
-                      href={paymentRedirectUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-4 py-2 bg-emerald-650 hover:bg-emerald-700 font-bold rounded-lg text-white text-xs block transition-all shadow-md shadow-emerald-600/10"
-                    >
-                      Open Checkout Link
-                    </a>
-                    <button
-                      onClick={verifyOnlinePaymentStatus}
-                      className="mt-2 flex items-center gap-1 text-[11px] underline text-emerald-650 hover:text-emerald-700"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      Verify Status
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-center font-bold">QR / online link will be generated below.</p>
-                )}
-              </div>
-            )}
-
-            {/* Confirmation actions */}
-            {!paymentRedirectUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-md bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-6 text-slate-800 shadow-2xl relative max-h-[92vh] flex flex-col my-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100 shrink-0">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900">Complete Payment</h3>
               <button
+                type="button"
+                onClick={() => setShowPaymentModal(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                aria-label="Close payment modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scrollable Body Container */}
+            <div className="overflow-y-auto pr-1 space-y-4 flex-1">
+              {/* Total display */}
+              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3 sm:p-4 text-center">
+                <span className="text-xs text-slate-400 block mb-0.5">Amount Due</span>
+                <span className="text-2xl sm:text-3xl font-extrabold text-emerald-600">₹{total}</span>
+              </div>
+
+              {/* Payment Method Selector */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-2">Payment Method</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {["Cash", "Credit"].map((method) => (
+                    <button
+                      type="button"
+                      key={method}
+                      onClick={() => {
+                        setPaymentMethod(method);
+                        if (method === "Credit") setPaymentStatus("Pending");
+                      }}
+                      className={`py-2.5 sm:py-3 rounded-xl border text-xs font-bold transition-all ${
+                        paymentMethod === method
+                          ? "bg-emerald-50 border-emerald-500 text-emerald-700 shadow-xs"
+                          : "bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-100"
+                      }`}
+                    >
+                      {method}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Cash details */}
+              {paymentMethod === "Cash" && (
+                <div className="space-y-3 bg-slate-50/60 p-3 sm:p-4 rounded-2xl border border-slate-100">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1">Cash Received</label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-sm">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={amountReceived}
+                        onChange={(e) => setAmountReceived(e.target.value)}
+                        placeholder="0.00"
+                        className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-2.5 sm:py-3 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+                  {Number(amountReceived) >= total && (
+                    <div className="flex justify-between items-center text-xs text-slate-500 pt-2 border-t border-slate-200/60">
+                      <span className="font-medium">Return Change:</span>
+                      <span className="font-extrabold text-emerald-700 text-sm">₹{(Number(amountReceived) - total).toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Credit Warning */}
+              {paymentMethod === "Credit" && (
+                <div className="bg-red-50 border border-red-100 text-red-655 text-xs p-3.5 rounded-xl flex flex-col gap-1">
+                  <span className="font-bold">Udhaar (Credit) Transaction</span>
+                  <span>Outstanding will increase for <b>{currentCustomer.name}</b> by ₹{total}.</span>
+                </div>
+              )}
+            </div>
+
+            {/* Dedicated Sticky Footer: ALWAYS VISIBLE */}
+            <div className="pt-3 mt-3 border-t border-slate-100 shrink-0">
+              <button
+                type="button"
                 onClick={handleCheckoutComplete}
                 disabled={loading || paymentInitiating}
-                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/10"
+                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/15 active:scale-98 disabled:opacity-50"
               >
                 {loading ? (
                   <RefreshCw className="w-4 h-4 animate-spin" />
                 ) : (
                   <CheckCircle className="w-4 h-4" />
                 )}
-                {paymentMethod === "Online" ? "Generate Online Link" : "Complete Transaction"}
+                Complete Transaction
               </button>
-            )}
+            </div>
           </div>
         </div>
       )}

@@ -5,8 +5,18 @@ import {
   parseCustomerCoordinates,
   getNearbySellerIdsForCustomer,
 } from "../services/customerVisibilityService.js";
-import { buildKey, getOrSet, getTTL } from "../services/cacheService.js";
+import { buildKey, getOrSet, getTTL, delPattern } from "../services/cacheService.js";
 import { getApprovedOrLegacyFilter } from "../services/productModerationService.js";
+
+const clearOfferSectionsCache = async () => {
+  try {
+    if (typeof delPattern === "function") {
+      await delPattern("*offersections*");
+    }
+  } catch (err) {
+    // Non-fatal cache invalidation error
+  }
+};
 
 export const getPublicOfferSections = async (req, res) => {
   try {
@@ -44,8 +54,14 @@ export const getPublicOfferSections = async (req, res) => {
             path: "productIds",
             select: "name slug price salePrice mainImage stock unit sellerId status approvalStatus",
             match: {
-              status: "active",
-              ...getApprovedOrLegacyFilter(),
+              status: { $ne: "archived" },
+            },
+          })
+          .populate({
+            path: "productDetails.productId",
+            select: "name slug price salePrice mainImage stock unit sellerId status approvalStatus",
+            match: {
+              status: { $ne: "archived" },
             },
           })
           .lean();
@@ -72,11 +88,21 @@ export const getPublicOfferSections = async (req, res) => {
               results.push({ ...section, sellerIds, productIds: [] });
               continue;
             }
+            const hasExplicitSellers = Array.isArray(section.sellerIds) && section.sellerIds.length > 0;
             const sellerFilter = sellerIds.length
               ? sellerIds.map((s) => s._id || s)
               : nearbySellerIds;
+            const sellerCondition = hasExplicitSellers
+              ? { sellerId: { $in: sellerFilter } }
+              : {
+                  $or: [
+                    { sellerId: null },
+                    { sellerId: { $in: sellerFilter } },
+                  ],
+                };
+
             const topProducts = await Product.find({
-              sellerId: { $in: sellerFilter },
+              ...sellerCondition,
               status: "active",
               ...getApprovedOrLegacyFilter(),
             })
@@ -91,25 +117,50 @@ export const getPublicOfferSections = async (req, res) => {
               productIds: topProducts,
             });
           } else {
-            const productIds = Array.isArray(section.productIds)
-              ? (nearbySellerSet
-                  ? section.productIds.filter((product) => {
-                      const sid = String(product?.sellerId?._id || product?.sellerId || "");
-                      return sid && nearbySellerSet.has(sid);
-                    })
-                  : section.productIds)
+            const offerPriceMap = new Map();
+            if (Array.isArray(section.productDetails)) {
+              section.productDetails.forEach((item) => {
+                const pid = String(item?.productId?._id || item?.productId || "");
+                if (pid && Number(item?.offerPrice) > 0) {
+                  offerPriceMap.set(pid, Number(item.offerPrice));
+                }
+              });
+            }
+
+            // Collect all products from both productIds and productDetails.productId
+            const detailProducts = Array.isArray(section.productDetails)
+              ? section.productDetails.map((d) => d.productId).filter((p) => p && typeof p === "object")
               : [];
+            const directProducts = Array.isArray(section.productIds)
+              ? section.productIds.filter((p) => p && typeof p === "object")
+              : [];
+
+            const combinedMap = new Map();
+            for (const p of [...directProducts, ...detailProducts]) {
+              if (p?._id && !combinedMap.has(String(p._id))) {
+                combinedMap.set(String(p._id), p);
+              }
+            }
+
+            // All products selected by admin in manual offer sections are visible for all locations!
+            const productIds = Array.from(combinedMap.values()).map((product) => {
+              const op = offerPriceMap.get(String(product._id));
+              return {
+                ...product,
+                offerPrice: op !== undefined && op > 0 ? op : (product.salePrice || product.price),
+              };
+            });
 
             results.push({
               ...section,
-              sellerIds,
+              sellerIds: section.sellerIds || [],
               productIds,
             });
           }
         }
         return results;
       },
-      getTTL("homepage"),
+      15, // Short 15s TTL so offer section updates appear immediately
     );
 
     return handleResponse(res, 200, "Offer sections fetched", filteredSections);
@@ -129,6 +180,14 @@ export const getAdminOfferSections = async (req, res) => {
       .populate("categoryIds", "name")
       .populate("categoryId", "name")
       .populate("sellerIds", "shopName name")
+      .populate({
+        path: "productDetails.productId",
+        select: "name slug price salePrice mainImage stock unit sellerId status",
+      })
+      .populate({
+        path: "productIds",
+        select: "name slug price salePrice mainImage stock unit sellerId status",
+      })
       .lean();
 
     return handleResponse(res, 200, "Offer sections fetched", sections);
@@ -146,6 +205,7 @@ export const createOfferSection = async (req, res) => {
       categoryIds = [],
       sellerIds = [],
       productIds = [],
+      productDetails = [],
       order,
       status,
       isAutomatic = false,
@@ -154,24 +214,69 @@ export const createOfferSection = async (req, res) => {
     if (!title || !title.trim()) {
       return handleResponse(res, 400, "Title is required");
     }
+
+    let normalizedProductDetails = [];
+    let finalProductIds = [];
+
+    if (Array.isArray(productDetails) && productDetails.length > 0) {
+      normalizedProductDetails = productDetails
+        .filter((item) => Boolean(item?.productId || item?._id || item?.id))
+        .map((item) => ({
+          productId: item.productId || item._id || item.id,
+          offerPrice: Math.max(0, Number(item.offerPrice) || 0),
+        }));
+      finalProductIds = normalizedProductDetails.map((item) => item.productId);
+    } else if (Array.isArray(productIds) && productIds.length > 0) {
+      finalProductIds = productIds.filter(Boolean);
+      normalizedProductDetails = finalProductIds.map((pid) => ({
+        productId: pid,
+        offerPrice: 0,
+      }));
+    }
+
     const catIds = Array.isArray(categoryIds) ? categoryIds.filter(Boolean) : [];
-    if (!isAutomatic && !catIds.length) {
-      return handleResponse(res, 400, "At least one category is required");
+    if (!isAutomatic && !catIds.length && !finalProductIds.length) {
+      return handleResponse(res, 400, "Please select at least one category or product");
     }
 
     const count = await OfferSection.countDocuments({});
+    const isAuto = finalProductIds.length > 0 || normalizedProductDetails.length > 0
+      ? false
+      : Boolean(isAutomatic);
+
     const section = await OfferSection.create({
       title: title.trim(),
       backgroundColor: backgroundColor || "#FCD34D",
       sideImageKey: sideImageKey || "hair-care",
-      categoryIds: isAutomatic ? [] : catIds,
+      categoryIds: isAuto ? [] : catIds,
       sellerIds: Array.isArray(sellerIds) ? sellerIds.filter(Boolean) : [],
-      productIds: isAutomatic ? [] : (Array.isArray(productIds) ? productIds : []),
+      productIds: isAuto ? [] : finalProductIds,
+      productDetails: isAuto ? [] : (normalizedProductDetails.length > 0
+        ? normalizedProductDetails
+        : finalProductIds.map((pid) => ({ productId: pid, offerPrice: 0 }))),
       order: typeof order === "number" ? order : count,
       status: status || "active",
-      isAutomatic: Boolean(isAutomatic),
+      isAutomatic: isAuto,
     });
 
+    // If offer prices were set, update Product salePrice accordingly
+    if (!isAuto && normalizedProductDetails.length > 0) {
+      for (const item of normalizedProductDetails) {
+        if (item.offerPrice > 0) {
+          try {
+            const prod = await Product.findById(item.productId).select("price salePrice");
+            if (prod && item.offerPrice <= prod.price) {
+              prod.salePrice = item.offerPrice;
+              await prod.save();
+            }
+          } catch (e) {
+            // Ignore non-fatal individual product update errors
+          }
+        }
+      }
+    }
+
+    await clearOfferSectionsCache();
     return handleResponse(res, 201, "Offer section created", section);
   } catch (error) {
     return handleResponse(res, 400, error.message);
@@ -190,18 +295,36 @@ export const updateOfferSection = async (req, res) => {
       section.backgroundColor = payload.backgroundColor;
     if (payload.sideImageKey !== undefined)
       section.sideImageKey = payload.sideImageKey;
-    if (payload.isAutomatic !== undefined)
-      section.isAutomatic = Boolean(payload.isAutomatic);
 
+    let normalizedProductDetails = [];
     const isAuto = payload.isAutomatic !== undefined ? Boolean(payload.isAutomatic) : section.isAutomatic;
+    section.isAutomatic = isAuto;
+
     if (isAuto) {
       // Clear categories and products for automatic sections
       section.categoryIds = [];
       section.productIds = [];
+      section.productDetails = [];
     } else {
+      if (Array.isArray(payload.productDetails)) {
+        normalizedProductDetails = payload.productDetails
+          .filter((item) => Boolean(item?.productId || item?._id || item?.id))
+          .map((item) => ({
+            productId: item.productId || item._id || item.id,
+            offerPrice: Math.max(0, Number(item.offerPrice) || 0),
+          }));
+        section.productDetails = normalizedProductDetails;
+        section.productIds = normalizedProductDetails.map((item) => item.productId);
+      } else if (Array.isArray(payload.productIds)) {
+        section.productIds = payload.productIds.filter(Boolean);
+        section.productDetails = section.productIds.map((pid) => ({
+          productId: pid,
+          offerPrice: 0,
+        }));
+      }
+
       if (Array.isArray(payload.categoryIds))
         section.categoryIds = payload.categoryIds.filter(Boolean);
-      if (Array.isArray(payload.productIds)) section.productIds = payload.productIds;
     }
 
     if (Array.isArray(payload.sellerIds))
@@ -210,6 +333,25 @@ export const updateOfferSection = async (req, res) => {
     if (payload.status !== undefined) section.status = payload.status;
 
     await section.save();
+
+    // If offer prices were set, update Product salePrice accordingly
+    if (!section.isAutomatic && normalizedProductDetails.length > 0) {
+      for (const item of normalizedProductDetails) {
+        if (item.offerPrice > 0) {
+          try {
+            const prod = await Product.findById(item.productId).select("price salePrice");
+            if (prod && item.offerPrice <= prod.price) {
+              prod.salePrice = item.offerPrice;
+              await prod.save();
+            }
+          } catch (e) {
+            // Ignore non-fatal individual product update errors
+          }
+        }
+      }
+    }
+
+    await clearOfferSectionsCache();
     return handleResponse(res, 200, "Offer section updated", section);
   } catch (error) {
     return handleResponse(res, 400, error.message);
@@ -221,6 +363,7 @@ export const deleteOfferSection = async (req, res) => {
     const { id } = req.params;
     const deleted = await OfferSection.findByIdAndDelete(id);
     if (!deleted) return handleResponse(res, 404, "Offer section not found");
+    await clearOfferSectionsCache();
     return handleResponse(res, 200, "Offer section deleted");
   } catch (error) {
     return handleResponse(res, 500, error.message);
@@ -242,6 +385,7 @@ export const reorderOfferSections = async (req, res) => {
         },
       }));
     if (bulkOps.length) await OfferSection.bulkWrite(bulkOps);
+    await clearOfferSectionsCache();
     return handleResponse(res, 200, "Sections reordered");
   } catch (error) {
     return handleResponse(res, 500, error.message);

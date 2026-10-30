@@ -1,12 +1,11 @@
 // Ultimate Order Intelligence Dossier
-import React, { useState, useEffect, useRef } from 'react';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
+import React, { useState, useEffect } from 'react';
+import { generateDeliveryInvoice } from '@/utils/generateDeliveryInvoice';
 import { useSettings } from '@core/context/SettingsContext';
 import { useParams, useNavigate } from 'react-router-dom';
 import Card from '@shared/components/ui/Card';
 import Badge from '@shared/components/ui/Badge';
-import { adminApi } from '../services/adminApi';
+import { adminApi, adminOrdersApi } from '../services/adminApi';
 import {
     ChevronLeft,
     Box,
@@ -27,8 +26,10 @@ import {
     Navigation,
     Store,
     Info,
-    MapPin
+    MapPin,
+    Trash2
 } from 'lucide-react';
+import Modal from '@shared/components/ui/Modal';
 import { cn } from '@/lib/utils';
 import { useToast } from '@shared/components/ui/Toast';
 import { formatArrivalText } from '@shared/utils/deliveryTime';
@@ -41,7 +42,22 @@ const OrderDetail = () => {
     const { settings } = useSettings();
     const [order, setOrder] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
-    const invoiceRef = useRef(null);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    const handleDeleteOrder = async () => {
+        if (!order) return;
+        setIsDeleting(true);
+        try {
+            await adminOrdersApi.deleteOrder(order.orderId || order._id);
+            showToast(`Order #${order.orderId} deleted successfully`, "success");
+            navigate("/admin/orders/all");
+        } catch (err) {
+            showToast(err.response?.data?.message || "Failed to delete order", "error");
+        } finally {
+            setIsDeleting(false);
+        }
+    };
 
     const fetchDetail = async () => {
         setIsLoading(true);
@@ -93,55 +109,14 @@ const OrderDetail = () => {
     };
 
     const handlePrintInvoice = async () => {
-        const element = invoiceRef.current;
-        if (!element) return;
-        
+        if (!order) return;
         showToast("Generating PDF Invoice...", "info");
-        
         try {
-            const canvas = await html2canvas(element, {
-                scale: 2,
-                useCORS: true,
-                logging: false,
-                allowTaint: true,
-                backgroundColor: "#ffffff",
-                onclone: (clonedDoc) => {
-                    // Forcefully remove any elements or styles that might use oklch
-                    // html2canvas crashes when it encounters oklch color functions in stylesheets
-                    const styleSheets = clonedDoc.styleSheets;
-                    for (let i = 0; i < styleSheets.length; i++) {
-                        try {
-                            const rules = styleSheets[i].cssRules || styleSheets[i].rules;
-                            for (let j = rules.length - 1; j >= 0; j--) {
-                                if (rules[j].cssText && rules[j].cssText.includes('oklch')) {
-                                    styleSheets[i].deleteRule(j);
-                                }
-                            }
-                        } catch (e) {
-                            // Skip cross-origin stylesheets that we can't access
-                        }
-                    }
-                    
-                    // Also explicitly reset root variables just in case
-                    const style = clonedDoc.createElement('style');
-                    style.innerHTML = `
-                        :root {
-                            --primary: var(--primary) !important;
-                            --secondary: #64748b !important;
-                            --background: #ffffff !important;
-                            --foreground: #0f172a !important;
-                        }
-                    `;
-                    clonedDoc.head.appendChild(style);
-                }
+            await generateDeliveryInvoice({
+                ...order,
+                deliveryAddress: deliveryAddress || '',
+                address: deliveryAddress || (typeof order.address === 'string' ? order.address : (order.address?.text || '')),
             });
-            const imgData = canvas.toDataURL('image/png');
-            const pdf = new jsPDF('p', 'mm', 'a4');
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-            
-            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-            pdf.save(`Invoice_${order.orderId}.pdf`);
             showToast("Invoice downloaded successfully", "success");
         } catch (error) {
             console.error("PDF generation failed:", error);
@@ -225,6 +200,13 @@ const OrderDetail = () => {
                     >
                         <Printer className="h-4 w-4 text-slate-400" />
                         Print Invoice
+                    </button>
+                    <button 
+                        onClick={() => setIsDeleteModalOpen(true)}
+                        className="flex items-center gap-2 px-5 py-3 bg-white ring-1 ring-rose-200 text-rose-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-50 transition-all shadow-sm"
+                    >
+                        <Trash2 className="h-4 w-4 text-rose-500" />
+                        Delete Order
                     </button>
                 </div>
 
@@ -517,147 +499,51 @@ const OrderDetail = () => {
                 </div>
             </div>
 
-            {/* Hidden Printable Invoice Template */}
-            <div className="fixed -left-[9999px] top-0">
-                <div 
-                    ref={invoiceRef}
-                    className="w-[800px] bg-white p-1"
-                    style={{ backgroundColor: "#f8fafc" }}
-                >
-                    {/* Inner Paper with Border */}
-                    <div style={{ 
-                        backgroundColor: "#ffffff", 
-                        margin: "40px",
-                        padding: "65px",
-                        border: "1px solid #e2e8f0",
-                        borderRadius: "2px",
-                        boxShadow: "0 0 10px rgba(0,0,0,0.02)",
-                        fontFamily: "'Inter', system-ui, sans-serif",
-                        color: "#1e293b",
-                        minHeight: "1050px"
-                    }}>
-                        {/* Header: Centered Brand */}
-                        <div style={{ textAlign: "center", marginBottom: "50px" }}>
-                            {settings?.logoUrl ? (
-                                <img src={settings.logoUrl} alt="Logo" width="130" style={{ display: "inline-block", marginBottom: "16px" }} crossOrigin="anonymous" />
-                            ) : (
-                                <div style={{ fontSize: "26px", fontWeight: "900", color: "#0f172a", marginBottom: "4px" }}>{settings?.appName || 'NOYO KART'}</div>
-                            )}
-                            <div style={{ fontSize: "10px", color: "#64748b", fontWeight: "800", textTransform: "uppercase", letterSpacing: "3px" }}>Official Tax Invoice</div>
+            {/* Delete Order Confirmation Modal */}
+            <Modal
+                isOpen={isDeleteModalOpen}
+                onClose={() => setIsDeleteModalOpen(false)}
+                title="Delete Order"
+            >
+                <div className="space-y-4">
+                    <div className="flex items-center gap-3 p-4 bg-rose-50 rounded-2xl border border-rose-100">
+                        <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl flex-shrink-0">
+                            <Trash2 className="h-5 w-5" />
                         </div>
-
-                        {/* Top Meta Details */}
-                        <table width="100%" cellPadding="0" cellSpacing="0" style={{ marginBottom: "50px", borderBottom: "1px solid #f1f5f9", paddingBottom: "25px" }}>
-                            <tr>
-                                <td width="50%" style={{ verticalAlign: "bottom" }}>
-                                    <div style={{ fontSize: "28px", fontWeight: "900", color: "#0f172a" }}>INVOICE</div>
-                                </td>
-                                <td width="50%" align="right" style={{ verticalAlign: "bottom" }}>
-                                    <div style={{ fontSize: "12px", fontWeight: "700", marginBottom: "4px" }}>Reference: <span style={{ color: "#2563eb" }}>#{order.orderId}</span></div>
-                                    <div style={{ fontSize: "10px", color: "#64748b", fontWeight: "700" }}>Issued: {new Date(order.createdAt).toLocaleDateString()}</div>
-                                </td>
-                            </tr>
-                        </table>
-
-                        {/* Address Grid */}
-                        <table width="100%" cellPadding="0" cellSpacing="0" style={{ marginBottom: "55px" }}>
-                            <tr>
-                                <td width="48%" style={{ verticalAlign: "top", paddingRight: "25px" }}>
-                                    <div style={{ fontSize: "9px", fontWeight: "900", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "12px" }}>Billed To</div>
-                                    <div style={{ fontSize: "16px", fontWeight: "800", color: "#0f172a", marginBottom: "8px" }}>{order.customer?.name}</div>
-                                    <div style={{ fontSize: "12px", color: "#475569", lineHeight: "1.7" }}>
-                                        {deliveryAddress || "No delivery address on record"}
-                                    </div>
-                                    <div style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", marginTop: "15px" }}>Contact: {order.customer?.phone}</div>
-                                </td>
-                                <td width="4%" style={{ borderLeft: "1px solid #f1f5f9" }}></td>
-                                <td width="48%" style={{ verticalAlign: "top", paddingLeft: "25px" }}>
-                                    <div style={{ fontSize: "9px", fontWeight: "900", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "12px" }}>Shipped From</div>
-                                    <div style={{ fontSize: "16px", fontWeight: "800", color: "#0f172a", marginBottom: "8px" }}>{order.seller?.shopName || 'Partner Merchant'}</div>
-                                    <div style={{ fontSize: "12px", color: "#475569", lineHeight: "1.7" }}>
-                                        {settings?.address || 'Verified Business Location'}<br />
-                                        Inventory Fulfillment Center
-                                    </div>
-                                    <div style={{ fontSize: "11px", fontWeight: "800", color: "#2563eb", marginTop: "15px" }}>{settings?.taxId ? `GSTIN: ${settings.taxId}` : 'Tax Verified Partner'}</div>
-                                </td>
-                            </tr>
-                        </table>
-
-                        {/* Manifest Table */}
-                        <div style={{ marginBottom: "50px" }}>
-                            <table width="100%" cellPadding="0" cellSpacing="0" style={{ borderCollapse: "collapse" }}>
-                                <thead>
-                                    <tr style={{ backgroundColor: "#f8fafc", borderTop: "1px solid #e2e8f0", borderBottom: "1px solid #e2e8f0" }}>
-                                        <th align="left" style={{ padding: "16px 20px", fontSize: "11px", fontWeight: "900", color: "#475569", textTransform: "uppercase" }}>Description</th>
-                                        <th align="center" style={{ padding: "16px 20px", fontSize: "11px", fontWeight: "900", color: "#475569", textTransform: "uppercase" }}>Unit Rate</th>
-                                        <th align="center" style={{ padding: "16px 20px", fontSize: "11px", fontWeight: "900", color: "#475569", textTransform: "uppercase" }}>Qty</th>
-                                        <th align="right" style={{ padding: "16px 20px", fontSize: "11px", fontWeight: "900", color: "#475569", textTransform: "uppercase" }}>Total</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {order.items.map((item, idx) => (
-                                        <tr key={idx} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                                            <td style={{ padding: "18px 20px" }}>
-                                                <div style={{ fontSize: "13px", fontWeight: "700", color: "#0f172a" }}>{item.name}</div>
-                                                <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "4px" }}>Item Ref: {item.product?._id?.slice(-8).toUpperCase() || item._id?.slice(-8).toUpperCase()}</div>
-                                            </td>
-                                            <td align="center" style={{ padding: "18px 20px", fontSize: "13px", color: "#475569", fontWeight: "700" }}>₹{item.price}</td>
-                                            <td align="center" style={{ padding: "18px 20px", fontSize: "13px", color: "#475569", fontWeight: "800" }}>{item.quantity}</td>
-                                            <td align="right" style={{ padding: "18px 20px", fontSize: "14px", fontWeight: "900", color: "#0f172a" }}>₹{item.price * item.quantity}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* Totals Summary */}
-                        <table width="100%" cellPadding="0" cellSpacing="0" style={{ marginBottom: "60px" }}>
-                            <tr>
-                                <td width="50%" style={{ verticalAlign: "top" }}>
-                                    <div style={{ backgroundColor: "#f8fafc", padding: "25px", borderRadius: "8px", border: "1px solid #f1f5f9" }}>
-                                        <div style={{ fontSize: "10px", color: "#94a3b8", fontWeight: "900", textTransform: "uppercase", marginBottom: "12px", letterSpacing: "1.5px" }}>Transaction Detail</div>
-                                        <div style={{ fontSize: "12px", color: "#475569", marginBottom: "8px" }}>Method: <b style={{ color: "#0f172a" }}>{order.paymentMode || order.payment?.method || 'CASH'}</b></div>
-                                        <div style={{ fontSize: "12px", color: "#475569" }}>Status: <b style={{ color: "#0f172a", textTransform: "uppercase" }}>{order.paymentStatus || order.payment?.status || 'PENDING'}</b></div>
-                                    </div>
-                                </td>
-                                <td width="10%"></td>
-                                <td width="40%" style={{ verticalAlign: "top" }}>
-                                    <table width="100%" cellPadding="8" cellSpacing="0">
-                                        <tr>
-                                            <td align="left" style={{ fontSize: "12px", color: "#64748b", fontWeight: "700" }}>Subtotal Aggregate</td>
-                                            <td align="right" style={{ fontSize: "13px", fontWeight: "800", color: "#0f172a" }}>₹{order.pricing?.subtotal || 0}</td>
-                                        </tr>
-                                        <tr>
-                                            <td align="left" style={{ fontSize: "12px", color: "#64748b", fontWeight: "700" }}>Logistics Cost</td>
-                                            <td align="right" style={{ fontSize: "13px", fontWeight: "800", color: "#2563eb" }}>+ ₹{order.pricing?.deliveryFee || 0}</td>
-                                        </tr>
-                                        <tr>
-                                            <td colSpan="2" style={{ padding: "12px 0" }}><div style={{ height: "1px", backgroundColor: "#e2e8f0" }}></div></td>
-                                        </tr>
-                                        <tr>
-                                            <td align="left" style={{ fontSize: "15px", fontWeight: "900", color: "#0f172a" }}>Grand Total</td>
-                                            <td align="right" style={{ fontSize: "24px", fontWeight: "900", color: "#2563eb" }}>₹{order.pricing?.total || 0}</td>
-                                        </tr>
-                                    </table>
-                                </td>
-                            </tr>
-                        </table>
-
-                        {/* Footer: Centered Verification */}
-                        <div style={{ marginTop: "auto", paddingTop: "40px", borderTop: "1px solid #f1f5f9", textAlign: "center" }}>
-                            <div style={{ fontSize: "12px", color: "#64748b", fontWeight: "800", textTransform: "uppercase", letterSpacing: "3px" }}>
-                                Thank you for your business
-                            </div>
-                            <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "10px", fontWeight: "600" }}>
-                                This is a system-generated commercial invoice. No physical signature required.
-                            </div>
-                            <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "5px" }}>
-                                {settings?.appName || 'Noyo Kart'} • Customer Support: support@appzeto.com
-                            </div>
+                        <div>
+                            <h4 className="text-sm font-black text-rose-950">
+                                Permanently delete order #{order.orderId}?
+                            </h4>
+                            <p className="text-xs font-semibold text-rose-700/80 mt-0.5">
+                                Customer: {order.customer?.name || order.customerName || 'Customer'} • Amount: ₹{order.pricing?.total?.toLocaleString() || 0}
+                            </p>
                         </div>
                     </div>
+
+                    <p className="text-xs font-medium text-slate-600 leading-relaxed">
+                        Are you sure you want to remove this order from the system? This action permanently deletes the order record and cannot be undone.
+                    </p>
+
+                    <div className="flex gap-3 pt-2">
+                        <button
+                            type="button"
+                            disabled={isDeleting}
+                            onClick={() => setIsDeleteModalOpen(false)}
+                            className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-all"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            disabled={isDeleting}
+                            onClick={handleDeleteOrder}
+                            className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 shadow-md shadow-rose-200"
+                        >
+                            {isDeleting ? "Deleting..." : "Delete Order"}
+                        </button>
+                    </div>
                 </div>
-            </div>
+            </Modal>
         </div>
     );
 };

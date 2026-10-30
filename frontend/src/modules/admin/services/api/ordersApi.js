@@ -24,6 +24,10 @@ export const adminOrdersApi = {
         axiosInstance.put(`/orders/returns/${orderId}/assign-delivery`, data),
     updateReturnQc: (orderId, data) =>
         axiosInstance.put(`/orders/returns/${orderId}/qc`, data),
+    deleteOrder: (orderId) =>
+        axiosInstance.delete(`/orders/${orderId}`),
+    deleteOrdersBulk: (orderIds) =>
+        axiosInstance.delete('/orders/bulk/delete', { data: { orderIds } }),
 };
 
 export default adminOrdersApi;

@@ -97,6 +97,11 @@ const settingSchema = new mongoose.Schema(
             default: 0,
             min: 0,
         },
+        returnPolicyDays: {
+            type: Number,
+            default: 7,
+            min: 0,
+        },
 
         /**
          * Admin fulfilment warehouse. Orders that no local seller can
@@ -242,6 +247,30 @@ const settingSchema = new mongoose.Schema(
             sellerEditRequiresApproval: {
                 type: Boolean,
                 default: false,
+            },
+        },
+
+        // ── Coming Soon Section ─────────────────────────────────────────
+        comingSoonSection: {
+            enabled: {
+                type: Boolean,
+                default: true,
+            },
+            title: {
+                type: String,
+                default: "Coming Soon",
+            },
+            subtitle: {
+                type: String,
+                default: "Exclusive preview of upcoming arrivals",
+            },
+            backgroundColor: {
+                type: String,
+                default: "#C084FC",
+            },
+            sideImageKey: {
+                type: String,
+                default: "beauty",
             },
         },
 

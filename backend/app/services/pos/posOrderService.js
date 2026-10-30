@@ -527,7 +527,13 @@ export async function deductPOSOrderStockOnce(orderDocId) {
  * @returns {Promise<Object>} Deleted order
  */
 export async function deletePOSOrder(orderDocId) {
-  const order = await Order.findById(orderDocId);
+  const isObjectId =
+    typeof orderDocId === "string" &&
+    orderDocId.length === 24 &&
+    mongoose.Types.ObjectId.isValid(orderDocId);
+  const order = await Order.findOne(
+    isObjectId ? { _id: orderDocId } : { orderId: orderDocId }
+  );
   if (!order) {
     throw badRequest("Order not found", 404);
   }

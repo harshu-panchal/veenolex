@@ -36,6 +36,7 @@ jest.unstable_mockModule("../app/services/cacheService.js", () => ({
   // Bypass the cache entirely: always call through to fetchFn.
   getOrSet: async (_key, fetchFn) => fetchFn(),
   getTTL: () => 60,
+  delPattern: jest.fn().mockResolvedValue(0),
 }));
 
 jest.unstable_mockModule("../app/services/productModerationService.js", () => ({
@@ -129,7 +130,7 @@ describe("getPublicOfferSections without a customer location", () => {
     expect(mockProductFind).not.toHaveBeenCalled();
   });
 
-  test("still narrows to nearby sellers once coordinates are supplied", async () => {
+  test("preserves all admin-selected products for all customer locations", async () => {
     mockGetNearbySellerIdsForCustomer.mockResolvedValue(["seller-1"]);
     mockOfferSectionFind.mockReturnValue(
       makeQuery([
@@ -141,6 +142,7 @@ describe("getPublicOfferSections without a customer location", () => {
           productIds: [
             { _id: "p1", sellerId: { _id: "seller-1" } },
             { _id: "p2", sellerId: { _id: "seller-2" } },
+            { _id: "p-admin", sellerId: null },
           ],
         },
       ]),
@@ -154,8 +156,7 @@ describe("getPublicOfferSections without a customer location", () => {
 
     expect(res.statusCode).toBe(200);
     const section = res.body.results[0];
-    expect(section.sellerIds).toHaveLength(1);
-    expect(section.productIds).toHaveLength(1);
-    expect(section.productIds[0]._id).toBe("p1");
+    expect(section.productIds).toHaveLength(3);
+    expect(section.productIds.map((p) => p._id)).toEqual(["p1", "p2", "p-admin"]);
   });
 });

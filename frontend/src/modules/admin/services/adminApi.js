@@ -14,5 +14,6 @@
  *
  *   import { adminOrdersApi } from '@modules/admin/services/api/ordersApi';
  */
+export * from './api';
 export { adminApi } from './api';
 export { default } from './api';

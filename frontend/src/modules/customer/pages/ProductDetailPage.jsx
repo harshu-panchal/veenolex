@@ -964,14 +964,6 @@ const ProductDetailPage = () => {
                 </button>
             </div>
 
-            {/* Mobile-only Offer Strip */}
-            <div className="md:hidden bg-white border border-[#e2e8f0] rounded-xl p-3 mb-6 flex justify-between items-center text-xs shadow-sm shadow-black/5 animate-in slide-in-from-top duration-300">
-                <span className="font-semibold text-slate-700">
-                    {product?.offerText || "Buy 1 Get 1 FREE | Use Code : OMG"}
-                </span>
-                <Link to="/offers" className="text-primary font-black uppercase hover:underline">Shop Now</Link>
-            </div>
-
             {/* Desktop-only Back Button */}
             <Link to={-1} className="hidden md:inline-flex items-center gap-2 text-slate-500 hover:text-primary font-bold mb-8 transition-colors group">
                 <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" /> Back
@@ -1415,8 +1407,14 @@ const ProductDetailPage = () => {
                                         <RotateCcw size={14} />
                                     </div>
                                     <div className="leading-tight">
-                                        <div className="text-[10px] font-bold text-slate-800">7 days</div>
-                                        <div className="text-[8px] text-slate-400 font-semibold">return and refund</div>
+                                        <div className="text-[10px] font-bold text-slate-800">
+                                            {Number(settings?.returnPolicyDays ?? 7) > 0
+                                                ? `${settings?.returnPolicyDays ?? 7} ${Number(settings?.returnPolicyDays ?? 7) === 1 ? 'day' : 'days'}`
+                                                : "No return"}
+                                        </div>
+                                        <div className="text-[8px] text-slate-400 font-semibold">
+                                            {Number(settings?.returnPolicyDays ?? 7) > 0 ? "return and refund" : "non-returnable"}
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3">
@@ -1425,7 +1423,11 @@ const ProductDetailPage = () => {
                                     </div>
                                     <div className="leading-tight">
                                         <div className="text-[10px] font-bold text-slate-800">FREE Shipping</div>
-                                        <div className="text-[8px] text-slate-400 font-semibold">on orders above ₹399</div>
+                                        <div className="text-[8px] text-slate-400 font-semibold">
+                                            {Number(settings?.freeDeliveryThreshold) > 0
+                                                ? `on orders above ₹${settings.freeDeliveryThreshold}`
+                                                : "on all orders"}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1857,134 +1859,9 @@ const ProductDetailPage = () => {
                             </div>
                         </div>
 
-                        {/* Thick Mobile Section Divider */}
-                        <div className="h-[8px] bg-slate-100 -mx-4" />
-
-                        {/* Payment and Secure Details */}
-                        <div className="bg-white pt-6 pb-4 space-y-5">
-                            <div className="text-center space-y-3">
-                                <h4 className="text-xs font-bold text-slate-800 tracking-wider uppercase">Pay Using</h4>
-                                
-                                <div className="space-y-2 px-4 max-w-sm mx-auto">
-                                    {/* Row 1 */}
-                                    <div className="flex justify-center gap-2">
-                                        <div className="w-[62px] h-9 bg-white border border-slate-200 rounded-md flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.02)] p-1 shrink-0">
-                                            <div className="flex flex-col items-center justify-center leading-none">
-                                                <span className="text-[11px] font-black tracking-tighter text-slate-800 flex items-center">
-                                                    UPI<span className="text-emerald-500 font-extrabold ml-0.5">▶</span>
-                                                </span>
-                                                <span className="text-[4.5px] text-slate-400 font-bold uppercase tracking-[0.1em] mt-0.5">Payments</span>
-                                            </div>
-                                        </div>
-                                        <div className="w-[62px] h-9 bg-white border border-slate-200 rounded-md flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.02)] p-1 shrink-0">
-                                            <div className="flex items-center gap-0.5">
-                                                <div className="w-3.5 h-3.5 bg-[#5f259f] rounded flex items-center justify-center shrink-0">
-                                                    <span className="text-white text-[8px] font-bold">pe</span>
-                                                </div>
-                                                <span className="text-[8px] font-black text-[#5f259f] tracking-tight">PhonePe</span>
-                                            </div>
-                                        </div>
-                                        <div className="w-[62px] h-9 bg-white border border-slate-200 rounded-md flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.02)] p-1 shrink-0">
-                                            <div className="flex flex-col items-center justify-center">
-                                                <span className="text-[11px] font-black text-amber-500 tracking-tighter leading-none">pay</span>
-                                                <span className="text-[5px] text-slate-400 font-bold leading-none mt-0.5">SECURE</span>
-                                            </div>
-                                        </div>
-                                        <div className="w-[62px] h-9 bg-white border border-slate-200 rounded-md flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.02)] p-1 shrink-0">
-                                            <div className="w-4.5 h-4.5 bg-orange-500 rounded-full flex items-center justify-center shrink-0">
-                                                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-white fill-current">
-                                                    <path d="M19 9h-4V3H9v8h4v10z" />
-                                                </svg>
-                                            </div>
-                                        </div>
-                                        <div className="w-[62px] h-9 bg-white border border-slate-200 rounded-md flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.02)] p-1 shrink-0">
-                                            <div className="flex items-center gap-0.5">
-                                                <div className="w-3.5 h-3.5 bg-teal-500 rounded-sm flex items-center justify-center font-bold text-white text-[9px] shrink-0">M</div>
-                                                <span className="text-[7.5px] font-bold text-slate-600">wallet</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Row 2 */}
-                                    <div className="flex justify-center gap-2">
-                                        <div className="w-[62px] h-9 bg-white border border-slate-200 rounded-md flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.02)] p-1 shrink-0">
-                                            <span className="text-blue-800 font-black text-xs italic tracking-tight font-serif">VISA</span>
-                                        </div>
-                                        <div className="w-[62px] h-9 bg-white border border-slate-200 rounded-md flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.02)] p-1 shrink-0">
-                                            <div className="flex items-center justify-center">
-                                                <div className="w-3 h-3 rounded-full bg-[#eb001b] -mr-1 opacity-90"></div>
-                                                <div className="w-3 h-3 rounded-full bg-[#ff5f00] opacity-90"></div>
-                                            </div>
-                                        </div>
-                                        <div className="w-[62px] h-9 bg-[#0070d2] border border-blue-600 rounded-md flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.02)] p-1 shrink-0">
-                                            <span className="text-white font-extrabold text-[7.5px] tracking-wider">AMEX</span>
-                                        </div>
-                                        <div className="w-[62px] h-9 bg-white border border-slate-200 rounded-md flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.02)] p-1 shrink-0">
-                                            <div className="flex flex-col items-center justify-center leading-none">
-                                                <span className="text-[8.5px] font-black italic text-blue-900 tracking-tighter">RuPay<span className="text-orange-500">❯</span></span>
-                                            </div>
-                                        </div>
-                                        <div className="w-[62px] h-9 bg-white border border-slate-200 rounded-md flex items-center justify-center shadow-[0_1px_2px_rgba(0,0,0,0.02)] p-1 shrink-0 text-center leading-none">
-                                            <span className="text-[5.5px] font-black text-slate-700 tracking-wider">NET BANKING</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="text-center space-y-2 pt-2 border-t border-slate-100">
-                                <h4 className="text-[11px] font-semibold text-slate-500 tracking-wide">100% Secure Payment</h4>
-                                <div className="flex justify-center">
-                                    <svg viewBox="0 0 100 60" className="w-14 h-8 text-slate-400">
-                                        <rect x="25" y="10" width="50" height="30" rx="3" fill="#e2e8f0" stroke="#cbd5e1" strokeWidth="1.5" />
-                                        <line x1="25" y1="18" x2="75" y2="18" stroke="#94a3b8" strokeWidth="4" />
-                                        <rect x="15" y="20" width="50" height="30" rx="3" fill="#a7f3d0" stroke="#34d399" strokeWidth="1.5" />
-                                        <rect x="22" y="26" width="10" height="7" rx="1" fill="#fcd34d" />
-                                        <line x1="22" y1="40" x2="42" y2="40" stroke="#059669" strokeWidth="2" strokeLinecap="round" />
-                                        <line x1="22" y1="44" x2="32" y2="44" stroke="#059669" strokeWidth="2" strokeLinecap="round" />
-                                        <circle cx="70" cy="40" r="11" fill="#10b981" />
-                                        <rect x="66" y="37" width="8" height="6" rx="1" fill="white" />
-                                        <path d="M68 37 V34 C68 32.5 72 32.5 72 34 V37" fill="none" stroke="white" strokeWidth="1.2" />
-                                    </svg>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Social Links & Legal Info */}
-                        <div className="bg-[#FAF9F4] py-6 px-4 space-y-4">
-                            <div className="flex justify-center gap-5">
-                                <a href="https://facebook.com" target="_blank" rel="noreferrer" className="text-slate-600 hover:text-primary transition-colors">
-                                    <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
-                                        <path d="M22 12c0-5.52-4.48-10-10-10S2 6.48 2 12c0 4.84 3.44 8.87 8 9.8V15H8v-3h2V9.5C10 7.57 11.57 6 13.5 6H16v3h-2c-.55 0-1 .45-1 1v2h3v3h-3v6.95c4.56-.93 8-4.96 8-9.75z" />
-                                    </svg>
-                                </a>
-                                <a href="https://twitter.com" target="_blank" rel="noreferrer" className="text-slate-600 hover:text-primary transition-colors">
-                                    <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
-                                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                                    </svg>
-                                </a>
-                                <a href="mailto:support@veenolex.com" className="text-slate-600 hover:text-primary transition-colors">
-                                    <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
-                                        <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" />
-                                    </svg>
-                                </a>
-                                <a href="https://instagram.com" target="_blank" rel="noreferrer" className="text-slate-600 hover:text-primary transition-colors">
-                                    <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
-                                        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.051.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z" />
-                                    </svg>
-                                </a>
-                                <a href="https://youtube.com" target="_blank" rel="noreferrer" className="text-slate-600 hover:text-primary transition-colors">
-                                    <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
-                                        <path d="M23.498 6.163a3.003 3.003 0 0 0-2.11-2.107C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.388.556a3.003 3.003 0 0 0-2.11 2.107C0 8.083 0 12 0 12s0 3.917.502 5.837a3.003 3.003 0 0 0 2.11 2.107C4.5 20.5 12 20.5 12 20.5s7.5 0 9.388-.556a3.003 3.003 0 0 0 2.11-2.107C24 15.917 24 12 24 12s0-3.917-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
-                                    </svg>
-                                </a>
-                                <a href="https://pinterest.com" target="_blank" rel="noreferrer" className="text-slate-600 hover:text-primary transition-colors">
-                                    <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
-                                        <path d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 5.079 3.158 9.417 7.618 11.162-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.966 1.406-5.966s-.359-.72-.359-1.781c0-1.663.967-2.909 2.17-2.909 1.023 0 1.517.769 1.517 1.686 0 1.03-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738.1.12.115.227.085.352-.093.386-.299 1.213-.34 1.378-.054.218-.179.265-.41.156-1.529-.711-2.484-2.946-2.484-4.743 0-3.864 2.808-7.411 8.093-7.411 4.248 0 7.55 3.027 7.55 7.074 0 4.22-2.66 7.619-6.352 7.619-1.24 0-2.409-.644-2.808-1.406 0 0-.613 2.333-.762 2.906-.277 1.066-1.025 2.402-1.525 3.216 1.126.347 2.316.536 3.546.536 6.62 0 11.986-5.366 11.986-11.987C23.999 5.368 18.63 0 12.017 0z" />
-                                    </svg>
-                                </a>
-                            </div>
-
-                            <div className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest pt-4 pb-16 border-t border-slate-200/50 max-w-xs mx-auto flex items-center justify-center gap-2">
+                        {/* Legal Info */}
+                        <div className="bg-[#FAF9F4] py-6 px-4">
+                            <div className="text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest pb-16 max-w-xs mx-auto flex items-center justify-center gap-2">
                                 <Link to="/privacy" className="hover:underline hover:text-slate-600 transition-colors">Privacy Policy</Link>
                                 <span>|</span>
                                 <Link to="/terms" className="hover:underline hover:text-slate-600 transition-colors">Return Policy</Link>

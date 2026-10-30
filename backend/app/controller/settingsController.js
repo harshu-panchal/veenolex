@@ -36,6 +36,7 @@ const ALLOWED_KEYS = [
   "keywords",
   "platformFee",
   "freeDeliveryThreshold",
+  "returnPolicyDays",
   "returnDeliveryCommission",
   "deliveryPricingMode",
   "pricingMode",
@@ -58,6 +59,7 @@ const ALLOWED_KEYS = [
   "lowStockAlertsEnabled",
   "productApproval",
   "promoMessages",
+  "comingSoonSection",
 ];
 
 function flattenForMongoSet(prefix, value, target) {
@@ -114,6 +116,7 @@ const updateSettingsSchema = Joi.object({
   promoMessages: Joi.array().items(Joi.string().max(200)),
   platformFee: Joi.number().min(0),
   freeDeliveryThreshold: Joi.number().min(0),
+  returnPolicyDays: Joi.number().min(0),
   returnDeliveryCommission: Joi.number().min(0),
   deliveryPricingMode: Joi.string().valid("fixed_price", "distance_based"),
   pricingMode: Joi.string().valid("fixed_price", "distance_based"),
@@ -139,6 +142,13 @@ const updateSettingsSchema = Joi.object({
   codAdvanceScope: Joi.string().valid("PER_CHECKOUT", "PER_ORDER"),
   codAdvanceDecisionHours: Joi.number().min(1),
   lowStockAlertsEnabled: Joi.boolean(),
+  comingSoonSection: Joi.object({
+    enabled: Joi.boolean(),
+    title: Joi.string().allow("").max(200),
+    subtitle: Joi.string().allow("").max(300),
+    backgroundColor: Joi.string().allow("").max(50),
+    sideImageKey: Joi.string().allow("").max(50),
+  }).unknown(false),
   productApproval: Joi.object({
     sellerCreateRequiresApproval: Joi.boolean(),
     sellerEditRequiresApproval: Joi.boolean(),
@@ -163,7 +173,7 @@ export const getPublicSettings = async (req, res) => {
       async () => {
         const existing = await Setting.findOne(filter)
           .select(
-            "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor returnDeliveryCommission deliveryPricingMode pricingMode customerBaseDeliveryFee riderBasePayout baseDeliveryCharge baseDistanceCapacityKm incrementalKmSurcharge deliveryPartnerRatePerKm fleetCommissionRatePerKm fixedDeliveryFee handlingFeeStrategy codEnabled onlineEnabled codAdvanceEnabled codAdvanceAmount codAdvanceScope codAdvanceDecisionHours lowStockAlertsEnabled productApproval promoMessages fulfillmentWarehouse createdAt",
+            "appName supportEmail supportPhone currencySymbol currencyCode timezone logoUrl faviconUrl primaryColor secondaryColor platformFee freeDeliveryThreshold returnPolicyDays returnDeliveryCommission deliveryPricingMode pricingMode customerBaseDeliveryFee riderBasePayout baseDeliveryCharge baseDistanceCapacityKm incrementalKmSurcharge deliveryPartnerRatePerKm fleetCommissionRatePerKm fixedDeliveryFee handlingFeeStrategy codEnabled onlineEnabled codAdvanceEnabled codAdvanceAmount codAdvanceScope codAdvanceDecisionHours lowStockAlertsEnabled productApproval promoMessages fulfillmentWarehouse createdAt",
           )
           .lean();
         return existing || null;
@@ -176,6 +186,9 @@ export const getPublicSettings = async (req, res) => {
       settings = created.toObject();
       await invalidate("cache:platform:settings:*");
     }
+
+    if (settings.returnPolicyDays === undefined) settings.returnPolicyDays = 7;
+    if (settings.freeDeliveryThreshold === undefined) settings.freeDeliveryThreshold = 0;
 
     settings.productApproval = normalizeProductApprovalConfig(settings || {});
 

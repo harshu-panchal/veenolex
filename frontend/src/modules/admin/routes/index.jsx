@@ -14,7 +14,6 @@ import {
   Receipt,
   CircleDollarSign,
   Users,
-  HelpCircle,
   ClipboardList,
   RotateCcw,
   Settings,
@@ -99,6 +98,7 @@ const PromoStripManagement = React.lazy(() => import("../pages/PromoStripManagem
 const AdminProfile = React.lazy(() => import("../pages/AdminProfile"));
 const PopupManagement = React.lazy(() => import("../pages/PopupManagement"));
 const TodayBestPricesManagement = React.lazy(() => import("../pages/TodayBestPricesManagement"));
+const CheckoutRecommendationsManagement = React.lazy(() => import("../pages/CheckoutRecommendationsManagement"));
 const ReportsPage = React.lazy(() => import("../pages/ReportsPage"));
 const SellerProductRequests = React.lazy(() => import("../pages/SellerProductRequests"));
 const FulfillmentOrders = React.lazy(() => import("../pages/FulfillmentOrders"));
@@ -143,15 +143,13 @@ const navItems = [
     icon: Sparkles,
     color: "amber",
     children: [
-      { label: "Create Sections", path: "/admin/experience-studio" },
       { label: "Hero & categories per page", path: "/admin/hero-categories" },
-      { label: "Send Notifications", path: "/admin/notifications" },
       { label: "Promo Strip", path: "/admin/promo-strip" },
       { label: "Coupons & Promos", path: "/admin/coupons" },
       { label: "Offer Sections", path: "/admin/offer-sections" },
-      { label: "Shop by Store", path: "/admin/shop-by-store" },
       { label: "Seasonal Popups", path: "/admin/popups" },
       { label: "Today's Best Prices", path: "/admin/today-best-prices" },
+      { label: "Checkout Recommendations", path: "/admin/checkout-recommendations" },
     ],
   },
   {
@@ -206,7 +204,6 @@ const navItems = [
     color: "green",
   },
   { label: "Customers", path: "/admin/customers", icon: Users, color: "sky" },
-  { label: "FAQs", path: "/admin/faqs", icon: HelpCircle, color: "pink" },
   {
     label: "Orders",
     icon: ClipboardList,
@@ -302,6 +299,7 @@ const AdminRoutes = () => {
         <Route path="/promo-strip" element={<PromoStripManagement />} />
         <Route path="/popups" element={<PopupManagement />} />
         <Route path="/today-best-prices" element={<TodayBestPricesManagement />} />
+        <Route path="/checkout-recommendations" element={<CheckoutRecommendationsManagement />} />
         <Route path="/offers" element={<OffersManagement />} />
         <Route path="/offer-sections" element={<OfferSectionsManagement />} />
         <Route path="/shop-by-store" element={<ShopByStoreManagement />} />

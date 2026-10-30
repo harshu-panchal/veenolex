@@ -13,6 +13,7 @@ import {
     rejectProduct,
     checkBarcodeUnique,
     generateUniqueBarcode,
+    getComingSoonSection,
 } from "../controller/productController.js";
 import { adjustStock, getStockHistory } from "../controller/stockController.js";
 import {
@@ -33,6 +34,9 @@ router.get("/", optionalVerifyToken, getProducts);
 
 // Serviceability for a point — used by checkout and the address picker.
 router.get("/serviceability", getServiceability);
+
+// Coming soon section (public)
+router.get("/coming-soon-section", getComingSoonSection);
 
 // Barcode verification & generation
 router.get("/barcode/check", optionalVerifyToken, checkBarcodeUnique);

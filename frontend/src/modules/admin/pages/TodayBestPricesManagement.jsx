@@ -58,19 +58,21 @@ export default function TodayBestPricesManagement() {
       setIsLoading(true);
       const [tbpRes, prodRes] = await Promise.all([
         adminApi.getTodayBestPricesAdmin().catch(() => ({ data: { items: [] } })),
-        adminApi.getProducts({ limit: 200 }).catch(() => ({ data: { result: { items: [] } } })),
+        adminApi.getProducts({ limit: 300, sellerId: "admin" }).catch(() => ({ data: { result: { items: [] } } })),
       ]);
 
       const tbpList = tbpRes.data?.result?.items || tbpRes.data?.results || tbpRes.data || [];
       const configured = Array.isArray(tbpList) ? tbpList : [];
-      setItems(configured);
+      const adminConfigured = configured.filter((item) => !item.product?.sellerId || item.product?.sellerId === "admin");
+      setItems(adminConfigured);
 
       const rawProds = prodRes.data?.result?.items || prodRes.data?.result || prodRes.data?.results || [];
       const catalog = Array.isArray(rawProds) ? rawProds : [];
-      setCatalogProducts(catalog);
+      const adminOnlyCatalog = catalog.filter((p) => !p.sellerId || p.sellerId === "admin");
+      setCatalogProducts(adminOnlyCatalog);
 
       // Default active tab to "all_products" if none configured, or "configured" if there are configured items
-      if (configured.length > 0) {
+      if (adminConfigured.length > 0) {
         setActiveTab("configured");
       } else {
         setActiveTab("all_products");
@@ -118,10 +120,14 @@ export default function TodayBestPricesManagement() {
         setIsSearchingProducts(true);
         const res = await adminApi.getProducts({
           search: productSearchQuery,
-          limit: 10,
+          sellerId: "admin",
+          limit: 20,
         });
         const rawProducts = res.data?.result?.items || res.data?.result || res.data?.results || [];
-        setSearchResults(Array.isArray(rawProducts) ? rawProducts : []);
+        const adminResults = Array.isArray(rawProducts)
+          ? rawProducts.filter((p) => !p.sellerId || p.sellerId === "admin")
+          : [];
+        setSearchResults(adminResults);
       } catch (error) {
         console.error("Error searching products:", error);
       } finally {
@@ -351,7 +357,7 @@ export default function TodayBestPricesManagement() {
             </div>
           </h1>
           <p className="ds-description mt-1">
-            Choose products to show on the user homepage "Today's Best Prices" section and upload custom display images.
+            Choose admin products to show on the user homepage "Today's Best Prices" section and upload custom display images.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -388,7 +394,7 @@ export default function TodayBestPricesManagement() {
             )}
           >
             <Grid className="h-4 w-4" />
-            Choose From Store Products ({catalogProducts.length})
+            Choose From Admin Products ({catalogProducts.length})
           </button>
           <button
             onClick={() => setActiveTab("configured")}
@@ -410,7 +416,7 @@ export default function TodayBestPricesManagement() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search products by name..."
+            placeholder="Search admin products by name..."
             className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10 transition-all placeholder:font-normal"
           />
         </div>
@@ -513,7 +519,7 @@ export default function TodayBestPricesManagement() {
               ) : (
                 <div className="text-center py-16 border border-dashed border-slate-200 rounded-3xl bg-white shadow-sm flex flex-col items-center justify-center">
                   <AlertCircle className="h-10 w-10 text-slate-300 mb-3" />
-                  <p className="text-sm font-black text-slate-700">No products match your search</p>
+                  <p className="text-sm font-black text-slate-700">No admin products match your search</p>
                   <p className="text-xs text-slate-400 mt-1 max-w-sm">
                     Try searching with another keyword or clear the search filter above.
                   </p>
@@ -716,7 +722,7 @@ export default function TodayBestPricesManagement() {
           {!editingItem ? (
             <div className="space-y-1.5 relative">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Search & Select Product
+                Search & Select Admin Product
               </label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -724,7 +730,7 @@ export default function TodayBestPricesManagement() {
                   type="text"
                   value={productSearchQuery}
                   onChange={(e) => setProductSearchQuery(e.target.value)}
-                  placeholder="Type product name (e.g., face wash)"
+                  placeholder="Type admin product name (e.g., face wash)"
                   className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary/10 transition-all placeholder:font-normal"
                 />
               </div>

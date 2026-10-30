@@ -48,14 +48,22 @@ export const adminContentApi = {
     // Offer Sections (category → products, banner + side image)
     getOfferSections: (params) =>
         axiosInstance.get('/admin-offer-sections', { params }),
-    createOfferSection: (data) =>
-        axiosInstance.post('/admin-offer-sections', data),
-    updateOfferSection: (id, data) =>
-        axiosInstance.put(`/admin-offer-sections/${id}`, data),
-    deleteOfferSection: (id) =>
-        axiosInstance.delete(`/admin-offer-sections/${id}`),
-    reorderOfferSections: (items) =>
-        axiosInstance.put('/admin-offer-sections/reorder', { items }),
+    createOfferSection: (data) => {
+        invalidateCache('/offer-sections');
+        return axiosInstance.post('/admin-offer-sections', data);
+    },
+    updateOfferSection: (id, data) => {
+        invalidateCache('/offer-sections');
+        return axiosInstance.put(`/admin-offer-sections/${id}`, data);
+    },
+    deleteOfferSection: (id) => {
+        invalidateCache('/offer-sections');
+        return axiosInstance.delete(`/admin-offer-sections/${id}`);
+    },
+    reorderOfferSections: (items) => {
+        invalidateCache('/offer-sections');
+        return axiosInstance.put('/admin-offer-sections/reorder', { items });
+    },
 
     // Coupons & Promos
     getCoupons: (params) => axiosInstance.get('/admin/coupons', { params }),
@@ -76,6 +84,12 @@ export const adminContentApi = {
     updateTodayBestPrice: (id, data) => axiosInstance.put(`/today-best-prices/admin/${id}`, data),
     deleteTodayBestPrice: (id) => axiosInstance.delete(`/today-best-prices/admin/${id}`),
     uploadTodayBestPriceImage: (formData) => axiosInstance.post('/today-best-prices/admin/upload-image', formData),
+
+    // Checkout Recommendations Management
+    getCheckoutRecommendationsAdmin: (params) => axiosInstance.get('/checkout-recommendations/admin', { params }),
+    createCheckoutRecommendation: (data) => axiosInstance.post('/checkout-recommendations/admin', data),
+    updateCheckoutRecommendation: (id, data) => axiosInstance.put(`/checkout-recommendations/admin/${id}`, data),
+    deleteCheckoutRecommendation: (id) => axiosInstance.delete(`/checkout-recommendations/admin/${id}`),
 };
 
 export default adminContentApi;

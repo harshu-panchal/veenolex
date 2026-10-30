@@ -41,6 +41,7 @@ import {
 import QuickCategorySlider from "../components/home/QuickCategorySlider";
 import LowestPriceSection from "../components/home/LowestPriceSection";
 import OfferSections from "../components/home/OfferSections";
+import ComingSoonSection from "../components/home/ComingSoonSection";
 import PromoMarquee from "../components/home/PromoMarquee";
 
 /**
@@ -389,6 +390,7 @@ const Home = () => {
   };
 
   const [offerSections, setOfferSections] = useState(() => cachedHomePageData?.offerSections || []);
+  const [comingSoonData, setComingSoonData] = useState(() => cachedHomePageData?.comingSoonData || { config: { enabled: true }, products: [] });
   const [noServiceData, setNoServiceData] = useState(null);
 
   useEffect(() => {
@@ -411,6 +413,7 @@ const Home = () => {
     setTodayBestPrices(data.todayBestPrices || []);
     setExperienceSections(data.experienceSections || []);
     setOfferSections(data.offerSections || []);
+    setComingSoonData(data.comingSoonData || { config: { enabled: true }, products: [] });
     if (data.heroConfig) setHeroConfig(data.heroConfig);
     setActiveCategory((prev) => {
       const parsed = getJSON(STORAGE_KEYS.EXPERIENCE_RETURN, null, { storage: "session" });
@@ -447,12 +450,13 @@ const Home = () => {
       // way and let the backend decide whether to apply zone filtering. Short
       // circuiting to an empty list here was what made the storefront show
       // "Service Unavailable" to anyone who had not granted location.
-      let [catRes, prodRes, expRes, sectionsRes, tbpRes] = await Promise.all([
+      let [catRes, prodRes, expRes, sectionsRes, tbpRes, csRes] = await Promise.all([
         customerApi.getCategories(),
         customerApi.getProducts(productParams).catch(() => ({ data: { success: true, result: { items: [] } } })),
         customerApi.getExperienceSections({ pageType: "home" }).catch(() => null),
         customerApi.getOfferSections(hasValidLocation ? { lat: currentLocation.latitude, lng: currentLocation.longitude } : {}).catch(() => ({ data: {} })),
         customerApi.getTodayBestPrices().catch(() => null),
+        customerApi.getComingSoonSection().catch(() => ({ data: {} })),
       ]);
       const nextHomeData = {
         categories: [ALL_CATEGORY],
@@ -462,6 +466,7 @@ const Home = () => {
         quickCategories: [],
         experienceSections: [],
         offerSections: [],
+        comingSoonData: { config: { enabled: true }, products: [] },
         categoryMap: {},
         subcategoryMap: {},
         formattedHeaders: [],
@@ -525,6 +530,11 @@ const Home = () => {
       if (expRes?.data?.success) nextHomeData.experienceSections = Array.isArray(expRes.data.result || expRes.data.results) ? (expRes.data.result || expRes.data.results) : [];
       const sectionsList = sectionsRes?.data?.results || sectionsRes?.data?.result || sectionsRes?.data;
       nextHomeData.offerSections = Array.isArray(sectionsList) ? sectionsList : [];
+      const csResult = csRes?.data?.result || csRes?.data?.results || csRes?.data;
+      nextHomeData.comingSoonData = {
+        config: csResult?.config || { enabled: true, title: "Coming Soon" },
+        products: Array.isArray(csResult?.products) ? csResult.products : [],
+      };
       applyHomePageData(nextHomeData, { cacheKey });
       await hydrateSelectedSectionProducts(nextHomeData.experienceSections, nextHomeData.products);
     } catch (error) { console.error("Error:", error); } finally { setIsLoading(false); }
@@ -664,6 +674,7 @@ const Home = () => {
               <QuickCategorySlider categories={effectiveQuickCategories} onCategoryClick={(id) => navigate(`/category/${id}`)} />
               <LowestPriceSection products={todayBestPrices.length > 0 ? todayBestPrices : products} onSeeAll={() => navigate("/category/all")} />
               <OfferSections sections={offerSections} noServiceData={noServiceData} />
+              <ComingSoonSection config={comingSoonData?.config} products={comingSoonData?.products} />
               {sectionsForRenderer.length > 0 && (
                 <div className="container mx-auto px-4 md:px-8 lg:px-[50px] pt-0 pb-10 md:pt-0 md:pb-16">
                   <SectionRenderer sections={sectionsForRenderer} productsById={productsById} categoriesById={categoryMap} subcategoriesById={subcategoryMap} />
