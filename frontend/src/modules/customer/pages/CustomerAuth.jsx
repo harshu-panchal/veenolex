@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@core/context/AuthContext';
 import { useSettings } from '@core/context/SettingsContext';
+import { getJSON, STORAGE_KEYS } from '@core/utils/storage';
 import {
     Phone,
     ShieldCheck,
@@ -82,6 +83,7 @@ const CustomerAuth = () => {
     const appName = settings?.appName || 'App';
     const logoUrl = settings?.logoUrl || LogoImage;
     const navigate = useNavigate();
+    const location = useLocation();
 
     const [formData, setFormData] = useState({
         phone: '',
@@ -142,9 +144,17 @@ const CustomerAuth = () => {
             const response = await customerApi.verifyOtp({ phone: formData.phone, otp: formData.otp, location: loginLocation });
             const { token, customer } = response.data.result;
             if (loginLocation) markLocationSynced(loginLocation);
+
+            const guestCart = getJSON(STORAGE_KEYS.CART, []);
+            const hasGuestItems = Array.isArray(guestCart) && guestCart.length > 0;
+            const targetFrom = location.state?.from?.pathname || location.state?.from;
+
             login({ ...customer, token, role: 'customer' });
             toast.success('Successfully Logged In!');
-            navigate('/');
+
+            // Redirect to checkout if coming from checkout OR has items in cart waiting to be ordered
+            const destination = (targetFrom === '/checkout' || hasGuestItems) ? '/checkout' : (targetFrom || '/');
+            navigate(destination, { replace: true });
         } catch (error) {
             const apiMessage = error?.response?.data?.message;
             toast.error(apiMessage || 'Invalid OTP');

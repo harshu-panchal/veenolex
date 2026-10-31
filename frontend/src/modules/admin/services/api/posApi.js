@@ -30,6 +30,8 @@ export const adminPosApi = {
 
   // Credit / Udhaar
   getCreditCustomers: (params) => axiosInstance.get("/admin/pos/credit/customers", { params }),
+  createCustomer: (data) => axiosInstance.post("/admin/pos/customers", data),
+  updateCustomer: (id, data) => axiosInstance.put(`/admin/pos/customers/${id}`, data),
   getCreditHistory: (customerId, params) => axiosInstance.get(`/admin/pos/credit/history/${customerId}`, { params }),
   addCredit: (data) => axiosInstance.post("/admin/pos/credit/add", data),
   recordCreditPayment: (data) => axiosInstance.post("/admin/pos/credit/payment", data),

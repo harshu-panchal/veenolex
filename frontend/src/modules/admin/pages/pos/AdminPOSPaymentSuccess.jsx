@@ -118,6 +118,12 @@ export default function AdminPOSPaymentSuccess() {
             <p><b>Order ID:</b> {order.orderId}</p>
             <p><b>Date:</b> {new Date(order.createdAt).toLocaleString()}</p>
             <p><b>Customer:</b> {order.customerName || "Walk-in"}</p>
+            {order.customerPhone && <p><b>Phone:</b> {order.customerPhone}</p>}
+            {(order.customerAddress || (order.address?.address && order.address.address !== "POS Order")) && (
+              <p className="break-words">
+                <b>Address:</b> {order.customerAddress || order.address?.address}
+              </p>
+            )}
             <p className="border-b border-dashed border-black my-2" />
           </div>
           <table className="w-full text-left text-[11px] mb-4">

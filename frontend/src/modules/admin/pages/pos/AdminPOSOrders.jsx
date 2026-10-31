@@ -57,7 +57,10 @@ export default function AdminPOSOrders() {
   const [searchCustomerQuery, setSearchCustomerQuery] = useState("");
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
-  const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", email: "" });
+  const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", address: "" });
+  const [showEditCustomerModal, setShowEditCustomerModal] = useState(false);
+  const [editCustomer, setEditCustomer] = useState({ name: "", phone: "", address: "" });
+  const [isUpdatingCustomer, setIsUpdatingCustomer] = useState(false);
 
   // Camera Barcode Scanner
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -344,21 +347,95 @@ export default function AdminPOSOrders() {
   const handleCreateCustomer = async (e) => {
     e.preventDefault();
     try {
-      const res = await axiosInstance.post("/user", {
+      const res = await adminPosApi.createCustomer({
         name: newCustomer.name,
         phone: newCustomer.phone,
-        email: newCustomer.email || undefined,
-        role: "user"
+        address: newCustomer.address ? newCustomer.address.trim() : undefined,
       });
-      if (res.data?.user) {
+      const customer = res.data?.customer || res.data?.user;
+      if (customer) {
         toast.success("Customer added successfully");
-        selectCustomer(res.data.user);
+        selectCustomer(customer);
         setShowAddCustomerModal(false);
-        setNewCustomer({ name: "", phone: "", email: "" });
+        setNewCustomer({ name: "", phone: "", address: "" });
         fetchCustomers();
       }
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to create customer");
+    }
+  };
+
+  const openEditCustomerModal = () => {
+    const custAddr =
+      currentCustomer.address ||
+      currentCustomer.location?.address ||
+      currentCustomer.addresses?.[0]?.fullAddress ||
+      "";
+    setEditCustomer({
+      name: currentCustomer.name || "",
+      phone: currentCustomer.phone === "0000000000" ? "" : (currentCustomer.phone || ""),
+      address: custAddr === "POS Order" ? "" : custAddr,
+    });
+    setShowEditCustomerModal(true);
+  };
+
+  const handleUpdateCustomer = async (e) => {
+    e.preventDefault();
+    try {
+      setIsUpdatingCustomer(true);
+      const isRegistered = currentCustomer._id && currentCustomer._id !== "walk-in-customer";
+
+      if (isRegistered) {
+        const res = await adminPosApi.updateCustomer(currentCustomer._id, {
+          name: editCustomer.name.trim() || undefined,
+          phone: editCustomer.phone.trim() || undefined,
+          address: editCustomer.address.trim(),
+        });
+
+        const updated = res.data?.customer || res.data?.user;
+        if (updated) {
+          toast.success("Customer details updated successfully");
+          setBills((prevBills) =>
+            prevBills.map((b) =>
+              b.id === activeTab
+                ? {
+                    ...b,
+                    customer: {
+                      ...b.customer,
+                      ...updated,
+                      address: editCustomer.address.trim(),
+                    },
+                  }
+                : b
+            )
+          );
+          fetchCustomers();
+        }
+      } else {
+        // Walk-in customer: update current bill customer info
+        setBills((prevBills) =>
+          prevBills.map((b) =>
+            b.id === activeTab
+              ? {
+                  ...b,
+                  customer: {
+                    ...b.customer,
+                    name: editCustomer.name.trim() || "Walk-in Customer",
+                    phone: editCustomer.phone.trim() || "0000000000",
+                    address: editCustomer.address.trim(),
+                  },
+                }
+              : b
+          )
+        );
+        toast.success("Customer details updated for this bill");
+      }
+
+      setShowEditCustomerModal(false);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to update customer details");
+    } finally {
+      setIsUpdatingCustomer(false);
     }
   };
 
@@ -400,10 +477,23 @@ export default function AdminPOSOrders() {
     try {
       setLoading(true);
 
+      const customerAddress =
+        currentCustomer.address ||
+        currentCustomer.location?.address ||
+        currentCustomer.addresses?.[0]?.fullAddress ||
+        currentCustomer.addresses?.[0]?.formattedAddress ||
+        "";
+
       const payload = {
         customerId: currentCustomer._id,
         paymentMethod,
         paymentStatus: paymentMethod === "Credit" ? "Pending" : paymentStatus,
+        customerAddress,
+        address: {
+          name: currentCustomer.name || "POS Customer",
+          phone: currentCustomer.phone || "",
+          address: customerAddress || "POS Order",
+        },
         items: cart.map((item) => ({
           productId: item.productId,
           variationId: item.variantId,
@@ -512,8 +602,23 @@ export default function AdminPOSOrders() {
     doc.text(`Customer Name: ${lastCreatedOrder.customerName || "N/A"}`, 140, 30);
     doc.text(`Customer Phone: ${lastCreatedOrder.customerPhone || "N/A"}`, 140, 35);
 
+    const custAddr =
+      lastCreatedOrder.customerAddress ||
+      (lastCreatedOrder.address?.address && lastCreatedOrder.address.address !== "POS Order" ? lastCreatedOrder.address.address : "") ||
+      lastCreatedOrder.address?.fullAddress ||
+      "";
+
+    let nextY = 40;
+    if (custAddr) {
+      const wrappedAddr = doc.splitTextToSize(`Address: ${custAddr}`, 56);
+      doc.text(wrappedAddr, 140, nextY);
+      nextY += wrappedAddr.length * 4.5;
+    }
+
+    const separatorY = Math.max(42, nextY + 2);
+
     // Separator line
-    doc.line(14, 42, 196, 42);
+    doc.line(14, separatorY, 196, separatorY);
 
     // Table entries
     const tableRows = lastCreatedOrder.items.map((item, idx) => [
@@ -527,7 +632,7 @@ export default function AdminPOSOrders() {
     ]);
 
     autoTable(doc, {
-      startY: 46,
+      startY: separatorY + 4,
       head: [["#", "Item Name", "HSN", "GST", "Qty", "Rate", "Amount"]],
       body: tableRows,
       theme: "grid",
@@ -714,20 +819,60 @@ export default function AdminPOSOrders() {
             onClick={() => setShowCustomerDropdown(!showCustomerDropdown)}
             className="flex items-center justify-between bg-slate-50 border border-slate-200/60 rounded-xl p-3 cursor-pointer hover:border-slate-350 transition-colors"
           >
-            <div className="flex items-center gap-2.5">
-              <User className="w-4 h-4 text-emerald-600" />
-              <div>
-                <p className="text-xs font-bold text-slate-800">{currentCustomer.name}</p>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <User className="w-4 h-4 text-emerald-600 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-800 truncate">{currentCustomer.name}</p>
                 <p className="text-[10px] text-slate-500">{currentCustomer.phone}</p>
+                {(currentCustomer.address || currentCustomer.location?.address || currentCustomer.addresses?.[0]?.fullAddress) ? (
+                  <p
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEditCustomerModal();
+                    }}
+                    className="text-[10px] text-emerald-600 hover:text-emerald-700 underline underline-offset-2 decoration-emerald-300 truncate max-w-[200px] cursor-pointer"
+                    title={currentCustomer.address || currentCustomer.location?.address || currentCustomer.addresses?.[0]?.fullAddress}
+                  >
+                    📍 {currentCustomer.address || currentCustomer.location?.address || currentCustomer.addresses?.[0]?.fullAddress}
+                  </p>
+                ) : (
+                  <p
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEditCustomerModal();
+                    }}
+                    className="text-[10px] text-slate-400 hover:text-emerald-600 cursor-pointer flex items-center gap-1 mt-0.5"
+                  >
+                    <Edit2 className="w-2.5 h-2.5" /> Add Address
+                  </p>
+                )}
               </div>
             </div>
-            <Plus
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowAddCustomerModal(true);
-              }}
-              className="w-4 h-4 text-emerald-600 hover:text-emerald-700"
-            />
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                title="Edit Address & Phone"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openEditCustomerModal();
+                }}
+                className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-slate-200/60 rounded-lg transition-colors flex items-center gap-1 text-[11px] font-semibold"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Edit</span>
+              </button>
+              <button
+                type="button"
+                title="Add New Customer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowAddCustomerModal(true);
+                }}
+                className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Search Dropdown list */}
@@ -749,18 +894,28 @@ export default function AdminPOSOrders() {
               >
                 Walk-in Customer
               </div>
-              {customers.map((cust) => (
-                <div
-                  key={cust._id}
-                  onClick={() => selectCustomer(cust)}
-                  className="p-2 hover:bg-slate-50 rounded-md text-xs cursor-pointer flex justify-between items-center text-slate-650 hover:text-slate-900"
-                >
-                  <span>{cust.name} ({cust.phone})</span>
-                  {cust.creditBalance > 0 && (
-                    <span className="text-[9px] text-red-500 font-bold">₹{cust.creditBalance} due</span>
-                  )}
-                </div>
-              ))}
+              {customers.map((cust) => {
+                const custAddr = cust.address || cust.location?.address || cust.addresses?.[0]?.fullAddress || "";
+                return (
+                  <div
+                    key={cust._id}
+                    onClick={() => selectCustomer(cust)}
+                    className="p-2 hover:bg-slate-50 rounded-md text-xs cursor-pointer flex justify-between items-center text-slate-650 hover:text-slate-900"
+                  >
+                    <div className="min-w-0 pr-2">
+                      <span className="font-semibold">{cust.name} ({cust.phone})</span>
+                      {custAddr && (
+                        <span className="block text-[10px] text-slate-400 truncate max-w-[220px]">
+                          📍 {custAddr}
+                        </span>
+                      )}
+                    </div>
+                    {cust.creditBalance > 0 && (
+                      <span className="text-[9px] text-red-500 font-bold shrink-0">₹{cust.creditBalance} due</span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -973,12 +1128,13 @@ export default function AdminPOSOrders() {
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Email (Optional)</label>
-                <input
-                  type="email"
-                  value={newCustomer.email}
-                  onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-800 focus:bg-white focus:outline-none"
+                <label className="block text-xs text-slate-500 mb-1">Address (Optional)</label>
+                <textarea
+                  rows={2}
+                  placeholder="Enter street address, city, area..."
+                  value={newCustomer.address}
+                  onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-800 focus:bg-white focus:outline-none resize-none"
                 />
               </div>
             </div>
@@ -988,6 +1144,77 @@ export default function AdminPOSOrders() {
             >
               Add Customer
             </button>
+          </form>
+        </div>
+      )}
+
+      {/* ── EDIT CUSTOMER MODAL ───────────────────────────────────────── */}
+      {showEditCustomerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-sm overflow-y-auto">
+          <form
+            onSubmit={handleUpdateCustomer}
+            className="w-full max-w-sm bg-white border border-slate-200/80 rounded-3xl p-4 sm:p-6 text-slate-800 shadow-2xl max-h-[92vh] overflow-y-auto my-auto"
+          >
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h4 className="text-base font-bold text-slate-900">Edit Customer Details</h4>
+                <p className="text-[11px] text-slate-400">Update phone number and address</p>
+              </div>
+              <X
+                className="w-5 h-5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                onClick={() => setShowEditCustomerModal(false)}
+              />
+            </div>
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Full Name</label>
+                <input
+                  type="text"
+                  required
+                  value={editCustomer.name}
+                  onChange={(e) => setEditCustomer({ ...editCustomer, name: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-800 focus:bg-white focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Phone Number</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 9876543210"
+                  value={editCustomer.phone}
+                  onChange={(e) => setEditCustomer({ ...editCustomer, phone: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-800 focus:bg-white focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Address</label>
+                <textarea
+                  rows={3}
+                  placeholder="Enter full address, city, landmark..."
+                  value={editCustomer.address}
+                  onChange={(e) => setEditCustomer({ ...editCustomer, address: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-slate-800 focus:bg-white focus:outline-none resize-none"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowEditCustomerModal(false)}
+                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-600 text-xs transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isUpdatingCustomer}
+                className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold text-white text-xs transition-all shadow-md shadow-emerald-600/10 flex items-center justify-center gap-1.5"
+              >
+                {isUpdatingCustomer ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                <span>Save</span>
+              </button>
+            </div>
           </form>
         </div>
       )}
@@ -1149,6 +1376,11 @@ export default function AdminPOSOrders() {
             <p><b>Date:</b> {new Date(lastCreatedOrder.createdAt).toLocaleString()}</p>
             <p><b>Customer:</b> {lastCreatedOrder.customerName || "Walk-in"}</p>
             {lastCreatedOrder.customerPhone && <p><b>Phone:</b> {lastCreatedOrder.customerPhone}</p>}
+            {(lastCreatedOrder.customerAddress || (lastCreatedOrder.address?.address && lastCreatedOrder.address.address !== "POS Order")) && (
+              <p className="break-words">
+                <b>Address:</b> {lastCreatedOrder.customerAddress || lastCreatedOrder.address?.address}
+              </p>
+            )}
             <p className="border-b border-dashed border-black my-2" />
           </div>
 

@@ -29,6 +29,10 @@ export const customerApi = {
     invalidateCache("/cart"); // Invalidate cart cache
     return axiosInstance.post("/cart/add", data);
   },
+  mergeCart: (data) => {
+    invalidateCache("/cart");
+    return axiosInstance.post("/cart/merge", data);
+  },
   updateCartQuantity: (data) => {
     invalidateCache("/cart");
     return axiosInstance.put("/cart/update", data);

@@ -1,7 +1,9 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import JsBarcode from 'jsbarcode';
-import logoUrl from '@/assets/Logo.png';
+import defaultLogoUrl from '@/assets/Logo.png';
+import { getWithDedupe } from '@core/api/dedupe';
+import { DEFAULT_SETTINGS } from '@core/context/SettingsDefaults';
 
 // Helper: load an image URL and return a base64 data URL
 const loadImageAsBase64 = (url) => {
@@ -56,15 +58,39 @@ const getRoutingCode = (order) => {
     return `Routing Code: WB/${region}/${pinPart}`;
 };
 
-export const generateDeliveryInvoice = async (order) => {
+export const generateDeliveryInvoice = async (order, customSettings = null) => {
     const orderId = String(order.orderId || order.id || order._id || '');
 
-    // Load logo first
+    // Resolve system settings dynamically
+    let settings = customSettings;
+    if (!settings || (!settings.companyName && !settings.address && !settings.supportPhone)) {
+        try {
+            const res = await getWithDedupe('/settings', {}, { ttl: 60 * 1000 });
+            const data = res?.data?.result || res?.data;
+            settings = { ...DEFAULT_SETTINGS, ...settings, ...data };
+        } catch (e) {
+            console.error('Failed to fetch settings for invoice:', e);
+            settings = { ...DEFAULT_SETTINGS, ...settings };
+        }
+    } else {
+        settings = { ...DEFAULT_SETTINGS, ...settings };
+    }
+
+    // Load logo (use dynamic settings.logoUrl if available, otherwise defaultLogoUrl)
     let logoBase64;
+    const targetLogo = settings?.logoUrl || defaultLogoUrl;
     try {
-        logoBase64 = await loadImageAsBase64(logoUrl);
+        logoBase64 = await loadImageAsBase64(targetLogo);
     } catch (e) {
-        console.error('Failed to load logo:', e);
+        if (targetLogo !== defaultLogoUrl) {
+            try {
+                logoBase64 = await loadImageAsBase64(defaultLogoUrl);
+            } catch (fallbackErr) {
+                console.error('Failed to load fallback logo:', fallbackErr);
+            }
+        } else {
+            console.error('Failed to load logo:', e);
+        }
     }
 
     // Standard shipping label size 4x6 inches = 101.6 x 152.4 mm
@@ -121,15 +147,16 @@ export const generateDeliveryInvoice = async (order) => {
     doc.setFont("helvetica", "italic");
     doc.text(`Phone No.: ${customerPhone}`, margin + 2, margin + 14 + (addressLines.length * 3.5) + 2);
 
-    // Veenolex Logo on right
+    // Logo on right
     if (logoBase64) {
         // Reduced logo size slightly to fit better
         doc.addImage(logoBase64, 'PNG', pageWidth - margin - 26, margin + 2, 24, 15);
     } else {
         // Fallback to text if logo fails to load
-        doc.setFontSize(22);
+        doc.setFontSize(20);
         doc.setFont("helvetica", "bold");
-        doc.text("VEENOLEX", pageWidth - margin - 2, margin + 15, { align: "right" });
+        const headerBrand = sanitizeText(settings.appName || "VEENOLEX").toUpperCase();
+        doc.text(headerBrand, pageWidth - margin - 2, margin + 14, { align: "right" });
     }
     
     // Middle section 1: Dimensions, payment etc.
@@ -174,9 +201,12 @@ export const generateDeliveryInvoice = async (order) => {
     doc.text("N/A", statsValX, currentY);
     
     // Right column courier barcode
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.text("Ecom Express Surface", pageWidth - margin - 2, mid1Y + 4, { align: "right" });
+    const courierTitle = order.courierCompany || order.courierName || "";
+    if (courierTitle && !courierTitle.toLowerCase().includes("ecom express")) {
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.text(courierTitle, pageWidth - margin - 2, mid1Y + 4, { align: "right" });
+    }
     
     // Generate Courier barcode
     const canvas = document.createElement("canvas");
@@ -208,14 +238,24 @@ export const generateDeliveryInvoice = async (order) => {
     
     doc.setFontSize(8);
     doc.setFont("helvetica", "italic");
-    doc.text("Veenolex Retail", margin + 2, mid2Y + 8);
+    const sellerCompany = sanitizeText(settings.companyName || settings.appName || "Veenolex Retail");
+    doc.text(sellerCompany, margin + 2, mid2Y + 8);
+
     doc.setFont("helvetica", "normal");
-    const sellerAddress = doc.splitTextToSize("RIICO Industrial Area, Sagwara, Dungarpur, Rajasthan - 314025", 45);
+    const sellerAddressText = sanitizeText(settings.address || "RIICO Industrial Area, Sagwara, Dungarpur, Rajasthan - 314025");
+    const sellerAddress = doc.splitTextToSize(sellerAddressText, 45);
     doc.text(sellerAddress, margin + 2, mid2Y + 12);
     
-    const sellerY = mid2Y + 12 + (sellerAddress.length * 3.5);
-    doc.text("GSTIN: 21ABCDE1234F1Z5", margin + 2, sellerY);
-    doc.text("Phone No.: 9876543210", margin + 2, sellerY + 3.5);
+    let sellerY = mid2Y + 12 + (sellerAddress.length * 3.5);
+    const sellerTaxId = sanitizeText(settings.taxId || "21ABCDE1234F1Z5");
+    if (sellerTaxId) {
+        doc.text(`GSTIN: ${sellerTaxId}`, margin + 2, sellerY);
+        sellerY += 3.5;
+    }
+    const sellerPhone = sanitizeText(settings.supportPhone || "9876543210");
+    if (sellerPhone) {
+        doc.text(`Phone No.: ${sellerPhone}`, margin + 2, sellerY);
+    }
     
     // Order Barcode & details
     doc.setFontSize(6);
@@ -303,7 +343,8 @@ export const generateDeliveryInvoice = async (order) => {
     // T&C text
     doc.setFontSize(7);
     doc.setFont("helvetica", "normal");
-    const tcText = "All disputes are subject to Veenolex jurisdiction only. Goods once sold will only be taken back or exchanged as per the store's exchange/return policy.";
+    const brandName = sanitizeText(settings.companyName || settings.appName || "Veenolex");
+    const tcText = `All disputes are subject to ${brandName} jurisdiction only. Goods once sold will only be taken back or exchanged as per the store's exchange/return policy.`;
     const tcLines = doc.splitTextToSize(tcText, pageWidth - 2*margin);
     doc.text(tcLines, margin + 2, finalY);
 
@@ -319,7 +360,8 @@ export const generateDeliveryInvoice = async (order) => {
     doc.setFont("helvetica", "normal");
     doc.text("Powered By:", pageWidth - margin - 2, pageHeight - margin - 6, { align: "right" });
     doc.setFont("helvetica", "bold");
-    doc.text("Veenolex", pageWidth - margin - 2, pageHeight - margin - 3, { align: "right" });
+    const appBrand = sanitizeText(settings.appName || "Veenolex");
+    doc.text(appBrand, pageWidth - margin - 2, pageHeight - margin - 3, { align: "right" });
     
     // Page numbering
     doc.setFontSize(8);

@@ -51,8 +51,10 @@ import Pagination from '@shared/components/ui/Pagination';
 import { DatePicker } from "@/components/ui/date-picker";
 import { getOrderStatusVariant } from '../components/orders';
 import { generateDeliveryInvoice } from '@/utils/generateDeliveryInvoice';
+import { useSettings } from '@core/context/SettingsContext';
 
 const Orders = () => {
+    const { settings } = useSettings();
     const [orders, setOrders] = useState([]);
     const [summary, setSummary] = useState({
         totalOrders: 0,
@@ -1080,7 +1082,7 @@ const Orders = () => {
                                     <div className="px-4 py-3 sm:px-6 sm:py-4 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row gap-3 sm:gap-0 sm:items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <button 
-                                                onClick={() => generateDeliveryInvoice(selectedOrder)} 
+                                                onClick={() => generateDeliveryInvoice(selectedOrder, settings)} 
                                                 className="px-4 py-2.5 rounded-xl text-sm font-bold text-brand-600 bg-brand-50 hover:bg-brand-100 transition-all flex items-center gap-2"
                                             >
                                                 <HiOutlinePrinter className="h-4 w-4" />

@@ -34,7 +34,7 @@ export async function getCreditCustomers(req, res) {
     }
 
     const customers = await User.find(query)
-      .select("name phone email creditBalance walletBalance isActive")
+      .select("name phone email creditBalance walletBalance isActive location addresses")
       .sort({ creditBalance: -1, name: 1 })
       .lean();
 
@@ -46,6 +46,165 @@ export async function getCreditCustomers(req, res) {
     return res.status(500).json({
       success: false,
       message: error.message
+    });
+  }
+}
+
+/**
+ * POST /admin/pos/customers — Create or register a customer from POS with optional address.
+ */
+export async function createAdminPOSCustomer(req, res) {
+  try {
+    const { name, phone, address, email } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: "Customer name is required" });
+    }
+    if (!phone || !phone.trim()) {
+      return res.status(400).json({ success: false, message: "Customer phone is required" });
+    }
+
+    const cleanPhone = phone.trim();
+    const cleanName = name.trim();
+    const cleanAddress = (address || "").trim();
+
+    // Check if customer with this phone number already exists
+    let customer = await User.findOne({ phone: cleanPhone, role: "user" });
+    if (customer) {
+      if (cleanAddress && !customer.location?.address) {
+        customer.location = {
+          ...customer.location,
+          address: cleanAddress,
+          updatedAt: new Date(),
+        };
+        customer.addresses = customer.addresses || [];
+        if (!customer.addresses.length) {
+          customer.addresses.push({
+            label: "home",
+            fullAddress: cleanAddress,
+            formattedAddress: cleanAddress,
+          });
+        }
+        await customer.save();
+      }
+      return res.status(200).json({
+        success: true,
+        message: "Customer already exists and selected",
+        customer,
+        user: customer,
+      });
+    }
+
+    // Create new customer
+    const userPayload = {
+      name: cleanName,
+      phone: cleanPhone,
+      email: email ? email.trim() : `${cleanPhone}@pos-customer.com`,
+      role: "user",
+      isVerified: true,
+      isActive: true,
+    };
+
+    if (cleanAddress) {
+      userPayload.location = {
+        address: cleanAddress,
+        city: "",
+        state: "",
+        pincode: "",
+        updatedAt: new Date(),
+      };
+      userPayload.addresses = [
+        {
+          label: "home",
+          fullAddress: cleanAddress,
+          formattedAddress: cleanAddress,
+        },
+      ];
+    }
+
+    customer = await User.create(userPayload);
+
+    return res.status(201).json({
+      success: true,
+      message: "Customer registered successfully",
+      customer,
+      user: customer,
+    });
+  } catch (error) {
+    console.error("Error creating POS customer:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to create customer",
+    });
+  }
+}
+
+/**
+ * PUT /admin/pos/customers/:id — Update customer phone, address, and name.
+ */
+export async function updateAdminPOSCustomer(req, res) {
+  try {
+    const { id } = req.params;
+    const { name, phone, address } = req.body;
+
+    if (!id || id === "walk-in-customer") {
+      return res.status(400).json({ success: false, message: "Invalid customer ID" });
+    }
+
+    const customer = await User.findById(id);
+    if (!customer) {
+      return res.status(404).json({ success: false, message: "Customer not found" });
+    }
+
+    if (name && name.trim()) {
+      customer.name = name.trim();
+    }
+
+    if (phone && phone.trim()) {
+      const cleanPhone = phone.trim();
+      if (cleanPhone !== customer.phone) {
+        const existing = await User.findOne({ phone: cleanPhone, _id: { $ne: customer._id } });
+        if (existing) {
+          return res.status(400).json({ success: false, message: "Another customer already has this phone number" });
+        }
+        customer.phone = cleanPhone;
+      }
+    }
+
+    if (address !== undefined) {
+      const cleanAddress = (address || "").trim();
+      customer.location = {
+        ...(customer.location || {}),
+        address: cleanAddress,
+        updatedAt: new Date(),
+      };
+
+      customer.addresses = customer.addresses || [];
+      if (customer.addresses.length > 0) {
+        customer.addresses[0].fullAddress = cleanAddress;
+        customer.addresses[0].formattedAddress = cleanAddress;
+      } else if (cleanAddress) {
+        customer.addresses.push({
+          label: "home",
+          fullAddress: cleanAddress,
+          formattedAddress: cleanAddress,
+        });
+      }
+    }
+
+    await customer.save();
+
+    return res.json({
+      success: true,
+      message: "Customer updated successfully",
+      customer,
+      user: customer,
+    });
+  } catch (error) {
+    console.error("Error updating POS customer:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update customer",
     });
   }
 }

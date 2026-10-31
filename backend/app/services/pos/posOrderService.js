@@ -320,6 +320,21 @@ async function writePOSOrder(prepared, session) {
     legacyPaymentStatus = "pending";
   }
 
+  const resolvedAddress =
+    (typeof prepared.customerAddress === "string" && prepared.customerAddress.trim()) ||
+    (typeof prepared.address === "string" && prepared.address.trim()) ||
+    (prepared.address?.address && String(prepared.address.address).trim()) ||
+    (customer.location?.address && String(customer.location.address).trim()) ||
+    (customer.addresses?.[0]?.fullAddress && String(customer.addresses[0].fullAddress).trim()) ||
+    (customer.addresses?.[0]?.formattedAddress && String(customer.addresses[0].formattedAddress).trim()) ||
+    "";
+
+  const resolvedCity =
+    (prepared.address?.city && String(prepared.address.city).trim()) ||
+    (customer.location?.city && String(customer.location.city).trim()) ||
+    (customer.addresses?.[0]?.city && String(customer.addresses[0].city).trim()) ||
+    "";
+
   const order = new Order({
     orderId,
     customer: customer._id,
@@ -333,11 +348,12 @@ async function writePOSOrder(prepared, session) {
     customerName: customer.name || "",
     customerEmail: customer.email || "",
     customerPhone: customer.phone || "",
+    customerAddress: resolvedAddress || null,
     address: {
       type: "Other",
       name: customer.name || "POS Customer",
-      address: "POS Order",
-      city: "",
+      address: resolvedAddress || "POS Order",
+      city: resolvedCity || "",
       phone: customer.phone || "",
     },
     pricing: {

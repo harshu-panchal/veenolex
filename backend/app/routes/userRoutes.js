@@ -1,8 +1,11 @@
 import express from "express";
 import User from "../models/customer.js";
-import { verifyToken } from "../middleware/authMiddleware.js";
+import { verifyToken, allowRoles } from "../middleware/authMiddleware.js";
+import { createAdminPOSCustomer } from "../controller/admin/adminPosCreditController.js";
 
 const router = express.Router();
+
+router.post("/", verifyToken, allowRoles("admin", "seller"), createAdminPOSCustomer);
 
 router.patch("/update-location", verifyToken, async (req, res) => {
     try {

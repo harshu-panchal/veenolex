@@ -4,7 +4,8 @@ import {
     addToCart,
     updateQuantity,
     removeFromCart,
-    clearCart
+    clearCart,
+    mergeCart,
 } from "../controller/cartController.js";
 import { verifyToken } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validate.js";
@@ -12,6 +13,7 @@ import {
     addToCartSchema,
     updateCartItemSchema,
     removeCartItemQuerySchema,
+    mergeCartSchema,
 } from "../validation/cartValidation.js";
 
 const router = express.Router();
@@ -23,6 +25,7 @@ router.use(verifyToken); // All cart routes require auth
 // the canonical `variantSku` field name (was `variantSlot`).
 router.get("/", getCart);
 router.post("/add", validate(addToCartSchema), addToCart);
+router.post("/merge", validate(mergeCartSchema), mergeCart);
 router.put("/update", validate(updateCartItemSchema), updateQuantity);
 router.delete(
     "/remove/:productId",

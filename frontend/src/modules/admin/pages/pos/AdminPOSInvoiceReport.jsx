@@ -89,7 +89,22 @@ export default function AdminPOSInvoiceReport() {
     doc.text(`Customer Name: ${order.customerName || "N/A"}`, 140, 30);
     doc.text(`Customer Phone: ${order.customerPhone || "N/A"}`, 140, 35);
 
-    doc.line(14, 42, 196, 42);
+    const custAddr =
+      order.customerAddress ||
+      (order.address?.address && order.address.address !== "POS Order" ? order.address.address : "") ||
+      order.address?.fullAddress ||
+      "";
+
+    let nextY = 40;
+    if (custAddr) {
+      const wrappedAddr = doc.splitTextToSize(`Address: ${custAddr}`, 56);
+      doc.text(wrappedAddr, 140, nextY);
+      nextY += wrappedAddr.length * 4.5;
+    }
+
+    const separatorY = Math.max(42, nextY + 2);
+
+    doc.line(14, separatorY, 196, separatorY);
 
     const tableRows = order.items.map((item, idx) => [
       idx + 1,
@@ -102,7 +117,7 @@ export default function AdminPOSInvoiceReport() {
     ]);
 
     autoTable(doc, {
-      startY: 46,
+      startY: separatorY + 4,
       head: [["#", "Item Name", "HSN", "GST", "Qty", "Rate", "Amount"]],
       body: tableRows,
       theme: "grid",
@@ -280,6 +295,12 @@ export default function AdminPOSInvoiceReport() {
             <p><b>Order ID:</b> {printOrder.orderId}</p>
             <p><b>Date:</b> {new Date(printOrder.createdAt).toLocaleString()}</p>
             <p><b>Customer:</b> {printOrder.customerName || "Walk-in"}</p>
+            {printOrder.customerPhone && <p><b>Phone:</b> {printOrder.customerPhone}</p>}
+            {(printOrder.customerAddress || (printOrder.address?.address && printOrder.address.address !== "POS Order")) && (
+              <p className="break-words">
+                <b>Address:</b> {printOrder.customerAddress || printOrder.address?.address}
+              </p>
+            )}
             <p className="border-b border-dashed border-black my-2" />
           </div>
           <table className="w-full text-left text-[11px] mb-4">

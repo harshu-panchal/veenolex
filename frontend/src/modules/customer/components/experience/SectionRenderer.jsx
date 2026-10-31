@@ -1,6 +1,5 @@
-import React, { useRef } from "react";
+import React from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import ProductCard from "../shared/ProductCard";
 import { cn } from "@/lib/utils";
 import ExperienceBannerCarousel from "./ExperienceBannerCarousel";
@@ -47,15 +46,6 @@ const LazyLoadTrigger = ({ enabled, onVisible }) => {
 };
 
 const SectionHorizontalRow = ({ sectionId, sectionKey, heading, allProducts, items, hasMore, loadMoreForSection }) => {
-  const scrollRef = useRef(null);
-
-  const scroll = (direction) => {
-    if (scrollRef.current) {
-      const scrollAmount = direction === "left" ? -340 : 340;
-      scrollRef.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
-    }
-  };
-
   return (
     <div id={`section-${sectionId}`} className="w-full relative group">
       <div className="flex items-center justify-between mb-3 px-1">
@@ -69,46 +59,9 @@ const SectionHorizontalRow = ({ sectionId, sectionKey, heading, allProducts, ite
         </span>
       </div>
 
-      {/* Left Navigation Arrow */}
-      {items.length > 0 && (
-        <button
-          type="button"
-          onClick={() => scroll("left")}
-          aria-label="Scroll left"
-          className="absolute -left-2 md:-left-4 top-[58%] -translate-y-1/2 z-30 h-10 w-10 bg-white/95 backdrop-blur-md shadow-lg rounded-full flex items-center justify-center border border-slate-200/80 cursor-pointer hover:bg-white text-slate-800 transition-all hover:scale-110 active:scale-95">
-          <ChevronLeft size={22} strokeWidth={2.5} />
-        </button>
-      )}
-
-      {/* Right Navigation Arrow */}
-      {items.length > 0 && (
-        <button
-          type="button"
-          onClick={() => scroll("right")}
-          aria-label="Scroll right"
-          className="absolute -right-2 md:-right-4 top-[58%] -translate-y-1/2 z-30 h-10 w-10 bg-white/95 backdrop-blur-md shadow-lg rounded-full flex items-center justify-center border border-slate-200/80 cursor-pointer hover:bg-white text-slate-800 transition-all hover:scale-110 active:scale-95">
-          <ChevronRight size={22} strokeWidth={2.5} />
-        </button>
-      )}
-
-      <div
-        ref={scrollRef}
-        className="relative z-10 flex overflow-x-auto gap-3 md:gap-6 pb-2 md:pb-3 no-scrollbar snap-x snap-mandatory scroll-smooth"
-        onScroll={(e) => {
-          if (!hasMore) return;
-          const node = e.currentTarget;
-          const distanceToEnd =
-            node.scrollWidth - node.scrollLeft - node.clientWidth;
-          if (distanceToEnd < 220) {
-            loadMoreForSection(sectionKey, allProducts.length);
-          }
-        }}
-      >
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-5">
         {items.map((product) => (
-          <div
-            key={product._id || product.id}
-            className="w-[148px] sm:w-[164px] md:w-[260px] shrink-0 snap-start smooth-transform"
-          >
+          <div key={product._id || product.id} className="w-full">
             <ProductCard product={product} compact={true} neutralBg={true} />
           </div>
         ))}

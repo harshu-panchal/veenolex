@@ -18,7 +18,9 @@ import {
   addCredit,
   recordCreditPayment,
   initiateAdminCreditPhonePeRepayment,
-  verifyAdminCreditPhonePeRepayment
+  verifyAdminCreditPhonePeRepayment,
+  createAdminPOSCustomer,
+  updateAdminPOSCustomer
 } from "../controller/admin/adminPosCreditController.js";
 import {
   getSuppliers,
@@ -78,6 +80,10 @@ router.delete("/pos/purchase-entries/:id", deletePurchaseEntry);
 
 // ── POS Credit / Udhaar ───────────────────────────────────────────────
 router.get("/pos/credit/customers", getCreditCustomers);
+router.post("/pos/customers", createAdminPOSCustomer);
+router.post("/pos/credit/customers", createAdminPOSCustomer);
+router.put("/pos/customers/:id", updateAdminPOSCustomer);
+router.patch("/pos/customers/:id", updateAdminPOSCustomer);
 router.get("/pos/credit/history/:customerId", getCreditHistory);
 router.post("/pos/credit/add", addCredit);
 router.post("/pos/credit/payment", recordCreditPayment);

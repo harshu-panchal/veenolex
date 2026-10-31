@@ -23,26 +23,42 @@ export const CartProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const pendingRequestsRef = React.useRef(0);
   const lsDebounceRef = useRef(null);
+  const isMergingRef = useRef(false);
 
   // Clear cart locally when user logs out is handled by the useEffect dependency on isAuthenticated
   const normalizeBackendCart = (items) => {
-    if (!items) return [];
-    return items.map((item) => {
-      const product = item.productId;
+    if (!items || !Array.isArray(items)) return [];
+    const seen = new Map();
+    const result = [];
+
+    for (const item of items) {
+      const product = item?.productId;
+      if (!product) continue;
       const variantKey = String(item.variantSku || "").trim();
       const { price, salePrice, variantName, stock } = resolveVariantPricing(product, variantKey);
-      return {
-        ...product,
-        id: product?._id, // Normalize ID
-        quantity: item.quantity,
-        variantSku: variantKey,
-        variantName,
-        price,
-        salePrice,
-        stock,
-        image: product?.mainImage, // Handle mapping for frontend
-      };
-    });
+      const prodId = product._id || product.id;
+      const dedupKey = `${prodId}::${variantKey.toLowerCase()}`;
+
+      if (seen.has(dedupKey)) {
+        const existing = seen.get(dedupKey);
+        existing.quantity = Math.max(existing.quantity || 1, Number(item.quantity) || 1);
+      } else {
+        const cartItem = {
+          ...product,
+          id: prodId,
+          quantity: Number(item.quantity) || 1,
+          variantSku: variantKey,
+          variantName,
+          price,
+          salePrice,
+          stock,
+          image: product?.mainImage,
+        };
+        seen.set(dedupKey, cartItem);
+        result.push(cartItem);
+      }
+    }
+    return result;
   };
 
   const resolveVariantPricing = (product, variantSku = "") => {
@@ -91,19 +107,66 @@ export const CartProvider = ({ children }) => {
     }
   };
 
-  // Fetch cart from backend on mount or authentication change
+  // Fetch cart from backend on mount or authentication change (merging guest cart on login)
   useEffect(() => {
-    if (isAuthenticated) {
-      // Cancel any pending guest-mode write that could otherwise overwrite
-      // the authenticated state with stale guest data after login.
-      clearTimeout(lsDebounceRef.current);
-      // The legacy guest cart is no longer authoritative for this user; drop
-      // it so a future logout doesn't resurface another account's items.
-      removeStorage(STORAGE_KEYS.CART);
-      fetchCart();
-    } else {
-      setCart(loadGuestCart());
-    }
+    let isMounted = true;
+
+    const syncCartOnAuthChange = async () => {
+      if (isAuthenticated) {
+        // Prevent concurrent double-execution (e.g. React StrictMode mount cycles)
+        if (isMergingRef.current) return;
+        isMergingRef.current = true;
+
+        clearTimeout(lsDebounceRef.current);
+        const guestItems = loadGuestCart();
+        // Immediately clear guest storage so concurrent effect runs or unmounts can't re-read the same items
+        removeStorage(STORAGE_KEYS.CART);
+
+        if (Array.isArray(guestItems) && guestItems.length > 0) {
+          setLoading(true);
+          try {
+            const payload = {
+              items: guestItems
+                .filter((item) => (item.id || item._id) && Number(item.quantity) > 0)
+                .map((item) => ({
+                  productId: String(item.id || item._id),
+                  quantity: Number(item.quantity) || 1,
+                  variantSku: String(item.variantSku || "").trim() || undefined,
+                })),
+            };
+
+            if (payload.items.length > 0) {
+              const response = await customerApi.mergeCart(payload);
+              if (isMounted && response?.data?.result?.items) {
+                setCart(normalizeBackendCart(response.data.result.items));
+                return;
+              }
+            }
+          } catch (error) {
+            console.error("Failed to merge guest cart with backend", error);
+          } finally {
+            isMergingRef.current = false;
+            if (isMounted) setLoading(false);
+          }
+        } else {
+          isMergingRef.current = false;
+        }
+
+        // If no guest items to merge, or if merge failed, fetch user's backend cart
+        if (isMounted) {
+          fetchCart();
+        }
+      } else {
+        isMergingRef.current = false;
+        setCart(loadGuestCart());
+      }
+    };
+
+    syncCartOnAuthChange();
+
+    return () => {
+      isMounted = false;
+    };
   }, [isAuthenticated]);
 
   // Save local cart to localStorage (fallback/guest mode) — debounced to 300 ms

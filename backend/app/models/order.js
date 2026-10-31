@@ -44,6 +44,7 @@ const orderSchema = new mongoose.Schema(
     customerName: { type: String, default: null },
     customerEmail: { type: String, default: null },
     customerPhone: { type: String, default: null },
+    customerAddress: { type: String, default: null },
     items: [
       {
         product: {

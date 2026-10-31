@@ -95,6 +95,7 @@ const CheckoutPage = () => {
     updateQuantity,
     removeFromCart,
     clearCart,
+    loading: isCartLoading,
   } = useCart();
   const hasOutOfStockItems = cart.some((item) => item.stock !== undefined && item.stock !== null && Number(item.stock) <= 0);
   const { wishlist, addToWishlist, fetchFullWishlist, isFullDataFetched } =
@@ -1403,6 +1404,16 @@ const CheckoutPage = () => {
       leaveOrderRoom(orderId, getToken);
     };
   }, [orderId, showSuccess]);
+
+  // ─── Loading / merging cart state ──────────────────────────────────────────
+  if (isCartLoading && cart.length === 0 && !showSuccess) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 font-['Inter']">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent mb-4" />
+        <p className="text-sm font-semibold text-slate-500">Loading your cart...</p>
+      </div>
+    );
+  }
 
   // ─── Empty cart state ────────────────────────────────────────────────────────
   if (cart.length === 0 && !showSuccess) {

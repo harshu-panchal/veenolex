@@ -116,7 +116,7 @@ const OrderDetail = () => {
                 ...order,
                 deliveryAddress: deliveryAddress || '',
                 address: deliveryAddress || (typeof order.address === 'string' ? order.address : (order.address?.text || '')),
-            });
+            }, settings);
             showToast("Invoice downloaded successfully", "success");
         } catch (error) {
             console.error("PDF generation failed:", error);

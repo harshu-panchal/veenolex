@@ -1,6 +1,6 @@
-import React, { useRef } from "react";
+import React from "react";
 import { motion } from "framer-motion";
-import { Sparkles, ChevronLeft, ChevronRight, Clock } from "lucide-react";
+import { Sparkles, Clock } from "lucide-react";
 import ProductCard from "../shared/ProductCard";
 import {
   getBackgroundColorByValue,
@@ -10,18 +10,9 @@ import {
 import { applyCloudinaryTransform } from "@/core/utils/imageUtils";
 
 const ComingSoonSection = ({ config = {}, products = [] }) => {
-  const scrollRef = useRef(null);
-
   if (!config.enabled || !Array.isArray(products) || products.length === 0) {
     return null;
   }
-
-  const scroll = (direction) => {
-    if (scrollRef.current) {
-      const scrollAmount = direction === "left" ? -340 : 340;
-      scrollRef.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
-    }
-  };
 
   const bgColor = getBackgroundColorByValue(config.backgroundColor || "#8B5CF6");
   const bgGradient = getBackgroundGradientByValue(config.backgroundColor || "#8B5CF6");
@@ -130,40 +121,13 @@ const ComingSoonSection = ({ config = {}, products = [] }) => {
           </div>
         </div>
 
-        {/* Left Navigation Arrow */}
-        {sectionProducts.length > 0 && (
-          <button
-            type="button"
-            onClick={() => scroll("left")}
-            aria-label="Scroll left"
-            className="absolute left-1 md:left-3 top-[65%] -translate-y-1/2 z-30 h-10 w-10 bg-white/95 backdrop-blur-md shadow-lg rounded-full flex items-center justify-center border border-slate-200/80 cursor-pointer hover:bg-white text-slate-800 transition-all hover:scale-110 active:scale-95"
-          >
-            <ChevronLeft size={22} strokeWidth={2.5} />
-          </button>
-        )}
-
-        {/* Right Navigation Arrow */}
-        {sectionProducts.length > 0 && (
-          <button
-            type="button"
-            onClick={() => scroll("right")}
-            aria-label="Scroll right"
-            className="absolute right-1 md:right-3 top-[65%] -translate-y-1/2 z-30 h-10 w-10 bg-white/95 backdrop-blur-md shadow-lg rounded-full flex items-center justify-center border border-slate-200/80 cursor-pointer hover:bg-white text-slate-800 transition-all hover:scale-110 active:scale-95"
-          >
-            <ChevronRight size={22} strokeWidth={2.5} />
-          </button>
-        )}
-
-        <div className="px-4 pt-4 md:px-5 md:pt-5 pb-1">
-          <div
-            ref={scrollRef}
-            className="flex overflow-x-auto gap-3 md:gap-4 pb-0 no-scrollbar snap-x snap-mandatory scroll-smooth"
-          >
+        <div className="px-4 pt-4 md:px-5 md:pt-5 pb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
             {sectionProducts.map((product) => (
-              <div key={product.id} className="w-[126px] sm:w-[136px] md:w-[220px] flex-shrink-0 snap-start">
+              <div key={product.id || product._id} className="w-full">
                 <ProductCard
                   product={product}
-                  className="bg-white border border-slate-100 shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
+                  className="h-full bg-white border border-slate-100 shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
                   compact
                 />
               </div>

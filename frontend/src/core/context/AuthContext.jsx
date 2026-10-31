@@ -157,9 +157,8 @@ export const AuthProvider = ({ children }) => {
             rawSet(storageKey, userData.token);
 
             // Guard against state leaking from a previous account on the same
-            // browser (e.g. abandoned guest cart, leftover recent searches).
-            // Backend cart will replace it as soon as fetchCart resolves.
-            rawRemove(STORAGE_KEYS.CART);
+            // browser (e.g. leftover recent searches).
+            // CartContext handles merging the guest cart into the authenticated account.
             rawRemove(STORAGE_KEYS.WISHLIST);
 
             setAuthData(prev => ({ ...prev, [role]: userData.token }));

@@ -20,13 +20,15 @@ import { initiatePOSPhonePePayment, verifyPOSPhonePePayment } from "../../servic
  */
 export async function createAdminPOSOrder(req, res) {
   try {
-    const { customerId, paymentMethod, paymentStatus, items } = req.body;
+    const { customerId, paymentMethod, paymentStatus, items, address, customerAddress } = req.body;
 
     const { order, stockUpdates } = await createPOSOrder({
       customerId: customerId || "walk-in-customer",
       paymentMethod: paymentMethod || "Cash",
       paymentStatus: paymentStatus || "Paid",
       items,
+      address,
+      customerAddress,
       adminNotes: "Created via POS System",
       sellerId: null,
       createdByRole: "Admin",
@@ -291,7 +293,7 @@ export async function getAdminPOSInvoiceReport(req, res) {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(Number(limit))
-        .select("orderId items pricing paymentBreakdown posPaymentMethod customerName customerPhone createdAt adminNotes")
+        .select("orderId items pricing paymentBreakdown posPaymentMethod customerName customerPhone customerAddress address createdAt adminNotes")
         .lean(),
       Order.countDocuments(filter),
     ]);
@@ -319,7 +321,7 @@ export async function getAdminPOSInvoiceReport(req, res) {
  */
 export async function createAdminPOSOnlineOrder(req, res) {
   try {
-    const { customerId, items, redirectUrl } = req.body;
+    const { customerId, items, redirectUrl, address, customerAddress } = req.body;
 
     if (!redirectUrl) {
       return res.status(400).json({
@@ -335,6 +337,8 @@ export async function createAdminPOSOnlineOrder(req, res) {
       paymentMethod: "Online",
       paymentStatus: "Pending",
       items,
+      address,
+      customerAddress,
       adminNotes: "Created via POS System (Online Payment)",
       sellerId: null,
       createdByRole: "Admin",
