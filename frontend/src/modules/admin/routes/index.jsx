@@ -180,7 +180,6 @@ const navItems = [
     children: [
       { label: "Active Drivers", path: "/admin/delivery-boys/active" },
       { label: "Waiting for Review", path: "/admin/delivery-boys/pending" },
-      { label: "Track Drivers", path: "/admin/tracking" },
       { label: "Send Money", path: "/admin/delivery-funds" },
     ],
   },
