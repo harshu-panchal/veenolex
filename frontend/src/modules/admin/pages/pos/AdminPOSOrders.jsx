@@ -486,9 +486,11 @@ export default function AdminPOSOrders() {
 
       const payload = {
         customerId: currentCustomer._id,
+        customerName: currentCustomer.name || "",
+        customerPhone: currentCustomer.phone || "",
+        customerAddress,
         paymentMethod,
         paymentStatus: paymentMethod === "Credit" ? "Pending" : paymentStatus,
-        customerAddress,
         address: {
           name: currentCustomer.name || "POS Customer",
           phone: currentCustomer.phone || "",
@@ -599,8 +601,8 @@ export default function AdminPOSOrders() {
     // Bill Details
     doc.text(`Invoice ID: ${lastCreatedOrder.orderId}`, 140, 20);
     doc.text(`Date: ${new Date(lastCreatedOrder.createdAt).toLocaleDateString()}`, 140, 25);
-    doc.text(`Customer Name: ${lastCreatedOrder.customerName || "N/A"}`, 140, 30);
-    doc.text(`Customer Phone: ${lastCreatedOrder.customerPhone || "N/A"}`, 140, 35);
+    doc.text(`Customer Name: ${lastCreatedOrder.customerName || lastCreatedOrder.address?.name || "N/A"}`, 140, 30);
+    doc.text(`Customer Phone: ${lastCreatedOrder.customerPhone || lastCreatedOrder.address?.phone || "N/A"}`, 140, 35);
 
     const custAddr =
       lastCreatedOrder.customerAddress ||
@@ -1374,8 +1376,8 @@ export default function AdminPOSOrders() {
           <div className="mb-4">
             <p><b>Order ID:</b> {lastCreatedOrder.orderId}</p>
             <p><b>Date:</b> {new Date(lastCreatedOrder.createdAt).toLocaleString()}</p>
-            <p><b>Customer:</b> {lastCreatedOrder.customerName || "Walk-in"}</p>
-            {lastCreatedOrder.customerPhone && <p><b>Phone:</b> {lastCreatedOrder.customerPhone}</p>}
+            <p><b>Customer:</b> {lastCreatedOrder.customerName || lastCreatedOrder.address?.name || "Walk-in"}</p>
+            {(lastCreatedOrder.customerPhone || lastCreatedOrder.address?.phone) && <p><b>Phone:</b> {lastCreatedOrder.customerPhone || lastCreatedOrder.address?.phone}</p>}
             {(lastCreatedOrder.customerAddress || (lastCreatedOrder.address?.address && lastCreatedOrder.address.address !== "POS Order")) && (
               <p className="break-words">
                 <b>Address:</b> {lastCreatedOrder.customerAddress || lastCreatedOrder.address?.address}

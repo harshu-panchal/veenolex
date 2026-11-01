@@ -25,6 +25,7 @@ import {
   broadcastDeliveryForOrder,
   deleteOrder,
   deleteOrdersBulk,
+  updateOrderCustomerDetails,
 } from "../controller/orderController.js";
 import {
   createOrderWithFinancialSnapshot,
@@ -144,6 +145,20 @@ router.put(
   allowRoles("admin", "seller"),
   requireApprovedSeller,
   updateOrderStatus,
+);
+router.patch(
+  "/:orderId/customer-details",
+  verifyToken,
+  allowRoles("admin", "seller"),
+  requireApprovedSeller,
+  updateOrderCustomerDetails,
+);
+router.put(
+  "/:orderId/customer-details",
+  verifyToken,
+  allowRoles("admin", "seller"),
+  requireApprovedSeller,
+  updateOrderCustomerDetails,
 );
 router.delete(
   "/bulk/delete",

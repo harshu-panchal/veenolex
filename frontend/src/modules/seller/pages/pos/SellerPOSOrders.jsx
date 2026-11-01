@@ -393,8 +393,23 @@ export default function SellerPOSOrders() {
   const handleCheckoutComplete = async () => {
     try {
       setLoading(true);
+      const customerAddress =
+        currentCustomer.address ||
+        currentCustomer.location?.address ||
+        currentCustomer.addresses?.[0]?.fullAddress ||
+        currentCustomer.addresses?.[0]?.formattedAddress ||
+        "";
+
       const payload = {
         customerId: currentCustomer._id,
+        customerName: currentCustomer.name || "",
+        customerPhone: currentCustomer.phone || "",
+        customerAddress,
+        address: {
+          name: currentCustomer.name || "POS Customer",
+          phone: currentCustomer.phone || "",
+          address: customerAddress || "POS Order",
+        },
         paymentMethod,
         paymentStatus: paymentMethod === "Credit" ? "Pending" : paymentStatus,
         items: cart.map((i) => ({

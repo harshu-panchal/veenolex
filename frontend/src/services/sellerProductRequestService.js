@@ -209,3 +209,34 @@ export const assignShiprocketDelivery = async (requestId) => {
     throw error.response?.data || error;
   }
 };
+
+// ═══════════════════════════════════════════
+// FALLBACK TO PAY AFTER DELIVERY
+// ═══════════════════════════════════════════
+export const fallbackSellerRequestPayment = async (requestId) => {
+  try {
+    const response = await axiosInstance.patch(
+      `${API_BASE}/${requestId}/fallback-pay-after-delivery`
+    );
+    return response.data;
+  } catch (error) {
+    console.error("❌ Error falling back to Pay After Delivery:", error);
+    throw error.response?.data || error;
+  }
+};
+
+// ═══════════════════════════════════════════
+// VERIFY RAZORPAY PAYMENT
+// ═══════════════════════════════════════════
+export const verifySellerRequestPayment = async (requestId, paymentData) => {
+  try {
+    const response = await axiosInstance.post(
+      `${API_BASE}/${requestId}/verify-razorpay`,
+      paymentData
+    );
+    return response.data;
+  } catch (error) {
+    console.error("❌ Error verifying seller request payment:", error);
+    throw error.response?.data || error;
+  }
+};

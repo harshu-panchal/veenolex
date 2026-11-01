@@ -194,8 +194,9 @@ export const handleShiprocketWebhook = async (req, res) => {
           target.deliveryWorkflowStatus = "DELIVERED";
           target.deliveredAt = new Date();
           // Shiprocket collects on the courier's own terms, so a
-          // pay-after-delivery request is settled when the shipment lands.
-          if (target.paymentType === "PAY_AFTER_DELIVERY" && target.paymentStatus !== "PAID") {
+          // pay-after-delivery (or unpaid online fallback) request is settled when the shipment lands.
+          if ((target.paymentType === "PAY_AFTER_DELIVERY" || target.paymentStatus !== "PAID") && target.paymentStatus !== "PAID") {
+            target.paymentType = "PAY_AFTER_DELIVERY";
             target.paymentStatus = "PAID";
             target.paidAt = new Date();
             target.collectedAmount = target.totalAmount || 0;

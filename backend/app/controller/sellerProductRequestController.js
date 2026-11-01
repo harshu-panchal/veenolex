@@ -1,4 +1,5 @@
 
+import crypto from "crypto";
 import SellerProductRequest from
   "../models/sellerProductRequest.js";
 import Product from "../models/product.js";
@@ -11,7 +12,8 @@ import { shiprocketQueue, JOB_NAMES } from "../queues/orderQueues.js";
 import {
   reserveWarehouseStockForRequest,
   releaseWarehouseStockForRequest,
-  notifyRiderOfRequestAssignment
+  notifyRiderOfRequestAssignment,
+  materializeSellerRequestStock
 } from "../services/sellerRequestFulfillmentService.js";
 
 // ═══════════════════════════════════════════════
@@ -738,6 +740,112 @@ export const assignRequestDeliveryBoyController = async (req, res) => {
       request,
     });
   } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/* ==============================================
+   FALLBACK REQUEST PAYMENT TO PAY AFTER DELIVERY
+=============================================== */
+export const fallbackToPayAfterDelivery = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    const request = await SellerProductRequest.findById(requestId);
+    if (!request) {
+      return res.status(404).json({ success: false, message: "Request not found" });
+    }
+
+    // Role check: sellers can only fallback their own requests
+    if (userRole === "seller" && String(request.sellerId) !== String(userId)) {
+      return res.status(403).json({ success: false, message: "Unauthorized to update this request" });
+    }
+
+    if (request.paymentStatus === "PAID") {
+      return res.status(400).json({
+        success: false,
+        message: "Request is already marked as paid and cannot be reverted",
+      });
+    }
+
+    request.paymentType = "PAY_AFTER_DELIVERY";
+    request.paymentStatus = "PENDING";
+    await request.save();
+
+    console.log(`🔄 Seller request ${request.requestNumber} fallen back to PAY_AFTER_DELIVERY (payment pending)`);
+
+    return res.status(200).json({
+      success: true,
+      message: "Request payment method updated to Pay After Delivery (Payment Pending)",
+      data: request,
+    });
+  } catch (error) {
+    console.error("❌ Error falling back to Pay After Delivery:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/* ==============================================
+   VERIFY RAZORPAY PAYMENT FOR SELLER REQUEST
+=============================================== */
+export const verifySellerRequestRazorpay = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    const userId = req.user?.id;
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({
+        success: false,
+        message: "razorpay_order_id, razorpay_payment_id and razorpay_signature are required",
+      });
+    }
+
+    const request = await SellerProductRequest.findById(requestId);
+    if (!request) {
+      return res.status(404).json({ success: false, message: "Request not found" });
+    }
+
+    if (req.user?.role === "seller" && String(request.sellerId) !== String(userId)) {
+      return res.status(403).json({ success: false, message: "Unauthorized to verify this payment" });
+    }
+
+    const secret = process.env.RAZORPAY_KEY_SECRET;
+    if (secret) {
+      const shasum = crypto.createHmac("sha256", secret);
+      shasum.update(`${razorpay_order_id}|${razorpay_payment_id}`);
+      const digest = shasum.digest("hex");
+      if (digest !== razorpay_signature) {
+        return res.status(400).json({ success: false, message: "Invalid Razorpay payment signature" });
+      }
+    }
+
+    request.paymentType = "PAY_NOW";
+    request.paymentStatus = "PAID";
+    request.paidAt = new Date();
+    request.transactionId = razorpay_payment_id;
+    await request.save();
+
+    console.log(`✅ Seller request ${request.requestNumber} paid via Razorpay (${razorpay_payment_id})`);
+
+    // If already delivered, release stock to seller
+    if (request.status === "DELIVERED" || request.deliveryWorkflowStatus === "DELIVERED") {
+      try {
+        await materializeSellerRequestStock(request);
+      } catch (stockErr) {
+        console.error("Failed to credit seller stock on payment verification:", stockErr.message);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment verified successfully",
+      data: request,
+    });
+  } catch (error) {
+    console.error("❌ Error verifying seller request payment:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

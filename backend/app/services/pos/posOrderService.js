@@ -335,6 +335,18 @@ async function writePOSOrder(prepared, session) {
     (customer.addresses?.[0]?.city && String(customer.addresses[0].city).trim()) ||
     "";
 
+  const resolvedCustomerName =
+    (typeof prepared.customerName === "string" && prepared.customerName.trim()) ||
+    (typeof prepared.address?.name === "string" && prepared.address.name.trim()) ||
+    customer.name ||
+    "Walk-in Customer";
+
+  const resolvedCustomerPhone =
+    (typeof prepared.customerPhone === "string" && prepared.customerPhone.trim()) ||
+    (typeof prepared.address?.phone === "string" && prepared.address.phone.trim()) ||
+    customer.phone ||
+    "";
+
   const order = new Order({
     orderId,
     customer: customer._id,
@@ -345,16 +357,16 @@ async function writePOSOrder(prepared, session) {
     posPaymentMethod: paymentMethod,
     posStockVersion: POS_STOCK_VERSION,
     posStockDeductedAt: deductNow ? new Date() : null,
-    customerName: customer.name || "",
+    customerName: resolvedCustomerName,
     customerEmail: customer.email || "",
-    customerPhone: customer.phone || "",
+    customerPhone: resolvedCustomerPhone,
     customerAddress: resolvedAddress || null,
     address: {
       type: "Other",
-      name: customer.name || "POS Customer",
+      name: resolvedCustomerName || "POS Customer",
       address: resolvedAddress || "POS Order",
       city: resolvedCity || "",
-      phone: customer.phone || "",
+      phone: resolvedCustomerPhone || "",
     },
     pricing: {
       subtotal,

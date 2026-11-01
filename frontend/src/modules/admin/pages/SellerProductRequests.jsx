@@ -478,22 +478,22 @@ export default function SellerProductRequests() {
                 alignItems: "center",
                 gap: "10px"
               }}>
-                {/* PAYMENT TYPE BADGE */}
+                {/* PAYMENT BADGE */}
                 <span style={{
                   padding: "4px 12px",
                   borderRadius: "12px",
                   fontSize: "11px",
                   fontWeight: "600",
                   backgroundColor:
-                    request.paymentType === "PAY_NOW"
-                      ? "#E3F2FD"
+                    request.paymentStatus === "PAID"
+                      ? "#E8F5E9"
                       : "#FFF3E0",
                   color:
-                    request.paymentType === "PAY_NOW"
-                      ? "#3B9FD9"
+                    request.paymentStatus === "PAID"
+                      ? "#2E7D32"
                       : "#FF7A00"
                 }}>
-                  {request.paymentType === "PAY_NOW"
+                  {request.paymentStatus === "PAID"
                     ? "💳 Paid"
                     : "📦 Pay After Delivery"}
                 </span>
@@ -934,6 +934,45 @@ export default function SellerProductRequests() {
                     </p>
                   </div>
                 )}
+
+                {/* PAYMENT INFO BOX */}
+                <div style={{
+                  marginTop: "12px",
+                  backgroundColor: "white",
+                  padding: "12px 14px",
+                  borderRadius: "8px",
+                  border: "1px solid #e0e0e0",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "8px"
+                }}>
+                  <div style={{ fontSize: "13px" }}>
+                    <span style={{ color: "#666" }}>Payment Method: </span>
+                    <strong style={{ color: "#333" }}>
+                      {request.paymentType === "PAY_AFTER_DELIVERY" ? "Pay After Delivery" : "Pay Now (Online)"}
+                    </strong>
+                  </div>
+                  <div style={{ fontSize: "13px" }}>
+                    <span style={{ color: "#666" }}>Payment Status: </span>
+                    <strong style={{
+                      color:
+                        request.paymentStatus === "PAID"
+                          ? "#2E7D32"
+                          : request.paymentStatus === "FAILED"
+                          ? "#C62828"
+                          : "#E65100"
+                    }}>
+                      {request.paymentStatus || "PENDING"}
+                    </strong>
+                  </div>
+                  {request.transactionId && (
+                    <div style={{ fontSize: "12px", color: "#666" }}>
+                      Txn: <code style={{ backgroundColor: "#f5f5f5", padding: "2px 4px", borderRadius: "4px" }}>{request.transactionId}</code>
+                    </div>
+                  )}
+                </div>
 
                 {/* DELIVERY TRACKING SECTION */}
                 {(request.deliveryBoy || request.deliveryType === "SHIPROCKET") && (

@@ -10,7 +10,9 @@ import {
   manualAssignDelivery,
   assignShiprocketDelivery,
   broadcastRequestDeliveryController,
-  assignRequestDeliveryBoyController
+  assignRequestDeliveryBoyController,
+  fallbackToPayAfterDelivery,
+  verifySellerRequestRazorpay
 } from "../controller/sellerProductRequestController.js";
 import {
   verifyToken,
@@ -64,6 +66,22 @@ router.post(
   verifyToken,
   allowRoles("seller", "admin"),
   assignRequestDeliveryBoyController
+);
+
+// PATCH /api/seller-requests/:requestId/fallback-pay-after-delivery
+router.patch(
+  "/:requestId/fallback-pay-after-delivery",
+  verifyToken,
+  allowRoles("seller", "admin"),
+  fallbackToPayAfterDelivery
+);
+
+// POST /api/seller-requests/:requestId/verify-razorpay
+router.post(
+  "/:requestId/verify-razorpay",
+  verifyToken,
+  allowRoles("seller", "admin"),
+  verifySellerRequestRazorpay
 );
 
 // ─────────────────────────────────────────

@@ -128,9 +128,31 @@ export const generateDeliveryInvoice = async (order, customSettings = null) => {
     doc.setFont("helvetica", "bold");
     doc.text("Ship To", margin + 2, margin + 4);
     
-    const customer = order.customer || {};
-    const customerName = customer.name || order.customerName || order.shippingAddress?.name || 'Unknown';
-    const customerPhone = customer.phone || order.phone || order.shippingAddress?.phone || order.address?.phone || 'N/A';
+    const customer = typeof order.customer === 'object' && order.customer !== null ? order.customer : {};
+    const isPlaceholderName = (n) => !n || typeof n !== 'string' || n.trim().toLowerCase() === 'walk-in customer' || n.trim().toLowerCase() === 'pos customer' || n.trim().toLowerCase() === 'walk-in';
+    const isPlaceholderPhone = (p) => !p || typeof p !== 'string' || p.trim() === '0000000000' || p.trim() === '0' || p.trim().toUpperCase() === 'N/A';
+
+    const customerName =
+        (!isPlaceholderName(order.address?.name) && order.address.name) ||
+        (!isPlaceholderName(order.customerName) && order.customerName) ||
+        (!isPlaceholderName(order.shippingAddress?.name) && order.shippingAddress.name) ||
+        (!isPlaceholderName(customer.name) && customer.name) ||
+        order.customerName ||
+        order.address?.name ||
+        customer.name ||
+        'Walk-in Customer';
+
+    const customerPhone =
+        (!isPlaceholderPhone(order.customerPhone) && order.customerPhone) ||
+        (!isPlaceholderPhone(order.address?.phone) && order.address.phone) ||
+        (!isPlaceholderPhone(order.phone) && order.phone) ||
+        (!isPlaceholderPhone(order.shippingAddress?.phone) && order.shippingAddress.phone) ||
+        (!isPlaceholderPhone(customer.phone) && customer.phone) ||
+        order.customerPhone ||
+        order.address?.phone ||
+        customer.phone ||
+        order.phone ||
+        'N/A';
     const addressStr = typeof order.address === 'string'
         ? order.address
         : (order.deliveryAddress || order.address?.text || order.address?.fullAddress || [order.address?.street, order.address?.city, order.address?.state, order.address?.pincode].filter(Boolean).join(', ') || 'Address not provided');

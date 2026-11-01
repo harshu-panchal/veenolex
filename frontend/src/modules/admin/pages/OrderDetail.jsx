@@ -27,7 +27,8 @@ import {
     Store,
     Info,
     MapPin,
-    Trash2
+    Trash2,
+    Edit2
 } from 'lucide-react';
 import Modal from '@shared/components/ui/Modal';
 import { cn } from '@/lib/utils';
@@ -44,6 +45,46 @@ const OrderDetail = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isEditCustomerModalOpen, setIsEditCustomerModalOpen] = useState(false);
+    const [isSavingCustomer, setIsSavingCustomer] = useState(false);
+    const [editCustomerForm, setEditCustomerForm] = useState({
+        name: '',
+        phone: '',
+        address: ''
+    });
+
+    const openEditCustomerModal = () => {
+        setEditCustomerForm({
+            name: order.customerName || order.address?.name || order.customer?.name || '',
+            phone: order.customerPhone || order.address?.phone || order.customer?.phone || '',
+            address: order.customerAddress || (typeof order.address === 'string' ? order.address : (order.address?.address || order.address?.text || ''))
+        });
+        setIsEditCustomerModalOpen(true);
+    };
+
+    const handleSaveCustomerDetails = async (e) => {
+        e.preventDefault();
+        try {
+            setIsSavingCustomer(true);
+            const res = await adminOrdersApi.updateOrderCustomerDetails(order.orderId || order._id, {
+                name: editCustomerForm.name.trim(),
+                phone: editCustomerForm.phone.trim(),
+                address: editCustomerForm.address.trim()
+            });
+            showToast("Customer details updated successfully", "success");
+            setIsEditCustomerModalOpen(false);
+            if (res.data?.data || res.data?.order) {
+                const updatedOrder = res.data.data || res.data.order;
+                setOrder(prev => ({ ...prev, ...updatedOrder }));
+            } else {
+                fetchDetail();
+            }
+        } catch (err) {
+            showToast(err.response?.data?.message || "Failed to update customer details", "error");
+        } finally {
+            setIsSavingCustomer(false);
+        }
+    };
 
     const handleDeleteOrder = async () => {
         if (!order) return;
@@ -112,10 +153,13 @@ const OrderDetail = () => {
         if (!order) return;
         showToast("Generating PDF Invoice...", "info");
         try {
+            const resolvedAddress = order.customerAddress || deliveryAddress || (typeof order.address === 'string' ? order.address : (order.address?.text || ''));
             await generateDeliveryInvoice({
                 ...order,
-                deliveryAddress: deliveryAddress || '',
-                address: deliveryAddress || (typeof order.address === 'string' ? order.address : (order.address?.text || '')),
+                customerName: order.customerName || order.address?.name,
+                customerPhone: order.customerPhone || order.address?.phone,
+                deliveryAddress: resolvedAddress,
+                address: resolvedAddress,
             }, settings);
             showToast("Invoice downloaded successfully", "success");
         } catch (error) {
@@ -325,10 +369,20 @@ const OrderDetail = () => {
                 <div className="space-y-6 min-w-0">
                     {/* Customer Node */}
                     <Card className="border-none shadow-xl ring-1 ring-slate-100 bg-white rounded-2xl p-6">
-                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
-                            <User className="h-4 w-4" />
-                            Customer Node Information
-                        </h4>
+                        <div className="flex items-center justify-between mb-6">
+                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                <User className="h-4 w-4" />
+                                Customer Node Information
+                            </h4>
+                            <button
+                                type="button"
+                                onClick={openEditCustomerModal}
+                                className="px-2.5 py-1 text-[11px] font-bold text-brand-600 bg-brand-50 hover:bg-brand-100 rounded-lg transition-all flex items-center gap-1"
+                            >
+                                <Edit2 className="h-3 w-3" />
+                                Edit Details
+                            </button>
+                        </div>
                         <div className="flex items-center gap-4">
                             <img
                                 src="https://cdn-icons-png.flaticon.com/512/149/149071.png"
@@ -337,7 +391,7 @@ const OrderDetail = () => {
                             />
                             <div className="text-left min-w-0">
                                 <h3 className="text-lg font-black text-slate-900 leading-tight break-words">
-                                    {order.customer?.name}
+                                    {order.customerName || order.address?.name || order.customer?.name}
                                 </h3>
                                 <p
                                     className="text-xs font-bold text-slate-400 truncate"
@@ -357,7 +411,7 @@ const OrderDetail = () => {
                                 </span>
                                 <span className="text-[10px] font-bold text-slate-400 flex items-center gap-3 min-w-0">
                                     <Phone className="h-3.5 w-3.5 shrink-0" />
-                                    <span className="truncate">{order.customer?.phone || "—"}</span>
+                                    <span className="truncate">{order.customerPhone || order.address?.phone || order.customer?.phone || "—"}</span>
                                 </span>
                             </div>
                             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
@@ -381,9 +435,9 @@ const OrderDetail = () => {
                                         </button>
                                     )}
                                 </div>
-                                {deliveryAddress ? (
+                                {order.customerAddress || deliveryAddress ? (
                                     <p className="text-xs font-bold text-slate-600 leading-relaxed break-words">
-                                        {deliveryAddress}
+                                        {order.customerAddress || deliveryAddress}
                                     </p>
                                 ) : (
                                     <p className="text-xs font-bold text-slate-400 leading-relaxed italic">
@@ -543,6 +597,63 @@ const OrderDetail = () => {
                         </button>
                     </div>
                 </div>
+            </Modal>
+
+            {/* Edit Customer Details Modal */}
+            <Modal
+                isOpen={isEditCustomerModalOpen}
+                onClose={() => setIsEditCustomerModalOpen(false)}
+                title="Edit Customer Details"
+            >
+                <form onSubmit={handleSaveCustomerDetails} className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Customer / Recipient Name</label>
+                        <input
+                            type="text"
+                            value={editCustomerForm.name}
+                            onChange={(e) => setEditCustomerForm(prev => ({ ...prev, name: e.target.value }))}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 outline-none focus:border-brand-500"
+                            placeholder="Customer Name"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Phone Number</label>
+                        <input
+                            type="text"
+                            value={editCustomerForm.phone}
+                            onChange={(e) => setEditCustomerForm(prev => ({ ...prev, phone: e.target.value }))}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 outline-none focus:border-brand-500"
+                            placeholder="Phone Number"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Delivery Address</label>
+                        <textarea
+                            rows={3}
+                            value={editCustomerForm.address}
+                            onChange={(e) => setEditCustomerForm(prev => ({ ...prev, address: e.target.value }))}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 outline-none focus:border-brand-500 resize-none"
+                            placeholder="Delivery Address"
+                        />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                        <button
+                            type="button"
+                            onClick={() => setIsEditCustomerModalOpen(false)}
+                            className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={isSavingCustomer}
+                            className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-black hover:bg-slate-800 transition-colors shadow-md disabled:opacity-50"
+                        >
+                            {isSavingCustomer ? "Saving..." : "Save Details"}
+                        </button>
+                    </div>
+                </form>
             </Modal>
         </div>
     );

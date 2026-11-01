@@ -831,19 +831,17 @@ export async function getOrderWithAccess(orderId, userId, role) {
             status: request.status?.toLowerCase() || "pending",
             workflowStatus: request.deliveryWorkflowStatus || request.status || "CREATED",
             paymentStatus: request.paymentStatus === "PAID" ? "PAID" : "PENDING",
-            // A PAY_AFTER_DELIVERY request is cash-on-handover as far as the
-            // rider is concerned. Without a mode the rider app showed only
-            // "PENDING" and gave no sign that money had to be collected.
+            // If paymentStatus is not PAID (e.g. PAY_AFTER_DELIVERY or unpaid online fallback),
+            // it is cash-on-handover as far as the rider is concerned.
             paymentType: request.paymentType || "PAY_NOW",
             paymentMode:
-              request.paymentType === "PAY_AFTER_DELIVERY" ? "COD" : "ONLINE",
+              (request.paymentStatus !== "PAID" || request.paymentType === "PAY_AFTER_DELIVERY") ? "COD" : "ONLINE",
             payment: {
               method:
-                request.paymentType === "PAY_AFTER_DELIVERY" ? "cod" : "online",
+                (request.paymentStatus !== "PAID" || request.paymentType === "PAY_AFTER_DELIVERY") ? "cod" : "online",
               status: request.paymentStatus === "PAID" ? "paid" : "pending",
             },
             amountToCollect:
-              request.paymentType === "PAY_AFTER_DELIVERY" &&
               request.paymentStatus !== "PAID"
                 ? totalAmt
                 : 0,

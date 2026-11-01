@@ -28,6 +28,8 @@ export const adminOrdersApi = {
         axiosInstance.delete(`/orders/${orderId}`),
     deleteOrdersBulk: (orderIds) =>
         axiosInstance.delete('/orders/bulk/delete', { data: { orderIds } }),
+    updateOrderCustomerDetails: (orderId, data) =>
+        axiosInstance.patch(`/orders/${orderId}/customer-details`, data),
 };
 
 export default adminOrdersApi;

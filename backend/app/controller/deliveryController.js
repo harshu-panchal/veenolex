@@ -333,11 +333,10 @@ export const getMyDeliveryOrders = async (req, res) => {
                     finalAmount: r.totalAmount || 0,
                     totalAmount: r.totalAmount || 0,
                     paymentStatus: r.paymentStatus === "PAID" ? "PAID" : "PENDING",
-                    // "PAY_AFTER_DELIVERY" is not a mode the rider app knows;
-                    // it reads "cod"/"cash", so map it before sending.
+                    // "PAY_AFTER_DELIVERY" or any unpaid request is cash/cod for the rider
                     paymentType: r.paymentType || "PAY_NOW",
                     paymentMode:
-                      r.paymentType === "PAY_AFTER_DELIVERY" ? "COD" : "ONLINE",
+                      (r.paymentStatus !== "PAID" || r.paymentType === "PAY_AFTER_DELIVERY") ? "COD" : "ONLINE",
                     createdAt: r.createdAt,
                     seller: {
                         _id: s._id || r.sellerId,

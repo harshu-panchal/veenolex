@@ -1788,3 +1788,67 @@ export const deleteOrdersBulk = async (req, res) => {
   }
 };
 
+/* ===========================================
+   UPDATE ORDER CUSTOMER DETAILS (Admin/Seller)
+============================================ */
+export const updateOrderCustomerDetails = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { name, customerName, phone, customerPhone, address, customerAddress, city } = req.body;
+
+    const newName = (name !== undefined ? name : customerName)?.trim();
+    const newPhone = (phone !== undefined ? phone : customerPhone)?.trim();
+    const newAddress = (address !== undefined ? address : customerAddress)?.trim();
+    const newCity = city?.trim();
+
+    let query = mongoose.Types.ObjectId.isValid(orderId)
+      ? { $or: [{ _id: orderId }, { orderId: orderId }] }
+      : { orderId: orderId };
+
+    if (req.user.role === "seller") {
+      query = { $and: [query, { seller: req.user.id }] };
+    }
+
+    const order = await Order.findOne(query);
+    if (!order) {
+      return handleResponse(res, 404, "Order not found");
+    }
+
+    if (newName !== undefined) {
+      order.customerName = newName;
+      if (!order.address) order.address = {};
+      order.address.name = newName;
+    }
+
+    if (newPhone !== undefined) {
+      order.customerPhone = newPhone;
+      if (!order.address) order.address = {};
+      order.address.phone = newPhone;
+    }
+
+    if (newAddress !== undefined) {
+      order.customerAddress = newAddress;
+      if (!order.address) order.address = {};
+      order.address.address = newAddress;
+    }
+
+    if (newCity !== undefined) {
+      if (!order.address) order.address = {};
+      order.address.city = newCity;
+    }
+
+    await order.save();
+
+    try {
+      await invalidate(buildKey("orders", "*"));
+    } catch (e) {
+      logger.warn("Failed to invalidate order caches", { scope: "updateOrderCustomerDetails", error: e.message });
+    }
+
+    return handleResponse(res, 200, "Order customer details updated successfully", order);
+  } catch (error) {
+    logger.error("Failed to update order customer details", { scope: "updateOrderCustomerDetails", error });
+    return handleResponse(res, 500, error.message);
+  }
+};
+

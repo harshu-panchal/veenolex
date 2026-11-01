@@ -180,8 +180,17 @@ const RequestedOrdersList = () => {
                     <td style={{ padding: "16px 12px", color: "#666" }}>
                       {req.items?.length || 0} items
                     </td>
-                    <td style={{ padding: "16px 12px", fontWeight: "600", color: "#333" }}>
-                      {formatPrice(req.totalAmount)}
+                    <td style={{ padding: "16px 12px", color: "#333" }}>
+                      <div style={{ fontWeight: "600" }}>{formatPrice(req.totalAmount)}</div>
+                      <span style={{
+                        fontSize: "11px",
+                        fontWeight: "600",
+                        color: req.paymentStatus === "PAID" ? "#27AE60" : "#E65100"
+                      }}>
+                        {req.paymentStatus === "PAID"
+                          ? "● Paid"
+                          : "● Pay After Delivery"}
+                      </span>
                     </td>
                     <td style={{ padding: "16px 12px" }}>
                       {getStatusBadge(req.status)}

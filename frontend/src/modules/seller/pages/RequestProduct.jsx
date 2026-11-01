@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
   fetchAdminProducts,
   createProductRequest,
+  fallbackSellerRequestPayment,
+  verifySellerRequestPayment,
   formatPrice
 } from "../../../services/sellerProductRequestService";
 import { loadRazorpayScript } from "../../../shared/utils/razorpay";
@@ -155,6 +158,21 @@ export default function RequestProduct() {
         if (paymentType === "PAY_NOW" && data.gatewayResponse?.id) {
           const isScriptLoaded = await loadRazorpayScript();
           if (isScriptLoaded && window.Razorpay) {
+            let fallbackHandled = false;
+            const handleCancelOrFailure = async (reason) => {
+              if (fallbackHandled) return;
+              fallbackHandled = true;
+              try {
+                await fallbackSellerRequestPayment(data.requestId);
+                toast.info("Payment " + (reason || "cancelled") + ". Request switched to Pay After Delivery (Payment Pending).", {
+                  duration: 6000
+                });
+              } catch (fallbackErr) {
+                console.error("Fallback error:", fallbackErr);
+              }
+              navigate("/seller/requested-orders");
+            };
+
             const options = {
               key: data.gatewayResponse.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID,
               amount: data.gatewayResponse.amount,
@@ -162,17 +180,36 @@ export default function RequestProduct() {
               name: "Veenolex",
               description: `Product Request #${data.requestNumber}`,
               order_id: data.gatewayResponse.id,
-              handler: function () {
+              handler: async function (response) {
+                try {
+                  await verifySellerRequestPayment(data.requestId, {
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_signature: response.razorpay_signature,
+                  });
+                  toast.success("Payment verified successfully! Your request has been placed.", {
+                    duration: 5000
+                  });
+                } catch (verifyErr) {
+                  console.error("Payment verification error:", verifyErr);
+                  toast.warning("Payment submitted. Checking verification status...", {
+                    duration: 5000
+                  });
+                }
                 navigate("/seller/requested-orders");
               },
               modal: {
                 ondismiss: function () {
-                  navigate("/seller/requested-orders");
+                  handleCancelOrFailure("cancelled");
                 }
               },
               theme: { color: "#0ea5e9" }
             };
             const rzp = new window.Razorpay(options);
+            rzp.on("payment.failed", function (response) {
+              const failureDesc = response.error?.description || "failed";
+              handleCancelOrFailure(failureDesc);
+            });
             rzp.open();
             return;
           }

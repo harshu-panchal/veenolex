@@ -2396,8 +2396,11 @@ export async function verifyHandoffOtpAndDeliver(deliveryId, orderId, code) {
   // A seller request paid on delivery is settled by the same act that proves
   // handover: the seller gives the 4-digit PIN only once the rider has the
   // money. Recording it here, inside the atomic delivery update, is what lets
-  // the stock gate downstream require both delivered AND paid.
-  if (isRequest && order.paymentType === "PAY_AFTER_DELIVERY") {
+  // the stock gate downstream require both delivered AND paid. If payment was
+  // not settled up front (e.g. online payment pending/cancelled), it falls back
+  // to pay-after-delivery so the rider's collection settles the bill.
+  if (isRequest && (order.paymentType === "PAY_AFTER_DELIVERY" || order.paymentStatus !== "PAID")) {
+    updateSet.paymentType = "PAY_AFTER_DELIVERY";
     updateSet.paymentStatus = "PAID";
     updateSet.paidAt = now;
     updateSet.collectedAmount = order.totalAmount || 0;

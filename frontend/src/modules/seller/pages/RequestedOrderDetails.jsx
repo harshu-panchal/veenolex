@@ -200,7 +200,13 @@ const RequestedOrderDetails = () => {
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
               <span style={{ color: "#666" }}>Payment Type</span>
-              <span>{requestDetails.paymentType}</span>
+              <span style={{ fontWeight: "600" }}>
+                {requestDetails.paymentType === "PAY_AFTER_DELIVERY"
+                  ? "Pay After Delivery"
+                  : requestDetails.paymentType === "PAY_NOW"
+                  ? "Pay Now (Online)"
+                  : requestDetails.paymentType}
+              </span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
               <span style={{ color: "#666" }}>Payment Status</span>
