@@ -53,6 +53,22 @@ import { getOrderStatusVariant } from '../components/orders';
 import { generateDeliveryInvoice } from '@/utils/generateDeliveryInvoice';
 import { useSettings } from '@core/context/SettingsContext';
 
+const isPlaceholderCustomerName = (name) => {
+    if (!name || typeof name !== 'string') return true;
+    const lower = name.trim().toLowerCase();
+    return lower === 'walk-in customer' || lower === 'pos customer' || lower === 'walk-in' || lower === 'unknown';
+};
+
+const resolveOrderCustomerName = (o) => {
+    const customName =
+        (!isPlaceholderCustomerName(o?.customerName) && o.customerName) ||
+        (!isPlaceholderCustomerName(o?.address?.name) && o.address.name) ||
+        (!isPlaceholderCustomerName(o?.shippingAddress?.name) && o.shippingAddress.name) ||
+        (!isPlaceholderCustomerName(o?.customer?.name) && o.customer.name);
+    if (customName) return customName;
+    return o?.customerName || o?.address?.name || o?.shippingAddress?.name || o?.customer?.name || 'Walk-in Customer';
+};
+
 const Orders = () => {
     const { settings } = useSettings();
     const [orders, setOrders] = useState([]);
@@ -190,14 +206,17 @@ const Orders = () => {
                 ? payload.items
                 : (response.data.results || []);
 
-            const formattedOrders = (rawOrders || []).map(order => ({
-                id: order.orderId,
-                _id: order._id,
-                customer: {
-                    name: order.customer?.name || 'Unknown',
-                    phone: order.customer?.phone || '',
-                    avatar: (order.customer?.name || 'U').charAt(0)
-                },
+            const formattedOrders = (rawOrders || []).map(order => {
+                const resolvedName = resolveOrderCustomerName(order);
+                const resolvedPhone = order.customerPhone || order.address?.phone || order.customer?.phone || '';
+                return {
+                    id: order.orderId,
+                    _id: order._id,
+                    customer: {
+                        name: resolvedName,
+                        phone: resolvedPhone,
+                        avatar: (resolvedName || 'U').charAt(0)
+                    },
                 items: (order.items || []).map(item => ({
                     name: item.name,
                     price: item.price,
@@ -224,7 +243,8 @@ const Orders = () => {
                         ? `Cash on Delivery (₹${order.codAdvance.amount} advance paid)`
                         : 'Cash on Delivery')
                     : 'Online Paid'
-            }));
+                };
+            });
 
             setOrders(formattedOrders);
             setSummary({
