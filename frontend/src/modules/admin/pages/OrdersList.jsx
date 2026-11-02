@@ -21,6 +21,7 @@ import {
     CheckCircle2,
     XCircle,
     Trash2,
+    Edit2,
 } from 'lucide-react';
 import Modal from '@shared/components/ui/Modal';
 import { cn } from '@/lib/utils';
@@ -54,6 +55,22 @@ const resolvePaymentMethod = (o) => {
     return 'Online';
 };
 
+export const isPlaceholderCustomerName = (name) => {
+    if (!name || typeof name !== 'string') return true;
+    const lower = name.trim().toLowerCase();
+    return lower === 'walk-in customer' || lower === 'pos customer' || lower === 'walk-in' || lower === 'unknown';
+};
+
+export const resolveOrderCustomerName = (o) => {
+    const customName =
+        (!isPlaceholderCustomerName(o?.customerName) && o.customerName) ||
+        (!isPlaceholderCustomerName(o?.address?.name) && o.address.name) ||
+        (!isPlaceholderCustomerName(o?.shippingAddress?.name) && o.shippingAddress.name) ||
+        (!isPlaceholderCustomerName(o?.customer?.name) && o.customer.name);
+    if (customName) return customName;
+    return o?.customerName || o?.address?.name || o?.shippingAddress?.name || o?.customer?.name || 'Walk-in Customer';
+};
+
 const OrdersList = () => {
     const { status = 'all' } = useParams();
     const navigate = useNavigate();
@@ -84,6 +101,56 @@ const OrdersList = () => {
     const [selectedOrderIds, setSelectedOrderIds] = useState([]);
     const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
     const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+    const [editingCustomerOrder, setEditingCustomerOrder] = useState(null);
+    const [customerForm, setCustomerForm] = useState({ name: '', phone: '', address: '' });
+    const [isUpdatingCustomer, setIsUpdatingCustomer] = useState(false);
+
+    const openEditCustomerModal = (order) => {
+        setEditingCustomerOrder(order);
+        setCustomerForm({
+            name: isPlaceholderCustomerName(order.customer) ? '' : order.customer,
+            phone: order.customerPhone || '',
+            address: order.customerAddress || '',
+        });
+    };
+
+    const handleSaveCustomerDetails = async (e) => {
+        e?.preventDefault();
+        if (!editingCustomerOrder) return;
+        setIsUpdatingCustomer(true);
+        try {
+            const targetId = editingCustomerOrder.id || editingCustomerOrder._id;
+            const res = await adminOrdersApi.updateOrderCustomerDetails(targetId, {
+                name: customerForm.name.trim(),
+                phone: customerForm.phone.trim(),
+                address: customerForm.address.trim(),
+            });
+            if (res.data?.success) {
+                const updatedName = customerForm.name.trim() || 'Walk-in Customer';
+                setOrders((prev) =>
+                    prev.map((o) =>
+                        o.id === editingCustomerOrder.id || o._id === editingCustomerOrder._id
+                            ? {
+                                  ...o,
+                                  customer: updatedName,
+                                  customerName: updatedName,
+                                  customerPhone: customerForm.phone.trim(),
+                                  customerAddress: customerForm.address.trim(),
+                              }
+                            : o
+                    )
+                );
+                showToast("Customer details updated successfully", "success");
+                setEditingCustomerOrder(null);
+            } else {
+                showToast(res.data?.message || "Failed to update customer details", "error");
+            }
+        } catch (err) {
+            showToast(err.response?.data?.message || err.message || "Failed to update customer details", "error");
+        } finally {
+            setIsUpdatingCustomer(false);
+        }
+    };
 
     const handleDeleteSingleOrder = async () => {
         if (!orderToDelete) return;
@@ -164,21 +231,27 @@ const OrdersList = () => {
             if (response.data.success) {
                 const payload = response.data.result || {};
                 const dbOrders = Array.isArray(payload.items) ? payload.items : (response.data.results || []);
-                const formatted = dbOrders.map(o => ({
-                    id: o.orderId || 'UNSET',
-                    _id: o._id,
-                    customer: o.customer?.name || 'Unknown',
-                    // Warehouse orders have no seller — admin fulfils them directly.
-                    seller: o.seller?.shopName || (o.fulfilledBy === 'ADMIN' ? 'Admin' : 'Unknown'),
-                    items: o.items?.length || 0,
-                    amount: o.pricing?.total || 0,
-                    status: getLegacyStatusFromOrder(o),
-                    workflowStatus: o.workflowStatus,
-                    workflowVersion: o.workflowVersion,
-                    returnStatus: o.returnStatus,
-                    date: new Date(o.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
-                    payment: resolvePaymentMethod(o),
-                }));
+                const formatted = dbOrders.map(o => {
+                    const resolvedName = resolveOrderCustomerName(o);
+                    return {
+                        id: o.orderId || 'UNSET',
+                        _id: o._id,
+                        customer: resolvedName,
+                        customerName: resolvedName,
+                        customerPhone: o.customerPhone || o.address?.phone || o.shippingAddress?.phone || o.customer?.phone || '',
+                        customerAddress: o.customerAddress || o.address?.address || o.address?.fullAddress || o.address?.text || '',
+                        // Warehouse orders have no seller — admin fulfils them directly.
+                        seller: o.seller?.shopName || (o.fulfilledBy === 'ADMIN' ? 'Admin' : 'Unknown'),
+                        items: o.items?.length || 0,
+                        amount: o.pricing?.total || 0,
+                        status: getLegacyStatusFromOrder(o),
+                        workflowStatus: o.workflowStatus,
+                        workflowVersion: o.workflowVersion,
+                        returnStatus: o.returnStatus,
+                        date: new Date(o.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+                        payment: resolvePaymentMethod(o),
+                    };
+                });
                 setOrders(formatted);
                 setSummary({
                     totalOrders: Number(payload.summary?.totalOrders || payload.total || formatted.length || 0),
@@ -508,11 +581,21 @@ const OrdersList = () => {
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="px-4 py-5">
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-2 w-2 rounded-full bg-brand-500" />
+                                    <td className="px-4 py-5" onClick={(e) => e.stopPropagation()}>
+                                        <div className="flex items-center gap-2 group/cust">
+                                            <div className="h-2 w-2 rounded-full bg-brand-500 shrink-0" />
                                             <span className="text-xs font-black text-slate-700">{order.customer}</span>
+                                            <button
+                                                onClick={() => openEditCustomerModal(order)}
+                                                className="p-1 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-all opacity-70 group-hover/cust:opacity-100"
+                                                title="Edit Customer Details"
+                                            >
+                                                <Edit2 className="h-3 w-3" />
+                                            </button>
                                         </div>
+                                        {order.customerPhone && (
+                                            <span className="text-[10px] text-slate-400 font-bold ml-4 block">{order.customerPhone}</span>
+                                        )}
                                     </td>
                                     <td className="px-4 py-5">
                                         <div className="flex items-center gap-2">
@@ -590,6 +673,16 @@ const OrdersList = () => {
                                                     DISPATCH
                                                 </button>
                                             )}
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    openEditCustomerModal(order);
+                                                }}
+                                                className="p-2.5 bg-slate-50 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-all"
+                                                title="Edit Customer Details"
+                                            >
+                                                <Edit2 className="h-4 w-4" />
+                                            </button>
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -738,6 +831,65 @@ const OrdersList = () => {
                         </button>
                     </div>
                 </div>
+            </Modal>
+            {/* Edit Customer Details Modal */}
+            <Modal
+                isOpen={!!editingCustomerOrder}
+                onClose={() => setEditingCustomerOrder(null)}
+                title={`Edit Customer Details (#${editingCustomerOrder?.id})`}
+            >
+                <form onSubmit={handleSaveCustomerDetails} className="space-y-4">
+                    <div>
+                        <label className="text-xs font-bold text-slate-700 mb-1 block">
+                            Customer Name <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={customerForm.name}
+                            onChange={(e) => setCustomerForm(prev => ({ ...prev, name: e.target.value }))}
+                            placeholder="Enter customer name..."
+                            required
+                            className="w-full text-xs font-bold px-3 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all bg-slate-50 focus:bg-white"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-700 mb-1 block">Phone Number</label>
+                        <input
+                            type="text"
+                            value={customerForm.phone}
+                            onChange={(e) => setCustomerForm(prev => ({ ...prev, phone: e.target.value }))}
+                            placeholder="Enter customer phone..."
+                            className="w-full text-xs font-bold px-3 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all bg-slate-50 focus:bg-white"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-700 mb-1 block">Delivery / Customer Address</label>
+                        <textarea
+                            value={customerForm.address}
+                            onChange={(e) => setCustomerForm(prev => ({ ...prev, address: e.target.value }))}
+                            placeholder="Enter delivery address..."
+                            rows={3}
+                            className="w-full text-xs font-bold px-3 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all bg-slate-50 focus:bg-white resize-none"
+                        />
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                        <button
+                            type="button"
+                            disabled={isUpdatingCustomer}
+                            onClick={() => setEditingCustomerOrder(null)}
+                            className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-all"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={isUpdatingCustomer}
+                            className="flex-1 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 shadow-md shadow-brand-200"
+                        >
+                            {isUpdatingCustomer ? "Saving..." : "Save Changes"}
+                        </button>
+                    </div>
+                </form>
             </Modal>
         </div>
     );

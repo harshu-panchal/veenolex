@@ -1818,18 +1818,27 @@ export const updateOrderCustomerDetails = async (req, res) => {
       order.customerName = newName;
       if (!order.address) order.address = {};
       order.address.name = newName;
+      if (order.shippingAddress) {
+        order.shippingAddress.name = newName;
+      }
     }
 
     if (newPhone !== undefined) {
       order.customerPhone = newPhone;
       if (!order.address) order.address = {};
       order.address.phone = newPhone;
+      if (order.shippingAddress) {
+        order.shippingAddress.phone = newPhone;
+      }
     }
 
     if (newAddress !== undefined) {
       order.customerAddress = newAddress;
       if (!order.address) order.address = {};
       order.address.address = newAddress;
+      if (order.shippingAddress) {
+        order.shippingAddress.address = newAddress;
+      }
     }
 
     if (newCity !== undefined) {

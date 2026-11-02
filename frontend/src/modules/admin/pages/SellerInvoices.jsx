@@ -750,8 +750,10 @@ export default function SellerInvoices() {
       doc.text(`Email: ${selectedSeller.email || "N/A"}`, 14, 75);
 
       // Customer col
-      doc.text(`Name: ${selectedOrder.customer?.name || "Walk-in Customer"}`, 110, 60);
-      doc.text(`Phone: ${selectedOrder.customer?.phone || "N/A"}`, 110, 65);
+      const resolvedCustName = selectedOrder.customerName || selectedOrder.address?.name || selectedOrder.shippingAddress?.name || selectedOrder.customer?.name || "Walk-in Customer";
+      const resolvedCustPhone = selectedOrder.customerPhone || selectedOrder.address?.phone || selectedOrder.shippingAddress?.phone || selectedOrder.customer?.phone || "N/A";
+      doc.text(`Name: ${resolvedCustName}`, 110, 60);
+      doc.text(`Phone: ${resolvedCustPhone}`, 110, 65);
       const deliveryAddress = selectedOrder.shippingAddress
         ? `${selectedOrder.shippingAddress.address || ""}, ${selectedOrder.shippingAddress.city || ""}, ${selectedOrder.shippingAddress.postalCode || ""}`
         : "Direct Warehouse Pick / Walk-in";
@@ -1370,8 +1372,12 @@ export default function SellerInvoices() {
                           <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">
                             Customer Details
                           </p>
-                          <p className="font-black text-slate-950 uppercase">{selectedOrder.customer?.name || "Walk-in Customer"}</p>
-                          <p className="text-slate-500 font-semibold mt-1">Phone: {selectedOrder.customer?.phone || "N/A"}</p>
+                          <p className="font-black text-slate-950 uppercase">
+                            {selectedOrder.customerName || selectedOrder.address?.name || selectedOrder.shippingAddress?.name || selectedOrder.customer?.name || "Walk-in Customer"}
+                          </p>
+                          <p className="text-slate-500 font-semibold mt-1">
+                            Phone: {selectedOrder.customerPhone || selectedOrder.address?.phone || selectedOrder.shippingAddress?.phone || selectedOrder.customer?.phone || "N/A"}
+                          </p>
                           <p className="text-slate-500 font-semibold truncate">
                             {selectedOrder.shippingAddress
                               ? `${selectedOrder.shippingAddress.address || ""}, ${selectedOrder.shippingAddress.city || ""}`
