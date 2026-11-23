@@ -304,6 +304,135 @@ describe("courier-shipped (out-of-zone) orders", () => {
   });
 });
 
+describe("Free Delivery Minimum waives courier shipping too", () => {
+  const FAR_ADDRESS = { location: { lat: 28.6139, lng: 77.209 } };
+
+  const farProduct = {
+    _id: "p1",
+    name: "P1",
+    salePrice: 0,
+    price: 100,
+    headerId: "h1",
+    sellerId: "seller-far",
+    status: "active",
+    variants: [],
+    zoneOutDeliveryEnabled: true,
+    zoneOutPrice: null,
+  };
+  const nearProduct = { ...farProduct, _id: "p2", name: "P2", sellerId: "seller-near" };
+
+  const SELLERS = {
+    // ~1100 km from the customer.
+    "seller-far": { _id: "seller-far", serviceRadius: 5, location: { coordinates: [72.8777, 19.076] } },
+    // At the customer's address.
+    "seller-near": { _id: "seller-near", serviceRadius: 5, location: { coordinates: [77.209, 28.6139] } },
+  };
+
+  function withThreshold(freeDeliveryThreshold) {
+    mockGetOrCreateFinanceSettings.mockResolvedValue({
+      ...SETTINGS,
+      warehouseShippingBaseFee: 50,
+      freeDeliveryThreshold,
+    });
+  }
+
+  beforeEach(() => {
+    mockProductFind.mockReturnValue(createQueryChain([farProduct, nearProduct]));
+    mockSellerFindById.mockImplementation((id) => createQueryChain(SELLERS[String(id)] || null));
+  });
+
+  it("charges the courier fee below the minimum", async () => {
+    withThreshold(500);
+    const snapshot = await buildCheckoutPricingSnapshot({
+      orderItems: [{ product: "p1", quantity: 1 }], // ₹100
+      address: FAR_ADDRESS,
+    });
+
+    const entry = snapshot.sellerBreakdownEntries[0];
+    expect(entry.isOutOfZone).toBe(true);
+    expect(entry.breakdown.deliveryFeeCharged).toBe(50);
+    expect(entry.breakdown.grandTotal).toBe(150);
+    expect(snapshot.freeDeliveryReason).toBe(null);
+  });
+
+  it("ships free once the order value reaches the minimum", async () => {
+    withThreshold(500);
+    const snapshot = await buildCheckoutPricingSnapshot({
+      orderItems: [{ product: "p1", quantity: 5 }], // exactly ₹500
+      address: FAR_ADDRESS,
+    });
+
+    const { breakdown, isOutOfZone } = snapshot.sellerBreakdownEntries[0];
+    expect(isOutOfZone).toBe(true);
+    expect(breakdown.deliveryFeeCharged).toBe(0);
+    expect(breakdown.grandTotal).toBe(500);
+    expect(breakdown.riderPayoutTotal).toBe(0);
+    // The courier bill the platform now absorbs stays visible to finance.
+    expect(breakdown.snapshots.freeDeliveryRebate).toBe(50);
+    expect(breakdown.snapshots.warehouseShipping.waivedByThreshold).toBe(true);
+    expect(snapshot.freeDeliveryReason).toBe("threshold");
+    expect(snapshot.aggregateBreakdown.freeDeliveryThreshold).toBe(500);
+  });
+
+  it("follows the admin's current minimum, not a fixed ₹500", async () => {
+    withThreshold(500);
+    const before = await buildCheckoutPricingSnapshot({
+      orderItems: [{ product: "p1", quantity: 4 }], // ₹400
+      address: FAR_ADDRESS,
+    });
+    expect(before.sellerBreakdownEntries[0].breakdown.deliveryFeeCharged).toBe(50);
+
+    withThreshold(400);
+    const after = await buildCheckoutPricingSnapshot({
+      orderItems: [{ product: "p1", quantity: 4 }],
+      address: FAR_ADDRESS,
+    });
+    expect(after.sellerBreakdownEntries[0].breakdown.deliveryFeeCharged).toBe(0);
+  });
+
+  it("always charges the courier fee when no minimum is set", async () => {
+    withThreshold(0);
+    const snapshot = await buildCheckoutPricingSnapshot({
+      orderItems: [{ product: "p1", quantity: 50 }], // ₹5000
+      address: FAR_ADDRESS,
+    });
+    expect(snapshot.sellerBreakdownEntries[0].breakdown.deliveryFeeCharged).toBe(50);
+  });
+
+  it("still waives local rider delivery at the minimum", async () => {
+    withThreshold(500);
+    const below = await buildCheckoutPricingSnapshot({
+      orderItems: [{ product: "p2", quantity: 1 }],
+      address: FAR_ADDRESS,
+    });
+    expect(below.sellerBreakdownEntries[0].isOutOfZone).toBe(false);
+    expect(below.sellerBreakdownEntries[0].breakdown.deliveryFeeCharged).toBeGreaterThan(0);
+
+    const atMinimum = await buildCheckoutPricingSnapshot({
+      orderItems: [{ product: "p2", quantity: 5 }],
+      address: FAR_ADDRESS,
+    });
+    expect(atMinimum.sellerBreakdownEntries[0].breakdown.deliveryFeeCharged).toBe(0);
+  });
+
+  it("counts the whole cart, so a mixed local + courier cart ships free", async () => {
+    withThreshold(500);
+    const snapshot = await buildCheckoutPricingSnapshot({
+      orderItems: [
+        { product: "p1", quantity: 3 }, // courier ₹300
+        { product: "p2", quantity: 2 }, // local ₹200
+      ],
+      address: FAR_ADDRESS,
+    });
+
+    expect(snapshot.sellerBreakdownEntries).toHaveLength(2);
+    for (const entry of snapshot.sellerBreakdownEntries) {
+      expect(entry.breakdown.deliveryFeeCharged).toBe(0);
+    }
+    expect(snapshot.aggregateBreakdown.grandTotal).toBe(500);
+  });
+});
+
 describe("return settlement", () => {
   const order = {
     returnItems: [{ product: "p1", quantity: 1, price: 100 }],

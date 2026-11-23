@@ -82,6 +82,7 @@ export const previewCheckoutFinance = async (req, res) => {
       // SERVER_SIDE_COUPON_ENGINE is off.
       couponSnapshot: pricingSnapshot.couponSnapshot || null,
       freeDeliveryApplied: !!pricingSnapshot.freeDeliveryApplied,
+      freeDeliveryReason: pricingSnapshot.freeDeliveryReason || null,
       codAdvance: pricingSnapshot.codAdvance,
       ...(distanceDebug ? { distanceDebug } : {}),
     });

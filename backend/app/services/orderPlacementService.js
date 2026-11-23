@@ -528,6 +528,9 @@ export async function placeOrderAtomic({
         seller: orderSellerId,
         fulfilledBy: isAdminFulfilled ? ADMIN_FULFILLER : "SELLER",
         routedReason: entry.routedReason || null,
+        // Priced as a courier shipment at checkout. Persisting it keeps the
+        // order's ETA and dispatch in line with what the customer was charged.
+        isOutOfZone: !!entry.isOutOfZone,
         routingHistory: [
           {
             fulfilledBy: isAdminFulfilled ? ADMIN_FULFILLER : "SELLER",

@@ -481,17 +481,22 @@ function recomputeBreakdownTotals(breakdown) {
   );
 }
 
-// Audit Phase 5 (H-6): when the server-side coupon engine returns
-// `freeDelivery: true`, zero out the customer-facing delivery fee on
-// every seller breakdown. The rider keeps their full payout (the
-// platform absorbs the campaign cost), so we only adjust
-// `deliveryFeeCharged`, `grossTotal`, `grandTotal`, `payableAmount`,
-// and `platformLogisticsMargin`. Runs AFTER handling-fee allocation
-// (so `grossTotal` exists) and BEFORE tip/wallet allocation (so they
-// allocate against the post-rebate grandTotal).
-function applyFreeDeliveryToSellerBreakdowns(sellerBreakdownEntries = []) {
+// Zero out the customer-facing delivery fee on every seller breakdown.
+// The rider keeps their full payout (the platform absorbs the cost), so we
+// only adjust `deliveryFeeCharged`, `grossTotal`, `grandTotal`,
+// `payableAmount`, and `platformLogisticsMargin`. Runs AFTER handling-fee
+// allocation (so `grossTotal` exists) and BEFORE tip/wallet allocation (so
+// they allocate against the post-rebate grandTotal).
+//
+// `includeOutOfZone`: the admin Free Delivery Minimum waives courier
+// (out-of-zone) shipping too; a free-delivery coupon waives rider delivery
+// only, so a coupon can never make the platform eat a courier bill.
+function applyFreeDeliveryToSellerBreakdowns(
+  sellerBreakdownEntries = [],
+  { includeOutOfZone = false } = {},
+) {
   for (const entry of sellerBreakdownEntries) {
-    if (entry?.isOutOfZone) continue;
+    if (entry?.isOutOfZone && !includeOutOfZone) continue;
     const breakdown = entry?.breakdown;
     if (!breakdown) continue;
     const oldDeliveryFee = round2(Number(breakdown.deliveryFeeCharged || 0));
@@ -511,6 +516,10 @@ function applyFreeDeliveryToSellerBreakdowns(sellerBreakdownEntries = []) {
       ? breakdown.snapshots
       : {};
     breakdown.snapshots.freeDeliveryRebate = oldDeliveryFee;
+    if (entry.isOutOfZone && breakdown.snapshots.warehouseShipping) {
+      // The courier still bills the platform this amount.
+      breakdown.snapshots.warehouseShipping.waivedByThreshold = true;
+    }
   }
 }
 
@@ -645,7 +654,7 @@ export async function buildCheckoutPricingSnapshot({
   let effectiveDiscount = 0;
   let resolvedCouponSnapshot = null;
   let resolvedCoupon = null;
-  let applyFreeDelivery = false;
+  let couponFreeDelivery = false;
   if (couponCode || couponId) {
     const couponResult = await computeOrderDiscount({
       couponCode,
@@ -658,7 +667,7 @@ export async function buildCheckoutPricingSnapshot({
       effectiveDiscount = round2(couponResult.discountAmount);
       resolvedCouponSnapshot = couponResult.couponSnapshot;
       resolvedCoupon = couponResult.coupon;
-      applyFreeDelivery = !!couponResult.freeDelivery;
+      couponFreeDelivery = !!couponResult.freeDelivery;
     }
   }
 
@@ -689,11 +698,18 @@ export async function buildCheckoutPricingSnapshot({
     totalSubtotal += subtotal;
   }
 
-  // Waive delivery fee if cart subtotal meets the Free Delivery Minimum set in Admin Settings
+  // Free Delivery Minimum (admin → Fees & Charges), read live on every
+  // checkout. Compared against the pre-coupon cart subtotal across all
+  // sellers, and waives both rider delivery and courier shipping.
   const freeDeliveryThreshold = Number(financeSettings?.freeDeliveryThreshold || 0);
-  if (freeDeliveryThreshold > 0 && totalSubtotal >= freeDeliveryThreshold) {
-    applyFreeDelivery = true;
-  }
+  const thresholdFreeDelivery =
+    freeDeliveryThreshold > 0 && round2(totalSubtotal) >= freeDeliveryThreshold;
+  const applyFreeDelivery = thresholdFreeDelivery || couponFreeDelivery;
+  const freeDeliveryReason = thresholdFreeDelivery
+    ? "threshold"
+    : couponFreeDelivery
+      ? "coupon"
+      : null;
 
   // Discount shares are allocated up front so they sum back to the checkout
   // discount exactly. `computeOrderDiscount` already caps the discount at the
@@ -760,7 +776,9 @@ export async function buildCheckoutPricingSnapshot({
   // wallet allocation (so they clamp against the post-rebate grandTotal,
   // matching the frontend math).
   if (applyFreeDelivery) {
-    applyFreeDeliveryToSellerBreakdowns(sellerBreakdownEntries);
+    applyFreeDeliveryToSellerBreakdowns(sellerBreakdownEntries, {
+      includeOutOfZone: thresholdFreeDelivery,
+    });
   }
   allocateCheckoutTipToSellerBreakdowns(sellerBreakdownEntries, tipAmount);
   // Audit Phase 4 (C-1): subtract wallet redemption from each seller's
@@ -795,6 +813,8 @@ export async function buildCheckoutPricingSnapshot({
     sellerBreakdownEntries.map((entry) => entry.breakdown),
   );
   aggregateBreakdown.isOutOfZone = sellerBreakdownEntries.some((entry) => entry.isOutOfZone);
+  aggregateBreakdown.freeDeliveryReason = freeDeliveryReason;
+  aggregateBreakdown.freeDeliveryThreshold = freeDeliveryThreshold;
 
   return {
     hydratedItems: routedItems,
@@ -809,6 +829,7 @@ export async function buildCheckoutPricingSnapshot({
     couponSnapshot: resolvedCouponSnapshot,
     coupon: resolvedCoupon,
     freeDeliveryApplied: applyFreeDelivery,
+    freeDeliveryReason,
     codAdvance: {
       enabled: codAdvanceTotal > 0,
       amount: codAdvanceTotal,

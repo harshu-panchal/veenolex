@@ -263,7 +263,7 @@ const BillingCharges = () => {
                                             className="w-full pl-10 pr-5 py-4 bg-slate-50 border-none rounded-2xl text-base font-black text-slate-900 outline-none focus:ring-2 focus:ring-red-500/10 transition-all"
                                         />
                                     </div>
-                                    <p className="text-[10px] font-bold text-slate-400 italic">Orders above this amount will have free delivery.</p>
+                                    <p className="text-[10px] font-bold text-slate-400 italic">Orders of this amount or more get free delivery, including courier shipping.</p>
                                 </div>
                                 <div className="space-y-3">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -610,6 +610,11 @@ const BillingCharges = () => {
                                         instead of a rider. The customer pays whichever is higher: the products&apos;
                                         own out-of-zone prices, or this minimum. Set 0 to charge nothing &mdash; the
                                         courier still bills you.
+                                    </p>
+                                    <p className="text-[10px] font-bold text-emerald-600 italic">
+                                        {Number(config.freeDeliveryThreshold) > 0
+                                            ? `Waived when the order value is ₹${config.freeDeliveryThreshold} or more (Free Delivery Minimum).`
+                                            : 'Set a Free Delivery Minimum above to waive this on larger orders.'}
                                     </p>
                                 </div>
                             </div>

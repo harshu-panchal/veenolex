@@ -1127,7 +1127,9 @@ const CheckoutPage = () => {
     }
     const hasOutOfZone = !!pricingPreview?.isOutOfZone || cart.some(item => item.isInZone === false);
     if (hasOutOfZone) {
-      const cost = pricingPreview?.deliveryFeeCharged || cart.reduce((acc, item) => item.isInZone === false ? acc + (item.shippingCost || item.zoneOutPrice || 0) : acc, 0);
+      // `??`, not `||`: a server ₹0 (e.g. Free Delivery Minimum reached) is
+      // the real fee, not a missing value to estimate client-side.
+      const cost = pricingPreview?.deliveryFeeCharged ?? cart.reduce((acc, item) => item.isInZone === false ? acc + (item.shippingCost || item.zoneOutPrice || 0) : acc, 0);
       setOutOfZoneShippingCost(cost);
       setShowOutOfZoneConfirm(true);
     } else {
@@ -1841,8 +1843,19 @@ const CheckoutPage = () => {
             </p>
             <div className="mt-4 p-3 bg-orange-50 rounded-lg border border-orange-100 flex justify-between items-center">
               <span className="font-bold text-slate-700 text-sm">Delivery charge:</span>
-              <span className="font-black text-orange-600">₹{outOfZoneShippingCost}</span>
+              {Number(outOfZoneShippingCost) > 0 ? (
+                <span className="font-black text-orange-600">₹{outOfZoneShippingCost}</span>
+              ) : (
+                <span className="font-black text-emerald-600">FREE</span>
+              )}
             </div>
+            {Number(outOfZoneShippingCost) <= 0 &&
+              pricingPreview?.freeDeliveryReason === "threshold" &&
+              Number(pricingPreview?.freeDeliveryThreshold) > 0 && (
+                <p className="mt-2 text-xs font-semibold text-emerald-600">
+                  Free shipping on orders of ₹{pricingPreview.freeDeliveryThreshold} and above.
+                </p>
+              )}
           </div>
           <DialogFooter className="gap-2">
             <Button
